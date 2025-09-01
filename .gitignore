@@ -116,3 +116,4 @@ geneval
 *.parquet
 output_dir
 wandb
+demos

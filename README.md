@@ -39,6 +39,7 @@
 
 
 ### News
+- Sep 2025. New Dif-DTok based on [Lumina2](https://github.com/Alpha-VLLM/Lumina-Image-2.0), which shows better consistency and higher image quality! Check [t2i_inference_lumina2.py](t2i_inference_lumina2.py) for inference and [lumina_dtok](https://github.com/csuhan/Tar/tree/lumina_dtok) branch for training.
 - Aug 2025. Release Dif-DTok. Check [t2i_inference_sana.py](t2i_inference_sana.py) for usage.
 - June 2025. Code and models are released.
 
@@ -83,6 +84,7 @@ pip install flash-attn --no-build-isolation
 |:-------:|:----:|--------------|:-----------:|:----:|
 | Dif-DTok| Diffusion | SANA-600M  | 512px       | [Tar-SANA-600M-512px](https://huggingface.co/csuhan/Tar-SANA-600M-512px) |
 | Dif-DTok| Diffusion | SANA-600M  | 1024px       | [Tar-SANA-600M-1024px](https://huggingface.co/csuhan/Tar-SANA-600M-1024px) |
+| Dif-DTok| Diffusion | Lumina2-2.6B  | 1024px       | [csuhan/Tar-Lumina2](https://huggingface.co/csuhan/Tar-Lumina2)🌟 |
 
 3️⃣ LLM
 
@@ -110,7 +112,7 @@ image.save("generated_image.png")
 ```
 You can directly run ```python t2i_inference.py``` to generate images. The models will be downloaded automatically.
 
-2️⃣ Text-to-image generation with Dif-DTok
+2️⃣ Text-to-image generation with SANA Dif-DTok
 ```python
 from t2i_inference_sana import T2IConfig, TextToImageInference
 config = T2IConfig()
@@ -123,7 +125,20 @@ image = inference.generate_image(prompt)
 image.save("generated_image.png")
 ```
 
-3️⃣ Image Understanding
+3️⃣ Text-to-image generation with Lumina2 Dif-DTok (recommended🌟)
+```python
+from t2i_inference_lumina2 import T2IConfig, TextToImageInference
+config = T2IConfig()
+config.lumina2_path = snapshot_download("csuhan/Tar-Lumina2")
+config.ta_tok_path = hf_hub_download("csuhan/TA-Tok", "ta_tok.pth")
+inference = TextToImageInference(config)
+
+prompt = "A photo of a macaw"
+image = inference.generate_image(prompt)
+image.save("generated_image.png")
+```
+
+4️⃣ Image Understanding
 ```python
 from i2t_inference import I2TConfig, ImageToTextInference
 config = I2TConfig(ta_tok_path=hf_hub_download("csuhan/TA-Tok", "ta_tok.pth"))
@@ -182,6 +197,8 @@ bash scripts/Tar_1.5B_pretrain_demo.sh
 The required data will be downloaded automatically. Note make sure your `/tmp` has `>500GB` storage to download the data, or change the data path in [scripts/data_demo.yaml](scripts/data_demo.yaml)
 
 Here we also provide the model trained with the above script: [csuhan/tar_1.5B_pretrain_demo](https://huggingface.co/csuhan/tar_1.5B_pretrain_demo). You can verify if your env setup is correct.
+
+**Lumina2 Dif-DTok Training:** Please check [lumina_dtok](https://github.com/csuhan/Tar/tree/lumina_dtok) branch for training.
 
 ### Evaluation
 

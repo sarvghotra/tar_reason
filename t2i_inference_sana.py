@@ -29,6 +29,7 @@ class TextToImageInference:
     def __init__(self, config: T2IConfig):
         self.config = config
         self.device = torch.device(config.device)
+        torch.set_grad_enabled(False)
         self._load_models()
 
     def _load_models(self):

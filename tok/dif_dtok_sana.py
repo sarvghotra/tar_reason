@@ -1,7 +1,6 @@
 import os
 import torch
 from PIL import Image
-from huggingface_hub import hf_hub_download, snapshot_download
 from torchvision.transforms.functional import to_tensor
 from diffusers import SanaPipeline
 
@@ -45,6 +44,8 @@ class SanaAutoEncoder:
         return self.decode_from_encoder_indices(indices, **kwargs)
 
 if __name__ == '__main__':
+    from huggingface_hub import hf_hub_download, snapshot_download
+    
     sana_path = snapshot_download("csuhan/Tar-SANA-600M-1024px")
     ta_tok_path = hf_hub_download("csuhan/TA-Tok", "ta_tok.pth")
     device = "cuda"
