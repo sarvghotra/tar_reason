@@ -1,4 +1,4 @@
-### Unifying Visual Understanding and Generation via Text-Aligned Representations
+### [NeurIPS 2025] Unifying Visual Understanding and Generation via Text-Aligned Representations
 > [Jiaming Han](https://csuhan.com), [Hao Chen](https://haochen-rye.github.io)<sup>†</sup>, [Yang Zhao](https://scholar.google.com/citations?user=uPmTOHAAAAAJ&hl=zh-CN), [Hanyu Wang](https://hywang66.github.io), [Qi Zhao](https://kevinz8866.github.io), [Ziyan Yang](https://ziyanyang.github.io), [Hao He](https://hehao13.github.io), [Xiangyu Yue](https://xyue.io)<sup>‡</sup>, [Lu Jiang](https://www.lujiang.info)<sup>‡</sup>
 >
 > <sup>†</sup> Project Lead&nbsp;&nbsp;<sup>‡</sup> Corresponding Authors
@@ -39,6 +39,7 @@
 
 
 ### News
+- Sep 2025. Tar is accepted by **NeurIPS 2025**.
 - Sep 2025. New Dif-DTok based on [Lumina2](https://github.com/Alpha-VLLM/Lumina-Image-2.0), which shows better consistency and higher image quality! Check [t2i_inference_lumina2.py](t2i_inference_lumina2.py) for inference and [lumina_dtok](https://github.com/csuhan/Tar/tree/lumina_dtok) branch for training.
 - Aug 2025. Release Dif-DTok. Check [t2i_inference_sana.py](t2i_inference_sana.py) for usage.
 - June 2025. Code and models are released.
