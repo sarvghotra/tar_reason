@@ -1,9 +1,11 @@
-huggingface-cli login --token "YOUR HUGGINGFACE KEY HERE"
+# huggingface-cli login --token "YOUR HUGGINGFACE KEY HERE"
 
 VISION_MODEL=/tmp/ta_tok.pth
-huggingface-cli download csuhan/TA-Tok ta_tok.pth --local-dir /tmp/
+# hf download csuhan/TA-Tok ta_tok.pth --local-dir /tmp/
 
-MODEL_PATH=output_dir/tar_1.5B_pretrain_demo
+MODEL_PATH=/home/mila/s/sarvjeet-singh.ghotra/scratch/models/pre_train/tar/Tar-1.5B
+
+export LD_LIBRARY_PATH="/network/scratch/s/sarvjeet-singh.ghotra/installs/miniforge3/envs/tar/lib:$LD_LIBRARY_PATH"
 
 export no_proxy=""
 export OPENAI_API_KEY="your key here"
@@ -14,7 +16,7 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 export POOL_SCALE=1
 
 torchrun \
---nproc_per_node=8 \
+--nproc_per_node=4 \
 --nnodes=1 \
 --node_rank=0 \
 --master_addr=127.0.0.1 \
@@ -35,3 +37,9 @@ torchrun \
 # |-----|-------|------|-----:|--------------------|---|--------:|---|------|
 # |mme  |Yaml   |none  |     0|mme_cognition_score |↑  | 278.2143|±  |   N/A|
 # |mme  |Yaml   |none  |     0|mme_perception_score|↑  |1328.1412|±  |   N/A|
+
+# On Mila cluster
+# |Tasks|Filter|n-shot|       Metric       |   |  Value  |   |Stderr|Stderr_CLT|
+# |-----|------|-----:|--------------------|---|--------:|---|------|---------:|
+# |mme  |none  |     0|mme_cognition_score |↑  | 335.0000|±  |N/A   |    0.0305|
+# |mme  |none  |     0|mme_perception_score|↑  |1391.2978|±  |N/A   |    0.0090|

@@ -98,7 +98,7 @@ def preprocess_qwen(sources, tokenizer: transformers.PreTrainedTokenizer, has_im
                 content = conv["value"]
 
             role =  roles.get(role, role)
-            
+
             conv = [{"role" : role, "content" : content}]
             encode_id = tokenizer.apply_chat_template(conv)
             input_id += encode_id
@@ -106,7 +106,7 @@ def preprocess_qwen(sources, tokenizer: transformers.PreTrainedTokenizer, has_im
                 target += [IGNORE_INDEX] * len(encode_id)
             else:
                 target += encode_id
-        
+
         assert len(input_id) == len(target), f"{len(input_id)} != {len(target)}"
         for idx, encode_id in enumerate(input_id):
             if encode_id in unmask_tokens_idx:
@@ -244,7 +244,7 @@ class LazySupervisedDataset(Dataset):
             raise exn
 
         image_size = image.size
-        
+
         image = processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
         return image, image_size, "image"
 
@@ -292,7 +292,7 @@ class LazySupervisedDataset(Dataset):
             if type(image_file) is list:
                 image = [self.process_image(f) for f in image_file]
                 # Handling multi images
-                # overwrite to process with simple pad 
+                # overwrite to process with simple pad
                 if len(image_file) > 1:
                     image = [self.process_image(f, "pad") for f in image_file]
                     image = [[im[0], im[1], "image"] for im in image]
@@ -332,6 +332,190 @@ class LazySupervisedDataset(Dataset):
         return data_dict
 
 
+class LazyCustomDataset(Dataset):
+    """Dataset for JSON files where each record has the format:
+    {
+        "metadata": {"dataset_name": ..., "sub_dataset_name": ..., "sample_id": ...},
+        "data": [
+            {"role": "human", "content": [
+                {"type": "image", "image": "path/to/img.jpg"},
+                {"type": "text",  "text": "<image>\nQuestion text"}
+            ]},
+            {"role": "gpt", "content": [
+                {"type": "image", "image": "path/to/img2.jpg"},
+                {"type": "text",  "text": "<image>\nAnswer text"}
+            ]}
+        ]
+    }
+    Images are loaded from data_args.image_folder / <image path>.
+    """
+
+    def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, data_args):
+        super(LazyCustomDataset, self).__init__()
+        self.tokenizer = tokenizer
+        self.data_args = data_args
+        self.list_data_dict = []
+
+        if data_path.endswith(".jsonl"):
+            with open(data_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        self.list_data_dict.append(json.loads(line))
+        else:
+            with open(data_path, "r") as f:
+                data = json.load(f)
+            self.list_data_dict = data if isinstance(data, list) else [data]
+
+        self.modality = torch.tensor(0) # 0 is for und task, 1 is for gen task
+
+        rank0_print(f"Loaded {len(self.list_data_dict)} samples from {data_path}")
+
+    def __len__(self):
+        return len(self.list_data_dict)
+
+    # @property
+    # def lengths(self):
+    #     length_list = []
+    #     for sample in self.list_data_dict:
+    #         has_image = any(
+    #             item["type"] == "image"
+    #             for turn in sample["data"]
+    #             for item in turn["content"]
+    #         )
+    #         img_tokens = 128 if has_image else 0
+    #         text_len = sum(
+    #             len(item["text"].split())
+    #             for turn in sample["data"]
+    #             for item in turn["content"]
+    #             if item["type"] == "text"
+    #         )
+    #         length_list.append(text_len + img_tokens)
+    #     return length_list
+
+    # @property
+    # def modality_lengths(self):
+    #     length_list = []
+    #     for sample in self.list_data_dict:
+    #         has_image = any(
+    #             item["type"] == "image"
+    #             for turn in sample["data"]
+    #             for item in turn["content"]
+    #         )
+    #         text_len = sum(
+    #             len(item["text"].split())
+    #             for turn in sample["data"]
+    #             for item in turn["content"]
+    #             if item["type"] == "text"
+    #         )
+    #         assert text_len > 0, f"Conversation length is 0 for sample {sample}"
+    #         length_list.append(text_len if has_image else -text_len)
+    #     return length_list
+
+    def process_image(self, image_file, overwrite_image_aspect_ratio=None):
+        image_folder = self.data_args.image_folder
+        processor = self.data_args.image_processor
+        try:
+            image = Image.open(os.path.join(image_folder, image_file)).convert("RGB")
+        except Exception as exn:
+            print(f"Failed to open image {image_file}. Exception:", exn)
+            raise exn
+        image_size = image.size
+        image = processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
+        # return image, image_size, "image"
+        return image, image_size, self.modality
+
+    def parse_item(self, item):
+        """Convert new-format item into (conversations, image_files).
+
+        Each turn's content list may contain interleaved image/text entries.
+        Image entries define which files to load (in order); text entries carry
+        the conversation text, which already embeds <image> tokens at the right
+        positions.  We concatenate all text pieces per turn into a single value
+        string so that preprocess_qwen sees the standard {"from", "value"} format.
+        """
+        conversations = []
+        image_files = []
+
+        for turn in item["data"]:
+            role = turn["role"]  # "human" or "gpt"
+            turn_text = ""
+            for c in turn["content"]:
+                if c["type"] == "image":
+                    image_files.append(c["image"])
+                elif c["type"] == "text":
+                    turn_text += c["text"]
+
+            conversations.append({"from": role, "value": turn_text})
+
+        return conversations, image_files
+
+    def __getitem__(self, i) -> Dict[str, torch.Tensor]:
+        num_base_retries = 3
+
+        for attempt_idx in range(num_base_retries):
+            try:
+                return self._get_item(i)
+            except Exception as e:
+                print(f"[Try #{attempt_idx}] Failed to fetch sample {i}. Exception:", e)
+                time.sleep(1)
+
+        for attempt_idx in range(num_base_retries):
+            try:
+                next_index = min(i + 1, len(self.list_data_dict) - 1)
+                return self._get_item(next_index)
+            except Exception as e:
+                print(f"[Try other #{attempt_idx}] Failed to fetch sample {next_index}. Exception:", e)
+
+        return self._get_item(i)
+
+    def _get_item(self, i) -> Dict[str, torch.Tensor]:
+        raw = copy.deepcopy(self.list_data_dict[i])
+        conversations, image_files = self.parse_item(raw)
+
+        has_image = len(image_files) > 0
+
+        if has_image:
+            if len(image_files) > 1:
+                # image = [self.process_image(f, "pad") for f in image_files]
+                # image = [[im[0], im[1], "image"] for im in image]
+                image = [self.process_image(f) for f in image_files]
+                image = [[im[0], im[1], self.modality] for im in image]
+            else:
+                image = [self.process_image(image_files[0])]
+            sources = preprocess_multimodal([conversations], self.data_args)
+        else:
+            sources = [conversations]
+
+        data_dict = preprocess_qwen(sources, self.tokenizer, has_image=has_image)
+
+        prompt = data_dict.get("prompt", None)
+        data_dict = dict(input_ids=data_dict["input_ids"][0], labels=data_dict["labels"][0])
+
+        if has_image:
+            data_dict["image"] = image
+        elif self.data_args.is_multimodal:
+            crop_size = self.data_args.image_processor.crop_size
+            # data_dict["image"] = [
+            #     (torch.zeros(1, 3, crop_size["height"], crop_size["width"]),
+            #      (crop_size["width"], crop_size["height"]),
+            #      "text"),
+            # ]
+            data_dict["image"] = [
+                (torch.zeros(1, 3, crop_size["height"], crop_size["width"]),
+                 (crop_size["width"], crop_size["height"]),
+                 self.modality),
+            ]
+
+        if prompt is not None:
+            data_dict["prompt"] = prompt
+
+        metadata = raw.get("metadata", {})
+        data_dict["id"] = metadata.get("sample_id", i)
+
+        return data_dict
+
+
 class LazyParquetDataset(IterableDataset):
     def __init__(self, tokenizer: transformers.PreTrainedTokenizer, data_paths, data_args):
         super().__init__()
@@ -347,12 +531,12 @@ class LazyParquetDataset(IterableDataset):
                 urls.sort()
             self.urls_all.extend(urls)
         self.urls_all.sort()
-        
+
         self.tokenizer = tokenizer
         self.data_args = data_args
 
         self.modality = torch.tensor(0) # 0 is for und task, 1 is for gen task
-    
+
     def process_image(self, image):
         processor = self.data_args.image_processor
         image_size = image.size
@@ -402,7 +586,7 @@ class LazyParquetDataset(IterableDataset):
             sources['conversations'] = json.loads(sources['conversations'])
         elif not isinstance(sources['conversations'], list):
             sources['conversations'] = sources['conversations'].tolist()
-        
+
         # random short-long prompt
         if 'conversations_short' in sources and random.random() < 0.5:
             sources['conversations'] = sources['conversations_short']
@@ -421,7 +605,7 @@ class LazyParquetDataset(IterableDataset):
                 images = [s['bytes'] for s in sources['image']]
                 sources['image'] = [Image.open(io.BytesIO(image)).convert('RGB') for image in images]
         return sources
-    
+
     def _get_item(self, sources):
         sources = self.parse_item(copy.deepcopy(sources))
         has_image = "image" in sources and sources["image"] is not None
@@ -431,7 +615,7 @@ class LazyParquetDataset(IterableDataset):
             if type(image_file) is list:
                 image = [self.process_image(f) for f in image_file]
                 # Handling multi images
-                # overwrite to process with simple pad 
+                # overwrite to process with simple pad
                 if len(image_file) > 1:
                     image = [self.process_image(f) for f in image_file]
                     image = [[im[0], im[1], self.modality] for im in image]
@@ -457,8 +641,8 @@ class LazyParquetDataset(IterableDataset):
             # image does not exist in the data, but the model is multimodal
             crop_size = self.data_args.image_processor.crop_size
             data_dict["image"] = [
-                (torch.zeros(1, 3, crop_size["height"], crop_size["width"]), 
-                torch.tensor([crop_size["width"], crop_size["height"]]), 
+                (torch.zeros(1, 3, crop_size["height"], crop_size["width"]),
+                torch.tensor([crop_size["width"], crop_size["height"]]),
                 self.modality),
             ]
         # prompt exist in the data
@@ -490,7 +674,7 @@ class WeightedDataset(IterableDataset):
     def __iter__(self):
         iterators = [iter(dataset) for dataset in self.datasets]
         ratios = {it: r for r, it in zip(self.ratios, iterators)}
-        
+
         while True:
             it = random.choices(iterators, weights=ratios.values())[0]
             try:
@@ -542,6 +726,8 @@ class DataCollatorForSupervisedDataset(object):
 def get_dataset_cls(name):
     if name == 'llava':
         dataset_cls = LazySupervisedDataset
+    elif name == 'custom':
+        dataset_cls = LazyCustomDataset
     elif name == 'parquet':
         dataset_cls = LazyParquetDataset
     elif name == 'weighted_parquet':
