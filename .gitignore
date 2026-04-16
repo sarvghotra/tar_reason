@@ -117,3 +117,5 @@ geneval
 output_dir
 wandb
 demos
+
+util_scripts/debug_vcot_dataset/
