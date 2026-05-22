@@ -295,6 +295,65 @@ def _sample_phase(engine, tokenizer, input_ids, attention_mask, n_tokens, args, 
     )
 
 
+def _sample_critique_phase(
+    engine, tokenizer, input_ids, attention_mask, n_tokens, args, logits_processor
+):
+    """Critique generation capped at `n_tokens` with early-EOS support.
+
+    Unlike _sample_phase, the model may emit EOS before `n_tokens` — the
+    output is always padded to `n_tokens` so downstream tensors stay
+    rectangular. Returns (full_ids, full_attn_mask, crit_gen_mask):
+        full_attn_mask  zeros out positions after the first EOS so Phase 3
+                        does not attend to critique padding.
+        crit_gen_mask   1 on tokens up to and including the first EOS (or all
+                        n_tokens if no EOS), 0 on padding — used in gen_mask
+                        to suppress gradient on pad tokens.
+    """
+    device = input_ids.device
+    B = input_ids.shape[0]
+    prefix_len = input_ids.shape[1]
+
+    output = engine.module.generate(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        max_new_tokens=n_tokens,
+        do_sample=True,
+        temperature=args.gen_temperature,
+        top_p=args.gen_top_p,
+        top_k=args.gen_top_k,
+        logits_processor=logits_processor,
+        pad_token_id=tokenizer.pad_token_id,
+        use_cache=True,
+    )
+
+    # Pad to n_tokens if any sequence stopped at EOS before the budget.
+    crit_tokens = output[:, prefix_len:]  # (B, actual_len <= n_tokens)
+    actual_len = crit_tokens.shape[1]
+    if actual_len < n_tokens:
+        pad = torch.full(
+            (B, n_tokens - actual_len),
+            tokenizer.pad_token_id,
+            dtype=torch.long,
+            device=device,
+        )
+        crit_tokens = torch.cat([crit_tokens, pad], dim=1)
+
+    # Build mask: 1 up to and including first EOS, 0 on padding after it.
+    # Works correctly when pad_token_id == eos_token_id because argmax finds
+    # the *first* occurrence and has_eos guards the no-EOS case.
+    eos_id = tokenizer.eos_token_id
+    is_eos = crit_tokens == eos_id                               # (B, n_tokens)
+    has_eos = is_eos.any(dim=1)                                  # (B,)
+    first_eos_idx = is_eos.long().argmax(dim=1)                  # (B,)
+    positions = torch.arange(n_tokens, device=device).unsqueeze(0).expand(B, n_tokens)
+    cutoff = torch.where(has_eos, first_eos_idx + 1, torch.full_like(first_eos_idx, n_tokens))
+    crit_mask = (positions < cutoff.unsqueeze(1)).long()         # (B, n_tokens)
+
+    full_ids = torch.cat([input_ids, crit_tokens], dim=1)
+    full_attn = torch.cat([attention_mask, crit_mask], dim=1)
+    return full_ids, full_attn, crit_mask
+
+
 @torch.no_grad()
 def rollout(
     engine,
@@ -348,6 +407,7 @@ def rollout(
             gen_len = D
             gen_mask = ones(D)
             final_offset = 0
+            full_mask = torch.cat([prefix_mask, ones(gen_len)], dim=1)
         else:
             splice1 = encode_splice(tokenizer, args.critique_lead, device)
             splice2 = encode_splice(
@@ -361,30 +421,35 @@ def rollout(
             # Phase 1: draft image.
             ids = _sample_phase(engine, tokenizer, prefix_ids, prefix_mask, D, args, image_proc)
             mask = torch.cat([prefix_mask, ones(D)], dim=1)
-            # Splice 1 + Phase 2: free-text self-critique.
+            # Splice 1 + Phase 2: free-text self-critique (EOS-aware).
             ids = torch.cat([ids, splice1_b], dim=1)
             mask = torch.cat([mask, ones(S1)], dim=1)
-            ids = _sample_phase(engine, tokenizer, ids, mask, C, args, text_proc)
-            mask = torch.cat([mask, ones(C)], dim=1)
+            ids, mask, crit_gen_mask = _sample_critique_phase(
+                engine, tokenizer, ids, mask, C, args, text_proc,
+            )
             # Splice 2 + Phase 3: final (corrected) image.
             ids = torch.cat([ids, splice2_b], dim=1)
             mask = torch.cat([mask, ones(S2)], dim=1)
             full_ids = _sample_phase(engine, tokenizer, ids, mask, D, args, image_proc)
+            mask = torch.cat([mask, ones(D)], dim=1)
 
             gen_len = D + S1 + C + S2 + D
             # Gradient flows only through the critique span and the final
             # image — the draft image and the deterministic splices are masked
             # out (the splices are forced tokens, not policy decisions).
+            # crit_gen_mask is 0 on any padding after an early EOS so filler
+            # tokens do not receive gradient.
             gen_mask = torch.zeros(B, gen_len, dtype=torch.long, device=device)
             crit_start = D + S1
             final_offset = crit_start + C + S2
-            gen_mask[:, crit_start : crit_start + C] = 1
+            gen_mask[:, crit_start : crit_start + C] = crit_gen_mask
             gen_mask[:, final_offset : final_offset + D] = 1
+            # mask already encodes the correct attention for the full sequence
+            # (0s at critique padding so Phase 3 does not attend to it).
+            full_mask = mask
     finally:
         if was_training:
             engine.module.train()
-
-    full_mask = torch.cat([prefix_mask, ones(gen_len)], dim=1)
     # The rewarded image: phase-3 tokens in the critique path, the whole
     # generation in the default path. Convert to unshifted vocab indices.
     fs = prefix_len + final_offset
