@@ -24,7 +24,7 @@ class LlavaMetaModel:
         if hasattr(config, "mm_vision_tower"):
             delay_load = getattr(config, "delay_load", False)
             self.vision_tower = build_vision_tower(config, delay_load=delay_load)
-            
+
     def get_vision_tower(self):
         vision_tower = getattr(self, "vision_tower", None)
         if type(vision_tower) is list:
@@ -42,7 +42,7 @@ class LlavaMetaModel:
 
         if self.get_vision_tower() is None:
             vision_tower = build_vision_tower(model_args)
-            
+
             if fsdp is not None and len(fsdp) > 0:
                 self.vision_tower = [vision_tower]
             else:
@@ -69,7 +69,7 @@ class LlavaMetaForCausalLM(ABC):
 
     def get_vision_tower(self):
         return self.get_model().get_vision_tower()
-    
+
     def encode_images(self, images, modalities, pool_scale=None):
         image_features = self.get_model().get_vision_tower()(images, pool_scale=pool_scale)
 
@@ -90,7 +90,7 @@ class LlavaMetaForCausalLM(ABC):
 
         if not isinstance(modalities, list):
             modalities = [modalities]
-        
+
         # random scale for training, but scale 1 for understanding evaluation
         if self.training:
             pool_scale = random.choice(vision_tower.pool_scales)
@@ -196,7 +196,14 @@ class LlavaMetaForCausalLM(ABC):
                         rank0_print("Error image_features[cur_image_idx]!")
                         break
                     # [Assisant\n<start_image><image><end_image>]
-                    if self.config.image_start_tag_id == cur_labels_noim[i][-1] and image_tokens is not None:
+                    # For self-reflect data the dataset masks <im_end> (first token after
+                    # IMAGE_TOKEN_INDEX) to IGNORE_INDEX; for generation it keeps its real id.
+                    is_self_reflect = (
+                        len(cur_labels_noim[i + 1]) > 0
+                        and cur_labels_noim[i + 1][0].item() == IGNORE_INDEX
+                    )
+
+                    if self.config.image_start_tag_id == cur_labels_noim[i][-1] and image_tokens is not None and not is_self_reflect:
                         cur_image_tokens = image_tokens[cur_image_idx]
                         if pool_scale is not None:
                             pool_token = self.config.scale_start_token_id + pool_scale - 1
@@ -205,7 +212,13 @@ class LlavaMetaForCausalLM(ABC):
                             pool_embed = self.get_model().embed_tokens(pool_token)
                             cur_image_features = torch.cat([pool_embed, cur_image_features])
                     else:
+                        if is_self_reflect and pool_scale is not None:
+                            pool_token = self.config.scale_start_token_id + pool_scale - 1
+                            pool_token = torch.tensor([pool_token], dtype=torch.long, device=cur_image_features.device)
+                            pool_embed = self.get_model().embed_tokens(pool_token)
+                            cur_image_features = torch.cat([pool_embed, cur_image_features])
                         cur_image_tokens = torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype)
+
                     cur_image_idx += 1
                     cur_new_input_embeds.append(cur_image_features)
                     cur_new_labels.append(cur_image_tokens)
@@ -310,9 +323,9 @@ class LlavaMetaForCausalLM(ABC):
 
             input_embeddings[-num_new_tokens:] = input_embeddings_avg
             output_embeddings[-num_new_tokens:] = output_embeddings_avg
-        
+
             vision_tower = self.get_vision_tower()
-            if model_args.load_embeddings_from_vision and vision_tower is not None:                
+            if model_args.load_embeddings_from_vision and vision_tower is not None:
                 vision_embeddings = vision_tower.get_embedding()
                 if model_args.num_image_tokens == vision_embeddings.shape[0] and input_embeddings.shape[1] == vision_embeddings.shape[1]:
                     rank0_print("Load vision embeddings from vision tower.")

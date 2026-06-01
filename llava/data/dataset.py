@@ -566,8 +566,8 @@ class LazyParquetDataset(IterableDataset):
             def row_generator():
                 for file_path in files_iter:
                     parquet_file = pq.ParquetFile(file_path)
-                    for rg in range(parquet_file.num_row_groups):
-                        table = parquet_file.read_row_group(rg).to_pandas()
+                    for batch in parquet_file.iter_batches(batch_size=64):
+                        table = batch.to_pandas()
                         for i in range(len(table)):
                             row = table.iloc[i].to_dict()
                             yield row
@@ -654,6 +654,56 @@ class LazyParquetDataset(IterableDataset):
         return data_dict
 
 
+class LazySelfReflectParquetDataset(LazyParquetDataset):
+    """SFT dataset where the assistant response starts with '<image>\\nSelf-reflect: <answer>'.
+    Loss is computed only on <answer>, masking the '<image>\\nSelf-reflect: ' prefix."""
+
+    # Text following <image> in the assistant response that should be masked from loss
+    MASK_PREFIX = "\nSelf-reflect:"
+
+    def _get_item(self, sources):
+        data_dict = super()._get_item(sources)
+        data_dict["labels"] = self._mask_assistant_prefix(
+            data_dict["input_ids"], data_dict["labels"]
+        )
+        return data_dict
+
+    def _mask_assistant_prefix(self, input_ids, labels):
+        """Set IGNORE_INDEX on '<im_start><image><im_end>\\nSelf-reflect: ' tokens in the assistant turn.
+
+        preprocess_multimodal replaces <image> with <im_start><image><im_end> for gpt turns
+        when mm_use_im_start_end is set, so both forms are handled here.
+        """
+        prefix_ids = self.tokenizer.encode(self.MASK_PREFIX, add_special_tokens=False)
+        im_start_id = self.tokenizer.convert_tokens_to_ids(DEFAULT_IM_START_TOKEN)
+        im_end_id = self.tokenizer.convert_tokens_to_ids(DEFAULT_IM_END_TOKEN)
+
+        inp = input_ids.tolist()
+        lbl = labels.tolist()
+
+        for i, tok in enumerate(inp):
+            if tok != IMAGE_TOKEN_INDEX:
+                continue
+            if lbl[i] == IGNORE_INDEX:
+                # <image> is in a human/system turn — not what we want
+                continue
+            # IMAGE_TOKEN_INDEX in the assistant turn
+            # Include preceding <im_start> in the mask if present
+            mask_start = i - 1 if (i > 0 and inp[i - 1] == im_start_id) else i
+            # Skip trailing <im_end> before checking for the text prefix
+            after_img = i + 1
+            if after_img < len(inp) and inp[after_img] == im_end_id:
+                after_img += 1
+            # Check for "\nSelf-reflect: " and mask everything up to it
+            end = after_img + len(prefix_ids)
+            if inp[after_img:end] == prefix_ids:
+                for j in range(mask_start, end):
+                    lbl[j] = IGNORE_INDEX
+            break  # Only process the first match in the assistant turn
+
+        return torch.tensor(lbl, dtype=labels.dtype)
+
+
 class WeightedDataset(IterableDataset):
     def __init__(self, tokenizer, data_path, data_args):
         super().__init__()
@@ -730,6 +780,8 @@ def get_dataset_cls(name):
         dataset_cls = LazyCustomDataset
     elif name == 'parquet':
         dataset_cls = LazyParquetDataset
+    elif name == 'self_reflect_parquet':
+        dataset_cls = LazySelfReflectParquetDataset
     elif name == 'weighted_parquet':
         dataset_cls = WeightedDataset
     else:

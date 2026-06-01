@@ -1,0 +1,29 @@
+datasets:
+  # - json_path:
+  #   # https://huggingface.co/datasets/lmms-lab/LLaVA-ReCap-118K
+  #   # https://huggingface.co/datasets/lmms-lab/LLaVA-ReCap-558K
+  #   # https://huggingface.co/datasets/csuhan/LLaVA-SFT-665K
+  #   - /tmp/LLaVA-SFT-665K/
+  #   ratio: 1
+  #   name: 'parquet'
+  # - json_path:
+  #   # https://huggingface.co/datasets/csuhan/ImageNet1K-T2I-QwenVL-FLUX
+  #   - /home/mila/s/sarvjeet-singh.ghotra/scratch/data/v_cot_reason/tmp/ImageNet1K-T2I-QwenVL-FLUX-train
+  #   ratio: 1
+  #   name: 'parquet'
+  - json_path:
+    # https://huggingface.co/datasets/Magpie-Align/Magpie-Qwen2.5-Pro-1M-v0.1
+    - /home/mila/s/sarvjeet-singh.ghotra/scratch/data/critique/RLHF-V-Dataset_tar_format
+    ratio: 2
+    name: 'self_reflect_parquet'
+  - json_path:
+    # https://huggingface.co/datasets/Magpie-Align/Magpie-Qwen2.5-Pro-1M-v0.1
+    # - /home/mila/s/sarvjeet-singh.ghotra/scratch/data/critique/UniCoT-Self-Reflection-6K_tar_format
+    - /home/mila/s/sarvjeet-singh.ghotra/scratch/data/critique/SeeTRUE-Feedback_tar_format/
+    ratio: 1
+    name: 'self_reflect_parquet'
+  - json_path:
+    # https://huggingface.co/datasets/Magpie-Align/Magpie-Qwen2.5-Pro-1M-v0.1
+    - /home/mila/s/sarvjeet-singh.ghotra/scratch/data/critique/UniCoT-Self-Reflection-6K_tar_format
+    ratio: 2
+    name: 'self_reflect_parquet'
