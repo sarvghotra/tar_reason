@@ -242,6 +242,30 @@ class LLaVATrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
+        # ZeRO-1/2 replicate the full model on every rank, so HF/accelerate's
+        # get_state_dict() builds a full CPU copy of the model on ALL ranks even
+        # though only the main process (`should_save`) writes it. With N ranks on
+        # one node that redundant work is an Nx host-RAM spike at checkpoint time,
+        # which OOM-kills a dataloader worker (surfacing as the misleading
+        # "DataLoader worker is killed by signal: Killed" during the save).
+        # Build/write the HF state dict only on the saving rank; DeepSpeed's
+        # sharded native checkpoint (written by all ranks in
+        # _save_optimizer_and_scheduler) still handles resume.
+        #
+        # For ZeRO-1/2 get_state_dict() is purely local, so skipping it on
+        # non-saving ranks involves no collective and cannot deadlock. ZeRO-3
+        # gathers the sharded params via an all-rank collective, so never skip
+        # there.
+        if self.is_deepspeed_enabled and not self.args.should_save:
+            try:
+                zero_stage = self.accelerator.state.deepspeed_plugin.zero_stage
+            except AttributeError:
+                zero_stage = 0
+            if zero_stage != 3:
+                return
+        super().save_model(output_dir, _internal_call=_internal_call)
+
     def create_accelerator_and_postprocess(self):
         grad_acc_kwargs = {"num_steps": self.args.gradient_accumulation_steps}
         grad_acc_kwargs["sync_with_dataloader"] = False
