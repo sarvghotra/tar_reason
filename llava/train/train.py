@@ -70,12 +70,18 @@ class TrainingArguments(transformers.TrainingArguments):
     attn_implementation: str = field(default="flash_attention_2", metadata={"help": "Use transformers attention implementation."})
     dispatch_batches: Optional[bool] = field(default=None)
     split_batches: Optional[bool] = field(default=None)
+    weights_only_save_steps: Optional[int] = field(
+        default=None,
+        metadata={"help": "If set, every N steps save a lightweight checkpoint containing only the model "
+                          "weights (no optimizer/scheduler/RNG/trainer global state) under the `weights_only/` "
+                          "sub-directory of the output dir. Useful to keep many eval-able snapshots cheaply."},
+    )
 
 
 def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: str):
     trainer.accelerator.wait_for_everyone()
     torch.cuda.synchronize()
-    
+
     if trainer.deepspeed:
         trainer.save_model(output_dir)
         return
@@ -150,7 +156,7 @@ def train():
             def make_inputs_require_grad(module, input, output):
                 output.requires_grad_(True)
             model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
-            
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=training_args.cache_dir,
@@ -169,7 +175,7 @@ def train():
         data_args.is_multimodal = True
 
         model.config.image_aspect_ratio = data_args.image_aspect_ratio
-        
+
         model.config.tokenizer_padding_side = tokenizer.padding_side
         model.config.tokenizer_model_max_length = tokenizer.model_max_length
 
@@ -192,6 +198,12 @@ def train():
             for name, param in model.named_parameters():
                 if "vision_tower" in name:
                     param.requires_grad_(True)
+
+        if "mm_language_model_wo_embed" in tunable_parts:
+            for name, param in model.named_parameters():
+                if "vision_tower" not in name and "embed_tokens" not in name and 'lm_head' not in name:
+                    param.requires_grad_(True)
+
         if "mm_language_model" in tunable_parts:
             for name, param in model.named_parameters():
                 if "vision_tower" not in name:
@@ -208,7 +220,7 @@ def train():
         for name, p in model.named_parameters():
             if p.requires_grad:
                 rank0_print(f"Trainable parameter: {name}")
-        
+
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
     trainer = LLaVATrainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
 

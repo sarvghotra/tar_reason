@@ -242,6 +242,38 @@ class LLaVATrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def _maybe_log_save_evaluate(self, *args, **kwargs):
+        # Standard HF logging/eval/checkpointing (full checkpoint with optimizer,
+        # scheduler, RNG and trainer global state when control.should_save).
+        super()._maybe_log_save_evaluate(*args, **kwargs)
+        # In addition, periodically drop a lightweight weights-only snapshot under
+        # `weights_only/` so we can keep many eval-able checkpoints cheaply without
+        # the (large) global training state.
+        self._maybe_save_weights_only()
+
+    def _maybe_save_weights_only(self):
+        save_steps = getattr(self.args, "weights_only_save_steps", None)
+        if not save_steps:
+            return
+        step = self.state.global_step
+        if step == 0 or step % save_steps != 0:
+            return
+        # Avoid writing the same snapshot twice when this is hit by both the
+        # step-level and epoch-level _maybe_log_save_evaluate calls.
+        if getattr(self, "_last_weights_only_step", None) == step:
+            return
+        self._last_weights_only_step = step
+
+        import os
+        from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
+
+        run_dir = self._get_output_dir(trial=None)
+        weights_only_dir = os.path.join(run_dir, "weights_only", f"{PREFIX_CHECKPOINT_DIR}-{step}")
+        rank0_print(f"Saving weights-only checkpoint (no global state) to {weights_only_dir}")
+        # save_model writes only the model weights/config (and tokenizer); it does
+        # not save optimizer/scheduler/RNG/trainer state.
+        self.save_model(weights_only_dir, _internal_call=True)
+
     def create_accelerator_and_postprocess(self):
         grad_acc_kwargs = {"num_steps": self.args.gradient_accumulation_steps}
         grad_acc_kwargs["sync_with_dataloader"] = False
