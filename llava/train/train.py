@@ -71,11 +71,66 @@ class TrainingArguments(transformers.TrainingArguments):
     dispatch_batches: Optional[bool] = field(default=None)
     split_batches: Optional[bool] = field(default=None)
 
+    # LoRA arguments
+    lora_enable: bool = field(default=False)
+    lora_r: int = field(default=128)
+    lora_alpha: int = field(default=256)
+    lora_dropout: float = field(default=0.05)
+    lora_bias: str = field(default="none")
+    lora_target_modules: Optional[str] = field(
+        default=None,
+        metadata={"help": "Comma-separated module names to apply LoRA to. If unset, all language-model Linear layers are targeted."},
+    )
+    lora_self_attn_only: bool = field(
+        default=False,
+        metadata={"help": "When True, restrict LoRA to self-attention projections (q/k/v/o_proj) in the LLM, "
+                          "excluding vision tower, embed_tokens, and lm_head."},
+    )
+    weights_only_save_steps: Optional[int] = field(
+        default=None,
+        metadata={"help": "If set, every N steps save a lightweight checkpoint containing only the model "
+                          "weights (no optimizer/scheduler/RNG/trainer global state) under the `weights_only/` "
+                          "sub-directory of the output dir. Useful to keep many eval-able snapshots cheaply."},
+    )
+
+
+def find_self_attn_linear_names(model, exclude_keywords=("vision_tower", "embed_tokens", "lm_head")):
+    """Return full paths of self-attention Linear layers in the LLM only.
+
+    Targets q/k/v/o projections (any Linear whose parent path contains 'attn'),
+    skipping the vision tower, token embeddings, and lm_head."""
+    lora_module_names = set()
+    for name, module in model.named_modules():
+        if any(kw in name for kw in exclude_keywords):
+            continue
+        if "attn" not in name:
+            continue
+        if isinstance(module, torch.nn.Linear):
+            lora_module_names.add(name)
+    return sorted(lora_module_names)
+
+
+def find_all_linear_names(model, exclude_keywords=("vision_tower", "embed_tokens", "lm_head")):
+    """Collect the names of all nn.Linear modules eligible for LoRA, skipping the
+    vision tower (TA-Tok) and the lm_head (kept as a full module_to_save).
+
+    Returns the *full* module paths rather than leaf names. PEFT matches list
+    entries by suffix, and the language model and vision tower share leaf names
+    (e.g. ``q_proj``), so returning leaf names would re-add LoRA to the excluded
+    vision tower. Full paths force an exact match and keep the exclusion intact."""
+    lora_module_names = set()
+    for name, module in model.named_modules():
+        if any(kw in name for kw in exclude_keywords):
+            continue
+        if isinstance(module, torch.nn.Linear):
+            lora_module_names.add(name)
+    return sorted(lora_module_names)
+
 
 def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: str):
     trainer.accelerator.wait_for_everyone()
     torch.cuda.synchronize()
-    
+
     if trainer.deepspeed:
         trainer.save_model(output_dir)
         return
@@ -150,7 +205,7 @@ def train():
             def make_inputs_require_grad(module, input, output):
                 output.requires_grad_(True)
             model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
-            
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=training_args.cache_dir,
@@ -169,7 +224,7 @@ def train():
         data_args.is_multimodal = True
 
         model.config.image_aspect_ratio = data_args.image_aspect_ratio
-        
+
         model.config.tokenizer_padding_side = tokenizer.padding_side
         model.config.tokenizer_model_max_length = tokenizer.model_max_length
 
@@ -192,6 +247,10 @@ def train():
             for name, param in model.named_parameters():
                 if "vision_tower" in name:
                     param.requires_grad_(True)
+        if "mm_language_model_wo_embed" in tunable_parts:
+            for name, param in model.named_parameters():
+                if "vision_tower" not in name and "embed_tokens" not in name and 'lm_head' not in name:
+                    param.requires_grad_(True)
         if "mm_language_model" in tunable_parts:
             for name, param in model.named_parameters():
                 if "vision_tower" not in name:
@@ -201,14 +260,53 @@ def train():
                 if "embed_tokens" in name or 'lm_head' in name:
                     param.requires_grad_(True)
 
+        if training_args.lora_enable:
+            from peft import LoraConfig, get_peft_model
+
+            # Keep the (image/scale) token embeddings and lm_head as full,
+            # non-LoRA trainable modules whenever the tunable-parts config marks
+            # them trainable -- the discrete image tokens cannot be learned via a
+            # low-rank adapter on a frozen embedding table.
+            modules_to_save = sorted({
+                "embed_tokens" if "embed_tokens" in name else "lm_head"
+                for name, param in model.named_parameters()
+                if param.requires_grad and ("embed_tokens" in name or "lm_head" in name)
+            })
+
+            if training_args.lora_target_modules:
+                target_modules = [m.strip() for m in training_args.lora_target_modules.split(",") if m.strip()]
+            elif training_args.lora_self_attn_only:
+                target_modules = find_self_attn_linear_names(model)
+            else:
+                target_modules = find_all_linear_names(model)
+
+            rank0_print(f"Adding LoRA adapters (r={training_args.lora_r}, alpha={training_args.lora_alpha}) "
+                        f"to: {target_modules}")
+            if modules_to_save:
+                rank0_print(f"Keeping fully trainable (modules_to_save): {modules_to_save}")
+
+            lora_config = LoraConfig(
+                r=training_args.lora_r,
+                lora_alpha=training_args.lora_alpha,
+                lora_dropout=training_args.lora_dropout,
+                bias=training_args.lora_bias,
+                target_modules=target_modules,
+                modules_to_save=modules_to_save or None,
+                task_type="CAUSAL_LM",
+            )
+            model = get_peft_model(model, lora_config)
+
         total_params = sum(p.ds_numel if hasattr(p, "ds_numel") else p.numel() for p in model.parameters())
         trainable_params = sum(p.ds_numel if hasattr(p, "ds_numel") else p.numel() for p in model.parameters() if p.requires_grad)
-        rank0_print(f"Total parameters: ~{total_params/1e6:.2f} MB)")
-        rank0_print(f"Trainable parameters: ~{trainable_params/1e6:.2f} MB)")
         for name, p in model.named_parameters():
             if p.requires_grad:
                 rank0_print(f"Trainable parameter: {name}")
-        
+        rank0_print(f"Total parameters: ~{total_params/1e6:.2f} MB)")
+        rank0_print(f"Trainable parameters: ~{trainable_params/1e6:.2f} MB)")
+
+        rank0_print(f"Total parameters: {total_params}")
+        rank0_print(f"Trainable parameters: {trainable_params}")
+
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
     trainer = LLaVATrainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
 

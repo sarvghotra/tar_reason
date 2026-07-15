@@ -241,6 +241,63 @@ class LLaVATrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Per-data-type train-loss logging. The set of types is read from the
+        # dataset config so it is identical on every rank (avoids collective
+        # deadlocks when all-reducing the accumulators). Accumulators hold the
+        # running sum of the per-token CE loss and the token count for each type
+        # over the current logging window.
+        self._loss_type_names = self._discover_data_types()
+        self._per_type_loss_sum = {t: 0.0 for t in self._loss_type_names}
+        self._per_type_loss_count = {t: 0.0 for t in self._loss_type_names}
+
+    def _discover_data_types(self):
+        types = set()
+        datasets_ = getattr(self.train_dataset, "datasets", None)
+        if datasets_ is not None:
+            for ds in datasets_:
+                dt = getattr(ds, "data_type", None)
+                if dt is not None:
+                    types.add(dt)
+        return sorted(types)
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        # Always fetch the model outputs so we can harvest the per-type loss that
+        # the model attaches for logging, then honor the caller's return_outputs.
+        loss, outputs = super().compute_loss(
+            model, inputs, return_outputs=True, num_items_in_batch=num_items_in_batch
+        )
+        per_type_loss = getattr(outputs, "per_type_loss", None)
+        if per_type_loss:
+            for dt, (loss_sum, count) in per_type_loss.items():
+                if dt not in self._per_type_loss_sum:
+                    continue
+                self._per_type_loss_sum[dt] += loss_sum.detach()
+                self._per_type_loss_count[dt] += count.detach()
+        return (loss, outputs) if return_outputs else loss
+
+    def log(self, logs, *args, **kwargs):
+        # Inject per-data-type train losses alongside the standard "loss" log.
+        # `_per_type_*` hold device tensors (or 0.0 if a type saw no samples this
+        # window); reduce across ranks in the fixed type order so all processes
+        # issue matching collectives.
+        if self._loss_type_names and "loss" in logs:
+            import torch.distributed as dist
+
+            distributed = dist.is_available() and dist.is_initialized()
+            for dt in self._loss_type_names:
+                loss_sum = self._per_type_loss_sum[dt]
+                count = self._per_type_loss_count[dt]
+                loss_sum = torch.as_tensor(loss_sum, dtype=torch.float32, device=self.args.device)
+                count = torch.as_tensor(count, dtype=torch.float32, device=self.args.device)
+                if distributed:
+                    dist.all_reduce(loss_sum, op=dist.ReduceOp.SUM)
+                    dist.all_reduce(count, op=dist.ReduceOp.SUM)
+                if count.item() > 0:
+                    logs[f"loss_{dt}"] = round((loss_sum / count).item(), 4)
+                # reset accumulator for the next logging window
+                self._per_type_loss_sum[dt] = 0.0
+                self._per_type_loss_count[dt] = 0.0
+        super().log(logs, *args, **kwargs)
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
         # ZeRO-1/2 replicate the full model on every rank, so HF/accelerate's
@@ -265,6 +322,65 @@ class LLaVATrainer(Trainer):
             if zero_stage != 3:
                 return
         super().save_model(output_dir, _internal_call=_internal_call)
+
+    def _maybe_log_save_evaluate(self, *args, **kwargs):
+        # Standard HF logging/eval/checkpointing (full checkpoint with optimizer,
+        # scheduler, RNG and trainer global state when control.should_save).
+        super()._maybe_log_save_evaluate(*args, **kwargs)
+        # In addition, periodically drop a lightweight weights-only snapshot under
+        # `weights_only/` so we can keep many eval-able checkpoints cheaply without
+        # the (large) global training state.
+        self._maybe_save_weights_only()
+
+    def _maybe_save_weights_only(self):
+        save_steps = getattr(self.args, "weights_only_save_steps", None)
+        if not save_steps:
+            return
+        step = self.state.global_step
+        if step == 0 or step % save_steps != 0:
+            return
+        # Avoid writing the same snapshot twice when this is hit by both the
+        # step-level and epoch-level _maybe_log_save_evaluate calls.
+        if getattr(self, "_last_weights_only_step", None) == step:
+            return
+        self._last_weights_only_step = step
+
+        import os
+        from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
+
+        run_dir = self._get_output_dir(trial=None)
+        weights_only_dir = os.path.join(run_dir, "weights_only", f"{PREFIX_CHECKPOINT_DIR}-{step}")
+        rank0_print(f"Saving weights-only checkpoint (no global state) to {weights_only_dir}")
+        # save_model writes only the model weights/config (and tokenizer); it does
+        # not save optimizer/scheduler/RNG/trainer state.
+        self.save_model(weights_only_dir, _internal_call=True)
+
+    def _load_rng_state(self, checkpoint):
+        # PyTorch's weights_only=True (the new default) refuses to deserialize
+        # numpy arrays that are embedded in RNG state files saved by older versions.
+        # The RNG state file is written by the training process itself and is trusted.
+        import os
+        import numpy as np
+
+        rng_file = os.path.join(checkpoint, f"rng_state_{self.args.process_index}.pth")
+        if not os.path.isfile(rng_file):
+            rng_file = os.path.join(checkpoint, "rng_state.pth")
+        if not os.path.isfile(rng_file):
+            return
+
+        checkpoint_rng_state = torch.load(rng_file, weights_only=False)
+        torch.set_rng_state(checkpoint_rng_state["cpu"])
+        if "cuda" in checkpoint_rng_state:
+            if isinstance(checkpoint_rng_state["cuda"], list):
+                for i, state in enumerate(checkpoint_rng_state["cuda"]):
+                    torch.cuda.set_rng_state(state)
+            else:
+                torch.cuda.set_rng_state(checkpoint_rng_state["cuda"])
+        if "numpy" in checkpoint_rng_state:
+            np.random.set_state(checkpoint_rng_state["numpy"])
+        if "python" in checkpoint_rng_state:
+            import random
+            random.setstate(checkpoint_rng_state["python"])
 
     def create_accelerator_and_postprocess(self):
         grad_acc_kwargs = {"num_steps": self.args.gradient_accumulation_steps}

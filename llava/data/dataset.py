@@ -517,8 +517,11 @@ class LazyCustomDataset(Dataset):
 
 
 class LazyParquetDataset(IterableDataset):
-    def __init__(self, tokenizer: transformers.PreTrainedTokenizer, data_paths, data_args):
+    def __init__(self, tokenizer: transformers.PreTrainedTokenizer, data_paths, data_args, data_type=None):
         super().__init__()
+        # Optional tag identifying the kind of data (e.g. 'understanding', 'text',
+        # 't2i'); propagated to each sample so the trainer can log per-type losses.
+        self.data_type = data_type
         self.tokenizer = copy.deepcopy(tokenizer)
         if isinstance(data_paths, str):
             data_paths = [data_paths]
@@ -651,6 +654,9 @@ class LazyParquetDataset(IterableDataset):
 
         data_dict["id"] = "0"
 
+        if self.data_type is not None:
+            data_dict["data_type"] = self.data_type
+
         return data_dict
 
 
@@ -666,6 +672,10 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
         data_dict["labels"] = self._mask_assistant_prefix(
             data_dict["input_ids"], data_dict["labels"]
         )
+
+        if self.data_type is not None:
+            data_dict["data_type"] = self.data_type
+
         return data_dict
 
     def _mask_assistant_prefix(self, input_ids, labels):
@@ -716,7 +726,11 @@ class WeightedDataset(IterableDataset):
                 dataset_cls = dataset.get('name', 'parquet')
                 dataset_cls = get_dataset_cls(dataset_cls)
                 ratio = dataset.get('ratio', 1)
-                dataset = dataset_cls(tokenizer, dataset.get('json_path'), data_args)
+                data_type = dataset.get('data_type', None)
+                extra_kwargs = {}
+                if issubclass(dataset_cls, LazyParquetDataset) or issubclass(dataset_cls, LazySelfReflectParquetDataset):
+                    extra_kwargs['data_type'] = data_type
+                dataset = dataset_cls(tokenizer, dataset.get('json_path'), data_args, **extra_kwargs)
                 rank0_print(f"Loading dataset: {dataset}")
                 self.datasets.append(dataset)
                 self.ratios.append(ratio)
@@ -771,6 +785,9 @@ class DataCollatorForSupervisedDataset(object):
 
         if "prompt" in instances[0]:
             batch["prompts"] = [instance["prompt"] for instance in instances]
+
+        if "data_type" in instances[0]:
+            batch["data_types"] = [instance.get("data_type") for instance in instances]
         return batch
 
 def get_dataset_cls(name):
