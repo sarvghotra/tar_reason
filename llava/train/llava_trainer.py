@@ -324,6 +324,15 @@ class LLaVATrainer(Trainer):
         super().save_model(output_dir, _internal_call=_internal_call)
 
     def _maybe_log_save_evaluate(self, *args, **kwargs):
+        # The model's large temporary logits/CE buffers can leave almost the
+        # entire GPU reserved in PyTorch's caching allocator after backward.
+        # NCCL allocates its logging-collective buffers outside that allocator,
+        # so the first loss all_gather may otherwise fail even though the
+        # temporary tensors are no longer live. Release only unused cached
+        # blocks before entering the logging collectives.
+        if self.control.should_log and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         # Standard HF logging/eval/checkpointing (full checkpoint with optimizer,
         # scheduler, RNG and trainer global state when control.should_save).
         super()._maybe_log_save_evaluate(*args, **kwargs)
