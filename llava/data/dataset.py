@@ -662,10 +662,9 @@ class LazyParquetDataset(IterableDataset):
 
 class LazySelfReflectParquetDataset(LazyParquetDataset):
     """SFT dataset where the assistant response starts with '<image>\\nSelf-reflect: <answer>'.
-    Loss is computed only on <answer>, masking the '<image>\\nSelf-reflect: ' prefix."""
+    Loss is computed on the text response, masking only the leading image tokens."""
 
-    # Text following <image> in the assistant response that should be masked from loss
-    MASK_PREFIX = "\nSelf-reflect:"
+    # TODO: change "Self-correction" to "Correction" because the tokenizer breaks "Self-correction" into Self -cor rection"
 
     def _get_item(self, sources):
         data_dict = super()._get_item(sources)
@@ -679,12 +678,11 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
         return data_dict
 
     def _mask_assistant_prefix(self, input_ids, labels):
-        """Set IGNORE_INDEX on '<im_start><image><im_end>\\nSelf-reflect: ' tokens in the assistant turn.
+        """Set IGNORE_INDEX on '<im_start><image><im_end>' tokens in the assistant turn.
 
         preprocess_multimodal replaces <image> with <im_start><image><im_end> for gpt turns
         when mm_use_im_start_end is set, so both forms are handled here.
         """
-        prefix_ids = self.tokenizer.encode(self.MASK_PREFIX, add_special_tokens=False)
         im_start_id = self.tokenizer.convert_tokens_to_ids(DEFAULT_IM_START_TOKEN)
         im_end_id = self.tokenizer.convert_tokens_to_ids(DEFAULT_IM_END_TOKEN)
 
@@ -704,11 +702,8 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
             after_img = i + 1
             if after_img < len(inp) and inp[after_img] == im_end_id:
                 after_img += 1
-            # Check for "\nSelf-reflect: " and mask everything up to it
-            end = after_img + len(prefix_ids)
-            if inp[after_img:end] == prefix_ids:
-                for j in range(mask_start, end):
-                    lbl[j] = IGNORE_INDEX
+            for j in range(mask_start, after_img):
+                lbl[j] = IGNORE_INDEX
             break  # Only process the first match in the assistant turn
 
         return torch.tensor(lbl, dtype=labels.dtype)
