@@ -9,6 +9,7 @@ import re
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence
+from collections.abc import Iterable, Mapping
 
 import pyarrow.parquet as pq
 import torch
@@ -517,11 +518,14 @@ class LazyCustomDataset(Dataset):
 
 
 class LazyParquetDataset(IterableDataset):
-    def __init__(self, tokenizer: transformers.PreTrainedTokenizer, data_paths, data_args, data_type=None):
+    ITERATIVE_IMG_GEN_PROMPT_PREFIX = "Generate an image iteratively by self-reflecting and correcting.\n"
+
+    def __init__(self, tokenizer: transformers.PreTrainedTokenizer, data_paths, data_args, data_type=None, add_prompt_prefix=False, no_eos=False):
         super().__init__()
         # Optional tag identifying the kind of data (e.g. 'understanding', 'text',
         # 't2i'); propagated to each sample so the trainer can log per-type losses.
         self.data_type = data_type
+        self.add_prompt_prefix = add_prompt_prefix
         self.tokenizer = copy.deepcopy(tokenizer)
         if isinstance(data_paths, str):
             data_paths = [data_paths]
@@ -539,6 +543,43 @@ class LazyParquetDataset(IterableDataset):
         self.data_args = data_args
 
         self.modality = torch.tensor(0) # 0 is for und task, 1 is for gen task
+        self.no_eos = no_eos
+
+    def _add_prompt_prefix(self, sources):
+        sources = sources.copy()
+
+        for key in ("conversations", "conversations_short"):
+            conversations = sources.get(key)
+            if conversations is None:
+                continue
+            if isinstance(conversations, str):
+                conversations = json.loads(conversations)
+            elif not isinstance(conversations, list):
+                conversations = conversations.tolist()
+            else:
+                conversations = conversations.copy()
+
+            prompt_prefix_added = False
+            for index, conversation in enumerate(conversations):
+                role = conversation.get("from", conversation.get("role"))
+                if role in ("human", "user") and not prompt_prefix_added:
+                    conversation = conversation.copy()
+                    content_key = "value" if "value" in conversation else "content"
+                    conversation[content_key] = (
+                        self.ITERATIVE_IMG_GEN_PROMPT_PREFIX + conversation[content_key]
+                    )
+                    conversations[index] = conversation
+                    prompt_prefix_added = True
+                elif role in ("gpt", "assistant") and isinstance(conversation.get("value"), str):
+                    conversation = conversation.copy()
+                    conversation["value"] = conversation["value"].replace(
+                        "Self-correction", "Correction"
+                    )
+                    conversations[index] = conversation
+
+            sources[key] = conversations
+
+        return sources
 
     def process_image(self, image):
         processor = self.data_args.image_processor
@@ -609,7 +650,10 @@ class LazyParquetDataset(IterableDataset):
                 sources['image'] = [Image.open(io.BytesIO(image)).convert('RGB') for image in images]
         return sources
 
-    def _get_item(self, sources):
+    def _get_item(self, sources, remove_eos=True):
+        if self.add_prompt_prefix:
+            sources = self._add_prompt_prefix(sources)
+
         sources = self.parse_item(copy.deepcopy(sources))
         has_image = "image" in sources and sources["image"] is not None
         # id = sources.get('id', '0')
@@ -654,6 +698,19 @@ class LazyParquetDataset(IterableDataset):
 
         data_dict["id"] = "0"
 
+        if self.no_eos and self.tokenizer.eos_token_id is not None and remove_eos:
+            eos_positions = torch.where(
+                data_dict["input_ids"] == self.tokenizer.eos_token_id
+            )[0]
+            if eos_positions.numel():
+                sequence_end = eos_positions[-1].item()
+                if len(data_dict["input_ids"]) > sequence_end:
+                    data_dict["input_ids"] = torch.cat((data_dict["input_ids"][:sequence_end], data_dict["input_ids"][sequence_end + 1:]))
+                    data_dict["labels"] = torch.cat((data_dict["labels"][:sequence_end], data_dict["labels"][sequence_end + 1:]))
+                else:
+                    data_dict["input_ids"] = data_dict["input_ids"][:sequence_end]
+                    data_dict["labels"] = data_dict["labels"][:sequence_end]
+
         if self.data_type is not None:
             data_dict["data_type"] = self.data_type
 
@@ -665,12 +722,102 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
     Loss is computed on the text response, masking only the leading image tokens."""
 
     # TODO: change "Self-correction" to "Correction" because the tokenizer breaks "Self-correction" into Self -cor rection"
+    # Text following <image> in the assistant response that should be masked from loss
+    MASK_PREFIX = "\nSelf-reflect:"
+
+    def __init__(
+        self,
+        tokenizer,
+        data_paths,
+        data_args,
+        data_type=None,
+        add_prompt_prefix=False,
+        no_eos=False,
+    ):
+        super().__init__(
+            tokenizer,
+            data_paths,
+            data_args,
+            data_type=data_type,
+            add_prompt_prefix=add_prompt_prefix,
+            no_eos=no_eos,
+        )
+        self.no_eos = no_eos
+        self._SELF_CORRECTION_RE = re.compile(r"Correction\s*:", re.IGNORECASE)
+        # self._NO_ISSUE_RE = re.compile(
+        #     r"\b(?:"
+        #     r"looks?\s+good(?:\s+as[- ]is)?|"
+        #     r"all\s+good|"
+        #     r"no\s+(?:issues?|problems?)|"
+        #     r"no\s+(?:changes?|corrections?|adjustments?|fix(?:es)?)"
+        #     r"(?:\s+(?:are|is))?\s+(?:needed|required|necessary)|"
+        #     r"no\s+need\s+(?:for|to)\s+(?:correct|change|adjust|fix)|"
+        #     r"nothing\s+(?:to|needs?\s+to\s+be)\s+"
+        #     r"(?:corrected|changed|adjusted|fixed)|"
+        #     r"keep\s+(?:it|the\s+image)\s+as[- ]is"
+        #     r")\b",
+        #     re.IGNORECASE,
+        # )
+        self._NO_ISSUE_RE = re.compile(r"\b(?:looks\s+good|no\s+issues)\b", re.IGNORECASE)
+
+    def _has_issue(self, conversations: object) -> bool:
+        """Whether a GPT turn's self-correction contains a correction request."""
+        if isinstance(conversations, dict):
+            conversations = conversations.get("conversations")
+        if isinstance(conversations, str):
+            try:
+                conversations = json.loads(conversations)
+            except (TypeError, ValueError):
+                return False
+        elif hasattr(conversations, "tolist"):
+            conversations = conversations.tolist()
+
+        if not isinstance(conversations, list):
+            return False
+
+        stack = conversations.copy()
+        while stack:
+            turn = stack.pop()
+            if isinstance(turn, list):
+                stack.extend(turn)
+                continue
+            if not isinstance(turn, dict):
+                continue
+
+            role = turn.get("from", turn.get("role"))
+            if role not in ("gpt", "assistant"):
+                continue
+            text = turn.get("value", turn.get("content"))
+            if not isinstance(text, str):
+                continue
+
+            marker = self._SELF_CORRECTION_RE.search(text)
+            if marker is None:
+                continue
+            correction = text[marker.end():].strip()
+            if correction and self._NO_ISSUE_RE.search(correction) is None:
+                return True
+
+        return False
 
     def _get_item(self, sources):
-        data_dict = super()._get_item(sources)
+        data_dict = super()._get_item(sources, remove_eos=False)
         data_dict["labels"] = self._mask_assistant_prefix(
             data_dict["input_ids"], data_dict["labels"]
         )
+
+        if self.no_eos and self.tokenizer.eos_token_id is not None and self._has_issue(sources):
+            eos_positions = torch.where(
+                data_dict["input_ids"] == self.tokenizer.eos_token_id
+            )[0]
+            if eos_positions.numel():
+                sequence_end = eos_positions[-1].item()
+                if len(data_dict["input_ids"]) > sequence_end:
+                    data_dict["input_ids"] = torch.cat((data_dict["input_ids"][:sequence_end], data_dict["input_ids"][sequence_end + 1:]))
+                    data_dict["labels"] = torch.cat((data_dict["labels"][:sequence_end], data_dict["labels"][sequence_end + 1:]))
+                else:
+                    data_dict["input_ids"] = data_dict["input_ids"][:sequence_end]
+                    data_dict["labels"] = data_dict["labels"][:sequence_end]
 
         if self.data_type is not None:
             data_dict["data_type"] = self.data_type
@@ -723,8 +870,12 @@ class WeightedDataset(IterableDataset):
                 ratio = dataset.get('ratio', 1)
                 data_type = dataset.get('data_type', None)
                 extra_kwargs = {}
-                if issubclass(dataset_cls, LazyParquetDataset) or issubclass(dataset_cls, LazySelfReflectParquetDataset):
+                if issubclass(dataset_cls, LazyParquetDataset):
                     extra_kwargs['data_type'] = data_type
+                    extra_kwargs['add_prompt_prefix'] = dataset.get('add_prompt_prefix', False)
+                    extra_kwargs['no_eos'] = dataset.get('no_eos', False)
+                # if issubclass(dataset_cls, LazySelfReflectParquetDataset):
+
                 dataset = dataset_cls(tokenizer, dataset.get('json_path'), data_args, **extra_kwargs)
                 rank0_print(f"Loading dataset: {dataset}")
                 self.datasets.append(dataset)
