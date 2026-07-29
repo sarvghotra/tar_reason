@@ -519,6 +519,9 @@ class LazyCustomDataset(Dataset):
 
 class LazyParquetDataset(IterableDataset):
     ITERATIVE_IMG_GEN_PROMPT_PREFIX = "Generate an image iteratively by self-reflecting and correcting.\n"
+    # PROMPT_SUFFIX = "Self-reflection: no issues, it matches the prompt.\nCorrection: looks good.\n"
+    DEFAULT_INTERLEAVE_SHARDS = 3
+    DEFAULT_PARQUET_BATCH_SIZE = 16
 
     def __init__(self, tokenizer: transformers.PreTrainedTokenizer, data_paths, data_args, data_type=None, add_prompt_prefix=False, no_eos=False):
         super().__init__()
@@ -544,6 +547,16 @@ class LazyParquetDataset(IterableDataset):
 
         self.modality = torch.tensor(0) # 0 is for und task, 1 is for gen task
         self.no_eos = no_eos
+        self.interleave_shards = int(
+            getattr(data_args, "parquet_interleave_shards", self.DEFAULT_INTERLEAVE_SHARDS)
+        )
+        self.parquet_batch_size = int(
+            getattr(data_args, "parquet_batch_size", self.DEFAULT_PARQUET_BATCH_SIZE)
+        )
+        if self.interleave_shards < 1:
+            raise ValueError("parquet_interleave_shards must be at least 1")
+        if self.parquet_batch_size < 1:
+            raise ValueError("parquet_batch_size must be at least 1")
 
     def _add_prompt_prefix(self, sources):
         sources = sources.copy()
@@ -587,6 +600,45 @@ class LazyParquetDataset(IterableDataset):
         image = processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
         return image, image_size, self.modality
 
+    def _iter_parquet_rows(self, file_path):
+        parquet_file = pq.ParquetFile(file_path)
+        for batch in parquet_file.iter_batches(batch_size=self.parquet_batch_size):
+            table = batch.to_pandas()
+            for i in range(len(table)):
+                yield table.iloc[i].to_dict()
+
+    def _interleave_parquet_rows(self, file_paths):
+        """Interleave rows from a bounded window of parquet shards.
+
+        Each active iterator retains at most one Arrow/Pandas batch. With the
+        defaults this keeps at most 3 * 16 raw rows resident per worker, while
+        ensuring that rows from every active shard are consumed each round.
+        """
+        pending_files = iter(file_paths)
+        active = []
+        for _ in range(min(self.interleave_shards, len(file_paths))):
+            active.append(self._iter_parquet_rows(next(pending_files)))
+
+        while active:
+            # Randomize shard order each round, but consume exactly one row from
+            # each active shard to avoid long same-shard streaks.
+            random.shuffle(active)
+            next_active = []
+            for shard_rows in active:
+                try:
+                    sample = next(shard_rows)
+                except StopIteration:
+                    try:
+                        file_path = next(pending_files)
+                    except StopIteration:
+                        continue
+                    next_active.append(self._iter_parquet_rows(file_path))
+                    continue
+
+                next_active.append(shard_rows)
+                yield sample
+            active = next_active
+
     def __iter__(self):
         worker_info = get_worker_info()
         worker_id = worker_info.id if worker_info else 0
@@ -607,16 +659,7 @@ class LazyParquetDataset(IterableDataset):
         while True:
             random.shuffle(files_iter)
 
-            def row_generator():
-                for file_path in files_iter:
-                    parquet_file = pq.ParquetFile(file_path)
-                    for batch in parquet_file.iter_batches(batch_size=64):
-                        table = batch.to_pandas()
-                        for i in range(len(table)):
-                            row = table.iloc[i].to_dict()
-                            yield row
-
-            for sample in row_generator():
+            for sample in self._interleave_parquet_rows(files_iter):
                 try:
                     yield self._get_item(sample)
                 except Exception as e:

@@ -49,6 +49,14 @@ class DataArguments:
     image_folder: Optional[str] = field(default=None)
     image_aspect_ratio: str = "square"
     dataset_cls: str = field(default="llava")
+    parquet_interleave_shards: int = field(
+        default=3,
+        metadata={"help": "Number of parquet shards to interleave per DataLoader worker."},
+    )
+    parquet_batch_size: int = field(
+        default=16,
+        metadata={"help": "Rows retained per active parquet shard while streaming."},
+    )
 
 
 @dataclass
