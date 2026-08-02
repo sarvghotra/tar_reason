@@ -43,6 +43,10 @@ class ModelArguments:
 @dataclass
 class DataArguments:
     data_path: str = field(default=None, metadata={"help": "Path to the training data, in llava's instruction.json format. Supporting multiple json files via /path/to/{a,b,c}.json"})
+    eval_data_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Optional path to validation data, using the same format as data_path."},
+    )
     lazy_preprocess: bool = False
     is_multimodal: bool = False
     early_mix_text: bool = False

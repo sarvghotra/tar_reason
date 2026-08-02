@@ -899,6 +899,73 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
         return torch.tensor(lbl, dtype=labels.dtype)
 
 
+class FiniteParquetDatasetMixin:
+    """Iterate over validation parquet rows exactly once across all workers."""
+
+    def parse_item(self, sources):
+        # Training randomly alternates between long and short prompts. Keep
+        # validation deterministic by always using the primary conversation.
+        sources = sources.copy()
+        sources.pop("conversations_short", None)
+        return super().parse_item(sources)
+
+    def _iter_parquet_rows(self, file_path):
+        parquet_file = pq.ParquetFile(file_path)
+        row_group_id = getattr(self, "_val_row_group_id", 0)
+        row_group_count = getattr(self, "_val_row_group_count", 1)
+        row_groups = range(
+            row_group_id, parquet_file.num_row_groups, row_group_count
+        )
+        for batch in parquet_file.iter_batches(
+            batch_size=self.parquet_batch_size, row_groups=row_groups
+        ):
+            table = batch.to_pandas()
+            for i in range(len(table)):
+                yield table.iloc[i].to_dict()
+
+    def __iter__(self):
+        worker_info = get_worker_info()
+        worker_id = worker_info.id if worker_info else 0
+        num_workers = worker_info.num_workers if worker_info else 1
+
+        rank = int(os.environ.get("RANK", 0))
+        world_size = int(os.environ.get("WORLD_SIZE", 1))
+        total_workers = world_size * num_workers
+        global_worker_id = rank * num_workers + worker_id
+
+        if not self.urls_all:
+            raise RuntimeError("No parquet files found for validation")
+
+        self._val_row_group_id = 0
+        self._val_row_group_count = 1
+        if len(self.urls_all) < total_workers:
+            file_count = len(self.urls_all)
+            file_id = global_worker_id % file_count
+            files_iter = [self.urls_all[file_id]]
+            self._val_row_group_id = global_worker_id // file_count
+            self._val_row_group_count = (
+                (total_workers - 1 - file_id) // file_count
+            ) + 1
+        else:
+            files_iter = self.urls_all[global_worker_id::total_workers]
+
+        for sample in self._interleave_parquet_rows(files_iter):
+            try:
+                yield self._get_item(sample)
+            except Exception as e:
+                print(e)
+
+
+class LazyParquetValDataset(FiniteParquetDatasetMixin, LazyParquetDataset):
+    pass
+
+
+class LazySelfReflectParquetValDataset(
+    FiniteParquetDatasetMixin, LazySelfReflectParquetDataset
+):
+    pass
+
+
 class WeightedDataset(IterableDataset):
     def __init__(self, tokenizer, data_path, data_args):
         super().__init__()
@@ -986,8 +1053,12 @@ def get_dataset_cls(name):
         dataset_cls = LazyCustomDataset
     elif name == 'parquet':
         dataset_cls = LazyParquetDataset
+    elif name == 'parquet_val':
+        dataset_cls = LazyParquetValDataset
     elif name == 'self_reflect_parquet':
         dataset_cls = LazySelfReflectParquetDataset
+    elif name == 'self_reflect_parquet_val':
+        dataset_cls = LazySelfReflectParquetValDataset
     elif name == 'weighted_parquet':
         dataset_cls = WeightedDataset
     else:
@@ -998,5 +1069,13 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer, dat
     """Make dataset and collator for supervised fine-tuning."""
     dataset_cls = get_dataset_cls(data_args.dataset_cls)
     train_dataset = dataset_cls(tokenizer=tokenizer, data_path=data_args.data_path, data_args=data_args)
+    eval_dataset = None
+    eval_data_path = getattr(data_args, "eval_data_path", None)
+    if eval_data_path:
+        eval_dataset = dataset_cls(
+            tokenizer=tokenizer,
+            data_path=eval_data_path,
+            data_args=data_args,
+        )
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
-    return dict(train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator)
+    return dict(train_dataset=train_dataset, eval_dataset=eval_dataset, data_collator=data_collator)

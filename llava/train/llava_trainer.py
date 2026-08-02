@@ -241,24 +241,81 @@ class LLaVATrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Per-data-type train-loss logging. The set of types is read from the
-        # dataset config so it is identical on every rank (avoids collective
-        # deadlocks when all-reducing the accumulators). Accumulators hold the
-        # running sum of the per-token CE loss and the token count for each type
-        # over the current logging window.
-        self._loss_type_names = self._discover_data_types()
+        # The type sets are read from the dataset configs so every rank performs
+        # reductions in the same order (avoiding collective deadlocks).
+        self._loss_type_names = self._discover_data_types(self.train_dataset)
+        self._eval_loss_type_names = self._discover_data_types(self.eval_dataset)
+
+        # Training accumulators cover one logging window. Evaluation
+        # accumulators cover one complete validation pass.
         self._per_type_loss_sum = {t: 0.0 for t in self._loss_type_names}
         self._per_type_loss_count = {t: 0.0 for t in self._loss_type_names}
+        self._eval_per_type_loss_sum = {
+            t: 0.0 for t in self._eval_loss_type_names
+        }
+        self._eval_per_type_loss_count = {
+            t: 0.0 for t in self._eval_loss_type_names
+        }
+        self._collecting_eval_per_type_loss = False
 
-    def _discover_data_types(self):
+    def _discover_data_types(self, dataset):
         types = set()
-        datasets_ = getattr(self.train_dataset, "datasets", None)
+        datasets_ = getattr(dataset, "datasets", None)
         if datasets_ is not None:
             for ds in datasets_:
                 dt = getattr(ds, "data_type", None)
                 if dt is not None:
                     types.add(dt)
+        else:
+            dt = getattr(dataset, "data_type", None)
+            if dt is not None:
+                types.add(dt)
         return sorted(types)
+
+    def _reset_eval_per_type_loss(self):
+        for dt in self._eval_loss_type_names:
+            self._eval_per_type_loss_sum[dt] = 0.0
+            self._eval_per_type_loss_count[dt] = 0.0
+
+    def _collect_eval_per_type_metrics(self, metric_key_prefix):
+        import torch.distributed as dist
+
+        metrics = {}
+        distributed = dist.is_available() and dist.is_initialized()
+        total_loss_sum = torch.zeros(
+            (), dtype=torch.float32, device=self.args.device
+        )
+        total_count = torch.zeros(
+            (), dtype=torch.float32, device=self.args.device
+        )
+        for dt in self._eval_loss_type_names:
+            loss_sum = torch.as_tensor(
+                self._eval_per_type_loss_sum[dt],
+                dtype=torch.float32,
+                device=self.args.device,
+            )
+            count = torch.as_tensor(
+                self._eval_per_type_loss_count[dt],
+                dtype=torch.float32,
+                device=self.args.device,
+            )
+            if distributed:
+                dist.all_reduce(loss_sum, op=dist.ReduceOp.SUM)
+                dist.all_reduce(count, op=dist.ReduceOp.SUM)
+            total_loss_sum += loss_sum
+            total_count += count
+            if count.item() > 0:
+                metrics[f"{metric_key_prefix}_loss_{dt}"] = (
+                    loss_sum / count
+                ).item()
+        if total_count.item() > 0:
+            # Trainer's generic iterable-dataset loss can overweight a final
+            # partial batch. The model-provided sums/counts yield the exact
+            # token-weighted validation loss instead.
+            metrics[f"{metric_key_prefix}_loss"] = (
+                total_loss_sum / total_count
+            ).item()
+        return metrics
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Always fetch the model outputs so we can harvest the per-type loss that
@@ -268,12 +325,45 @@ class LLaVATrainer(Trainer):
         )
         per_type_loss = getattr(outputs, "per_type_loss", None)
         if per_type_loss:
-            for dt, (loss_sum, count) in per_type_loss.items():
-                if dt not in self._per_type_loss_sum:
-                    continue
-                self._per_type_loss_sum[dt] += loss_sum.detach()
-                self._per_type_loss_count[dt] += count.detach()
+            if self._collecting_eval_per_type_loss:
+                for dt, (loss_sum, count) in per_type_loss.items():
+                    if dt not in self._eval_per_type_loss_sum:
+                        continue
+                    self._eval_per_type_loss_sum[dt] += loss_sum.detach()
+                    self._eval_per_type_loss_count[dt] += count.detach()
+            elif model.training:
+                for dt, (loss_sum, count) in per_type_loss.items():
+                    if dt not in self._per_type_loss_sum:
+                        continue
+                    self._per_type_loss_sum[dt] += loss_sum.detach()
+                    self._per_type_loss_count[dt] += count.detach()
         return (loss, outputs) if return_outputs else loss
+
+    def evaluation_loop(
+        self,
+        dataloader,
+        description,
+        prediction_loss_only=None,
+        ignore_keys=None,
+        metric_key_prefix="eval",
+    ):
+        self._reset_eval_per_type_loss()
+        self._collecting_eval_per_type_loss = True
+        try:
+            output = super().evaluation_loop(
+                dataloader,
+                description,
+                prediction_loss_only=prediction_loss_only,
+                ignore_keys=ignore_keys,
+                metric_key_prefix=metric_key_prefix,
+            )
+        finally:
+            self._collecting_eval_per_type_loss = False
+
+        output.metrics.update(
+            self._collect_eval_per_type_metrics(metric_key_prefix)
+        )
+        return output
 
     def log(self, logs, *args, **kwargs):
         # Inject per-data-type train losses alongside the standard "loss" log.
