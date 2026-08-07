@@ -11,7 +11,7 @@ from .utils import ScalingLayer
 
 class TextAlignedTokenizer(nn.Module):
     def __init__(
-        self, 
+        self,
         bottleneck,
         bottleneck_token_num=256,
         input_size=384,
@@ -31,12 +31,15 @@ class TextAlignedTokenizer(nn.Module):
         self.pool_scale = pool_scale
         self.decoder_depth = decoder_depth
         self.select_layer_id = select_layer_id
-       
+
         self.bottleneck_dim = bottleneck['args']['bottleneck_dim']
 
+        if teacher == 'google/siglip2-so400m-patch14-384':
+            teacher = '/scratch/jeet/models/pre_train/siglip2-so400m-patch14-384'
+
         self.encoder_config = AutoConfig.from_pretrained(teacher)
-        self.encoder = AutoModel.from_config(self.encoder_config).vision_model         
-        
+        self.encoder = AutoModel.from_config(self.encoder_config).vision_model
+
         self.encoder_hidden_dim = self.encoder.config.hidden_size
 
         self.decoder_config = Siglip2VisionConfig()
@@ -57,14 +60,14 @@ class TextAlignedTokenizer(nn.Module):
             nn.Linear(self.encoder_hidden_dim, self.encoder_hidden_dim))
 
         bottleneck_args = {
-            'token_nums': self.bottleneck_token_num, 
-            'input_dim': self.encoder_hidden_dim, 
+            'token_nums': self.bottleneck_token_num,
+            'input_dim': self.encoder_hidden_dim,
             'output_dim': self.bottleneck_dim}
         self.bottleneck = models.make(bottleneck, args=bottleneck_args)
 
-        self.scale_layer = ScalingLayer(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])   
+        self.scale_layer = ScalingLayer(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
         self.image_resize = Resize((self.input_size, self.input_size))
-       
+
     def set_vq_eval_deterministic(self, deterministic=True):
         self.bottleneck.regularizer.set_eval_deterministic(deterministic)
 
@@ -75,7 +78,7 @@ class TextAlignedTokenizer(nn.Module):
     @property
     def dtype(self):
         return next(self.parameters()).dtype
-    
+
     @classmethod
     def from_checkpoint(cls, ckpt, load_teacher=True, **kwargs):
         ckpt = torch.load(ckpt, map_location='cpu')
@@ -100,7 +103,7 @@ class TextAlignedTokenizer(nn.Module):
         if pool_scale != 1:
             vq_feats = self.avg_pool(vq_feats, pool_scale)
         vq_feats = self.encode_task_layer(vq_feats.to(x))
-        
+
         bottleneck_out = self.bottleneck(vq_feats)
         z = bottleneck_out.pop('output')
 

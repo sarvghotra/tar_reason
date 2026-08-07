@@ -519,16 +519,30 @@ class LazyCustomDataset(Dataset):
 
 class LazyParquetDataset(IterableDataset):
     ITERATIVE_IMG_GEN_PROMPT_PREFIX = "Generate an image iteratively by self-reflecting and correcting.\n"
-    # PROMPT_SUFFIX = "Self-reflection: no issues, it matches the prompt.\nCorrection: looks good.\n"
+    NO_CORRECTION_SUFFIX_PROBABILITY = 0.5
+    NO_CORRECTION_SUFFIX = (
+        "Self-reflect: no issues, it matches the prompt.\n\n"
+        "Correction: looks good."
+    )
     DEFAULT_INTERLEAVE_SHARDS = 3
     DEFAULT_PARQUET_BATCH_SIZE = 16
 
-    def __init__(self, tokenizer: transformers.PreTrainedTokenizer, data_paths, data_args, data_type=None, add_prompt_prefix=False, no_eos=False):
+    def __init__(
+        self,
+        tokenizer: transformers.PreTrainedTokenizer,
+        data_paths,
+        data_args,
+        data_type=None,
+        add_prompt_prefix=False,
+        no_eos=False,
+        add_suffix_no_correction=False,
+    ):
         super().__init__()
         # Optional tag identifying the kind of data (e.g. 'understanding', 'text',
         # 't2i'); propagated to each sample so the trainer can log per-type losses.
         self.data_type = data_type
         self.add_prompt_prefix = add_prompt_prefix
+        self.add_suffix_no_correction = add_suffix_no_correction
         self.tokenizer = copy.deepcopy(tokenizer)
         if isinstance(data_paths, str):
             data_paths = [data_paths]
@@ -544,6 +558,7 @@ class LazyParquetDataset(IterableDataset):
 
         self.tokenizer = tokenizer
         self.data_args = data_args
+        self.dataset_seed = int(getattr(data_args, "dataset_seed", 0) or 0)
 
         self.modality = torch.tensor(0) # 0 is for und task, 1 is for gen task
         self.no_eos = no_eos
@@ -557,6 +572,23 @@ class LazyParquetDataset(IterableDataset):
             raise ValueError("parquet_interleave_shards must be at least 1")
         if self.parquet_batch_size < 1:
             raise ValueError("parquet_batch_size must be at least 1")
+
+        self._SELF_CORRECTION_RE = re.compile(r"Correction\s*:", re.IGNORECASE)
+        # self._NO_ISSUE_RE = re.compile(
+        #     r"\b(?:"
+        #     r"looks?\s+good(?:\s+as[- ]is)?|"
+        #     r"all\s+good|"
+        #     r"no\s+(?:issues?|problems?)|"
+        #     r"no\s+(?:changes?|corrections?|adjustments?|fix(?:es)?)"
+        #     r"(?:\s+(?:are|is))?\s+(?:needed|required|necessary)|"
+        #     r"no\s+need\s+(?:for|to)\s+(?:correct|change|adjust|fix)|"
+        #     r"nothing\s+(?:to|needs?\s+to\s+be)\s+"
+        #     r"(?:corrected|changed|adjusted|fixed)|"
+        #     r"keep\s+(?:it|the\s+image)\s+as[- ]is"
+        #     r")\b",
+        #     re.IGNORECASE,
+        # )
+        self._NO_ISSUE_RE = re.compile(r"\b(?:looks\s+good|no\s+issues)\b", re.IGNORECASE)
 
     def _add_prompt_prefix(self, sources):
         sources = sources.copy()
@@ -594,6 +626,85 @@ class LazyParquetDataset(IterableDataset):
 
         return sources
 
+    def _add_no_correction_suffix(self, sources):
+        """Append the no_correction response to the last assistant turn."""
+        sources = sources.copy()
+
+        for key in ("conversations", "conversations_short"):
+            conversations = sources.get(key)
+            if conversations is None:
+                continue
+            if isinstance(conversations, str):
+                conversations = json.loads(conversations)
+            elif not isinstance(conversations, list):
+                conversations = conversations.tolist()
+            else:
+                conversations = conversations.copy()
+
+            for index in range(len(conversations) - 1, -1, -1):
+                conversation = conversations[index]
+                if not isinstance(conversation, dict):
+                    continue
+                role = conversation.get("from", conversation.get("role"))
+                if role not in ("gpt", "assistant"):
+                    continue
+                content_key = "value" if "value" in conversation else "content"
+                content = conversation.get(content_key)
+                if not isinstance(content, str):
+                    continue
+
+                conversation = conversation.copy()
+                separator = "" if content.endswith("\n") else "\n"
+                conversation[content_key] = (
+                    content + separator + self.NO_CORRECTION_SUFFIX
+                )
+                conversations[index] = conversation
+                break
+
+            sources[key] = conversations
+
+        return sources
+
+    def _has_issue(self, conversations: object) -> bool:
+        """Whether a GPT turn's self-correction contains a correction request. "Correction: looks good." is not present"""
+        if isinstance(conversations, dict):
+            conversations = conversations.get("conversations")
+        if isinstance(conversations, str):
+            try:
+                conversations = json.loads(conversations)
+            except (TypeError, ValueError):
+                return False
+        elif hasattr(conversations, "tolist"):
+            conversations = conversations.tolist()
+
+        if not isinstance(conversations, list):
+            return False
+
+        stack = conversations.copy()
+        while stack:
+            turn = stack.pop()
+            if isinstance(turn, list):
+                stack.extend(turn)
+                continue
+            if not isinstance(turn, dict):
+                continue
+
+            role = turn.get("from", turn.get("role"))
+            if role not in ("gpt", "assistant"):
+                continue
+            text = turn.get("value", turn.get("content"))
+            if not isinstance(text, str):
+                continue
+
+            marker = self._SELF_CORRECTION_RE.search(text)
+            if marker is None:
+                continue
+            correction = text[marker.end():].strip()
+            if correction and self._NO_ISSUE_RE.search(correction) is None:
+                return True
+
+        return False
+
     def process_image(self, image):
         processor = self.data_args.image_processor
         image_size = image.size
@@ -607,13 +718,14 @@ class LazyParquetDataset(IterableDataset):
             for i in range(len(table)):
                 yield table.iloc[i].to_dict()
 
-    def _interleave_parquet_rows(self, file_paths):
+    def _interleave_parquet_rows(self, file_paths, rng=None):
         """Interleave rows from a bounded window of parquet shards.
 
         Each active iterator retains at most one Arrow/Pandas batch. With the
         defaults this keeps at most 3 * 16 raw rows resident per worker, while
         ensuring that rows from every active shard are consumed each round.
         """
+        rng = rng or random
         pending_files = iter(file_paths)
         active = []
         for _ in range(min(self.interleave_shards, len(file_paths))):
@@ -622,7 +734,7 @@ class LazyParquetDataset(IterableDataset):
         while active:
             # Randomize shard order each round, but consume exactly one row from
             # each active shard to avoid long same-shard streaks.
-            random.shuffle(active)
+            rng.shuffle(active)
             next_active = []
             for shard_rows in active:
                 try:
@@ -644,30 +756,33 @@ class LazyParquetDataset(IterableDataset):
         worker_id = worker_info.id if worker_info else 0
         num_workers = worker_info.num_workers if worker_info else 1
 
-        rank = int(os.environ.get("RANK", 0))
-        world_size = int(os.environ.get("WORLD_SIZE", 1))
+        # Hugging Face Trainer prepares IterableDatasets with Accelerate, which
+        # already partitions the sample stream across distributed processes.
+        # Partitioning by RANK here as well would shard the data twice. Only
+        # split files among this process's DataLoader workers; Accelerate owns
+        # the process-level split.
+        if not self.urls_all:
+            raise RuntimeError("No parquet files found for training")
+        rng = random.Random(self.dataset_seed + worker_id)
+        urls = list(self.urls_all)
+        if len(urls) < num_workers:
+            urls.extend(urls[i % len(urls)] for i in range(num_workers - len(urls)))
 
-        total_workers = world_size * num_workers
-        global_worker_id = rank * num_workers + worker_id
-
-        if len(self.urls_all) < total_workers:
-            # pad to total_workers
-            self.urls_all.extend(random.choices(self.urls_all, k=total_workers-len(self.urls_all)))
-
-        files_iter = self.urls_all[global_worker_id::total_workers]
+        files_iter = urls[worker_id::num_workers]
 
         while True:
-            random.shuffle(files_iter)
+            rng.shuffle(files_iter)
 
-            for sample in self._interleave_parquet_rows(files_iter):
+            for sample in self._interleave_parquet_rows(files_iter, rng=rng):
                 try:
-                    yield self._get_item(sample)
+                    yield self._get_item(sample, rng=rng)
                 except Exception as e:
                     print(e)
                     # print(sample)
                     continue
 
-    def parse_item(self, sources):
+    def parse_item(self, sources, rng=None):
+        rng = rng or random
         # parse conversations
         if isinstance(sources['conversations'], str):
             sources['conversations'] = json.loads(sources['conversations'])
@@ -675,7 +790,7 @@ class LazyParquetDataset(IterableDataset):
             sources['conversations'] = sources['conversations'].tolist()
 
         # random short-long prompt
-        if 'conversations_short' in sources and random.random() < 0.5:
+        if 'conversations_short' in sources and rng.random() < 0.5:
             sources['conversations'] = sources['conversations_short']
 
         # parse image
@@ -693,11 +808,19 @@ class LazyParquetDataset(IterableDataset):
                 sources['image'] = [Image.open(io.BytesIO(image)).convert('RGB') for image in images]
         return sources
 
-    def _get_item(self, sources, remove_eos=True):
+    def _get_item(self, sources, remove_eos=True, rng=None):
+        rng = rng or random
         if self.add_prompt_prefix:
             sources = self._add_prompt_prefix(sources)
+        if self.add_suffix_no_correction:
+            add_suffix = (
+                self.NO_CORRECTION_SUFFIX_PROBABILITY >= 1.0
+                or rng.random() < self.NO_CORRECTION_SUFFIX_PROBABILITY
+            )
+            if add_suffix:
+                sources = self._add_no_correction_suffix(sources)
 
-        sources = self.parse_item(copy.deepcopy(sources))
+        sources = self.parse_item(copy.deepcopy(sources), rng=rng)
         has_image = "image" in sources and sources["image"] is not None
         # id = sources.get('id', '0')
         if has_image:
@@ -741,7 +864,11 @@ class LazyParquetDataset(IterableDataset):
 
         data_dict["id"] = "0"
 
-        if self.no_eos and self.tokenizer.eos_token_id is not None and remove_eos:
+        # Remove EOS token
+        if self.no_eos and \
+            self.tokenizer.eos_token_id is not None and \
+            remove_eos and \
+            self._has_issue(sources):
             eos_positions = torch.where(
                 data_dict["input_ids"] == self.tokenizer.eos_token_id
             )[0]
@@ -776,6 +903,7 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
         data_type=None,
         add_prompt_prefix=False,
         no_eos=False,
+        add_suffix_no_correction=False,
     ):
         super().__init__(
             tokenizer,
@@ -784,67 +912,12 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
             data_type=data_type,
             add_prompt_prefix=add_prompt_prefix,
             no_eos=no_eos,
+            add_suffix_no_correction=add_suffix_no_correction,
         )
         self.no_eos = no_eos
-        self._SELF_CORRECTION_RE = re.compile(r"Correction\s*:", re.IGNORECASE)
-        # self._NO_ISSUE_RE = re.compile(
-        #     r"\b(?:"
-        #     r"looks?\s+good(?:\s+as[- ]is)?|"
-        #     r"all\s+good|"
-        #     r"no\s+(?:issues?|problems?)|"
-        #     r"no\s+(?:changes?|corrections?|adjustments?|fix(?:es)?)"
-        #     r"(?:\s+(?:are|is))?\s+(?:needed|required|necessary)|"
-        #     r"no\s+need\s+(?:for|to)\s+(?:correct|change|adjust|fix)|"
-        #     r"nothing\s+(?:to|needs?\s+to\s+be)\s+"
-        #     r"(?:corrected|changed|adjusted|fixed)|"
-        #     r"keep\s+(?:it|the\s+image)\s+as[- ]is"
-        #     r")\b",
-        #     re.IGNORECASE,
-        # )
-        self._NO_ISSUE_RE = re.compile(r"\b(?:looks\s+good|no\s+issues)\b", re.IGNORECASE)
 
-    def _has_issue(self, conversations: object) -> bool:
-        """Whether a GPT turn's self-correction contains a correction request."""
-        if isinstance(conversations, dict):
-            conversations = conversations.get("conversations")
-        if isinstance(conversations, str):
-            try:
-                conversations = json.loads(conversations)
-            except (TypeError, ValueError):
-                return False
-        elif hasattr(conversations, "tolist"):
-            conversations = conversations.tolist()
-
-        if not isinstance(conversations, list):
-            return False
-
-        stack = conversations.copy()
-        while stack:
-            turn = stack.pop()
-            if isinstance(turn, list):
-                stack.extend(turn)
-                continue
-            if not isinstance(turn, dict):
-                continue
-
-            role = turn.get("from", turn.get("role"))
-            if role not in ("gpt", "assistant"):
-                continue
-            text = turn.get("value", turn.get("content"))
-            if not isinstance(text, str):
-                continue
-
-            marker = self._SELF_CORRECTION_RE.search(text)
-            if marker is None:
-                continue
-            correction = text[marker.end():].strip()
-            if correction and self._NO_ISSUE_RE.search(correction) is None:
-                return True
-
-        return False
-
-    def _get_item(self, sources):
-        data_dict = super()._get_item(sources, remove_eos=False)
+    def _get_item(self, sources, rng=None):
+        data_dict = super()._get_item(sources, remove_eos=False, rng=rng)
         data_dict["labels"] = self._mask_assistant_prefix(
             data_dict["input_ids"], data_dict["labels"]
         )
@@ -902,12 +975,14 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
 class FiniteParquetDatasetMixin:
     """Iterate over validation parquet rows exactly once across all workers."""
 
-    def parse_item(self, sources):
+    NO_CORRECTION_SUFFIX_PROBABILITY = 1.0
+
+    def parse_item(self, sources, rng=None):
         # Training randomly alternates between long and short prompts. Keep
         # validation deterministic by always using the primary conversation.
         sources = sources.copy()
         sources.pop("conversations_short", None)
-        return super().parse_item(sources)
+        return super().parse_item(sources, rng=rng)
 
     def _iter_parquet_rows(self, file_path):
         parquet_file = pq.ParquetFile(file_path)
@@ -928,30 +1003,29 @@ class FiniteParquetDatasetMixin:
         worker_id = worker_info.id if worker_info else 0
         num_workers = worker_info.num_workers if worker_info else 1
 
-        rank = int(os.environ.get("RANK", 0))
-        world_size = int(os.environ.get("WORLD_SIZE", 1))
-        total_workers = world_size * num_workers
-        global_worker_id = rank * num_workers + worker_id
-
         if not self.urls_all:
             raise RuntimeError("No parquet files found for validation")
 
+        # Accelerate shards the resulting iterable across distributed
+        # processes. Divide work only among local DataLoader workers here to
+        # avoid dropping validation rows through a second rank-level shard.
+        rng = random.Random(self.dataset_seed + worker_id)
         self._val_row_group_id = 0
         self._val_row_group_count = 1
-        if len(self.urls_all) < total_workers:
+        if len(self.urls_all) < num_workers:
             file_count = len(self.urls_all)
-            file_id = global_worker_id % file_count
+            file_id = worker_id % file_count
             files_iter = [self.urls_all[file_id]]
-            self._val_row_group_id = global_worker_id // file_count
+            self._val_row_group_id = worker_id // file_count
             self._val_row_group_count = (
-                (total_workers - 1 - file_id) // file_count
+                (num_workers - 1 - file_id) // file_count
             ) + 1
         else:
-            files_iter = self.urls_all[global_worker_id::total_workers]
+            files_iter = self.urls_all[worker_id::num_workers]
 
-        for sample in self._interleave_parquet_rows(files_iter):
+        for sample in self._interleave_parquet_rows(files_iter, rng=rng):
             try:
-                yield self._get_item(sample)
+                yield self._get_item(sample, rng=rng)
             except Exception as e:
                 print(e)
 
@@ -974,6 +1048,7 @@ class WeightedDataset(IterableDataset):
             datasets = yaml_data.get("datasets")
             self.datasets = []
             self.ratios = []
+            self.dataset_seed = int(getattr(data_args, "dataset_seed", 0) or 0)
             for dataset in datasets:
                 dataset_cls = dataset.get('name', 'parquet')
                 dataset_cls = get_dataset_cls(dataset_cls)
@@ -984,6 +1059,9 @@ class WeightedDataset(IterableDataset):
                     extra_kwargs['data_type'] = data_type
                     extra_kwargs['add_prompt_prefix'] = dataset.get('add_prompt_prefix', False)
                     extra_kwargs['no_eos'] = dataset.get('no_eos', False)
+                    extra_kwargs['add_suffix_no_correction'] = dataset.get(
+                        'add_suffix_no_correction', False
+                    )
                 # if issubclass(dataset_cls, LazySelfReflectParquetDataset):
 
                 dataset = dataset_cls(tokenizer, dataset.get('json_path'), data_args, **extra_kwargs)
@@ -992,11 +1070,14 @@ class WeightedDataset(IterableDataset):
                 self.ratios.append(ratio)
 
     def __iter__(self):
+        worker_info = get_worker_info()
+        worker_id = worker_info.id if worker_info else 0
+        rng = random.Random(self.dataset_seed + worker_id)
         iterators = [iter(dataset) for dataset in self.datasets]
         ratios = {it: r for r, it in zip(self.ratios, iterators)}
 
         while True:
-            it = random.choices(iterators, weights=ratios.values())[0]
+            it = rng.choices(iterators, weights=ratios.values())[0]
             try:
                 yield next(it)
             except StopIteration:
