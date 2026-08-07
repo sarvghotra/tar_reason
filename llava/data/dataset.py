@@ -972,6 +972,40 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
         return torch.tensor(lbl, dtype=labels.dtype)
 
 
+class LazyOnlySelfReflectParquetDataset(LazySelfReflectParquetDataset):
+    """Train only on the reflection/correction text in image-edit responses.
+
+    These samples contain both the image being critiqued and the corrected
+    image, for example ``<image>\nSelf-reflect: ...\nCorrection: ...\n<image>``.
+    Mask every assistant-side image span so neither image contributes to the
+    language-model loss while the text between them remains supervised.
+    """
+
+    def _mask_assistant_prefix(self, input_ids, labels):
+        """Set ``IGNORE_INDEX`` on every assistant-side image span."""
+        im_start_id = self.tokenizer.convert_tokens_to_ids(DEFAULT_IM_START_TOKEN)
+        im_end_id = self.tokenizer.convert_tokens_to_ids(DEFAULT_IM_END_TOKEN)
+
+        inp = input_ids.tolist()
+        masked_labels = labels.clone()
+
+        for i, token_id in enumerate(inp):
+            if token_id != IMAGE_TOKEN_INDEX:
+                continue
+            if masked_labels[i].item() == IGNORE_INDEX:
+                # The image belongs to a human/system turn, which is already
+                # excluded from the loss by preprocess_qwen.
+                continue
+
+            mask_start = i - 1 if i > 0 and inp[i - 1] == im_start_id else i
+            mask_end = i + 1
+            if mask_end < len(inp) and inp[mask_end] == im_end_id:
+                mask_end += 1
+            masked_labels[mask_start:mask_end] = IGNORE_INDEX
+
+        return masked_labels
+
+
 class FiniteParquetDatasetMixin:
     """Iterate over validation parquet rows exactly once across all workers."""
 
@@ -1036,6 +1070,12 @@ class LazyParquetValDataset(FiniteParquetDatasetMixin, LazyParquetDataset):
 
 class LazySelfReflectParquetValDataset(
     FiniteParquetDatasetMixin, LazySelfReflectParquetDataset
+):
+    pass
+
+
+class LazyOnlySelfReflectParquetValDataset(
+    FiniteParquetDatasetMixin, LazyOnlySelfReflectParquetDataset
 ):
     pass
 
@@ -1140,6 +1180,10 @@ def get_dataset_cls(name):
         dataset_cls = LazySelfReflectParquetDataset
     elif name == 'self_reflect_parquet_val':
         dataset_cls = LazySelfReflectParquetValDataset
+    elif name == 'only_self_reflect_parquet':
+        dataset_cls = LazyOnlySelfReflectParquetDataset
+    elif name == 'only_self_reflect_parquet_val':
+        dataset_cls = LazyOnlySelfReflectParquetValDataset
     elif name == 'weighted_parquet':
         dataset_cls = WeightedDataset
     else:
