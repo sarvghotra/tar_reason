@@ -595,12 +595,17 @@ class LLaVATrainer(Trainer):
             "num_workers": self.args.dataloader_num_workers,
             "pin_memory": self.args.dataloader_pin_memory,
             "persistent_workers": self.args.dataloader_persistent_workers,
+            # Workers are forked from this process, so any library reading the
+            # global random/numpy/torch state (image processors, augmentations)
+            # would otherwise make identical draws in every worker. seed_worker
+            # re-seeds all three from torch's per-worker base seed. Needed for
+            # iterable datasets too, not just the map-style branch below.
+            "worker_init_fn": seed_worker,
         }
 
         if not isinstance(train_dataset, torch.utils.data.IterableDataset):
             dataloader_params["sampler"] = self._get_train_sampler()
             dataloader_params["drop_last"] = self.args.dataloader_drop_last
-            dataloader_params["worker_init_fn"] = seed_worker
             dataloader_params["prefetch_factor"] = self.args.dataloader_num_workers * 2 if self.args.dataloader_num_workers != 0 else None
 
         dataloader = self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))

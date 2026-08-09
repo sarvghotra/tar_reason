@@ -61,6 +61,14 @@ class DataArguments:
         default=16,
         metadata={"help": "Rows retained per active parquet shard while streaming."},
     )
+    dataset_seed: int = field(
+        default=0,
+        metadata={"help": "Base seed for training data order and sampling. Each entry of a "
+                          "weighted mixture derives a distinct seed from this, so vary it across "
+                          "runs — otherwise every run replays the identical per-data_type sample "
+                          "stream and a `ratio` change only alters how fast each stream is "
+                          "consumed. Validation data is unaffected and stays comparable."},
+    )
 
 
 @dataclass

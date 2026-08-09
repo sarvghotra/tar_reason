@@ -1,5 +1,6 @@
 import copy
 import glob
+import hashlib
 import io
 import json
 import math
@@ -28,6 +29,18 @@ from llava.constants import (
 from llava.utils import rank0_print
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+
+def derive_seed(*parts) -> int:
+    """Derive an independent 64-bit seed from arbitrary identifying parts.
+
+    Seeds here have to separate several dimensions at once — run seed, mixture
+    entry, epoch, worker id. Packing those into one integer by addition needs a
+    stride per dimension and a documented bound on each, and silently aliases
+    once a bound is crossed. Hashing needs neither.
+    """
+    payload = "|".join(str(part) for part in parts).encode("utf-8")
+    return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
 
 
 def preprocess_multimodal(sources: Sequence[str], data_args) -> Dict:
@@ -559,6 +572,10 @@ class LazyParquetDataset(IterableDataset):
         self.tokenizer = tokenizer
         self.data_args = data_args
         self.dataset_seed = int(getattr(data_args, "dataset_seed", 0) or 0)
+        # Bumped by the Trainer/Accelerate via set_epoch() in the *parent*
+        # process, before workers are forked, so a second epoch does not replay
+        # the first one's random decisions.
+        self._epoch = 0
 
         self.modality = torch.tensor(0) # 0 is for und task, 1 is for gen task
         self.no_eos = no_eos
@@ -589,6 +606,14 @@ class LazyParquetDataset(IterableDataset):
         #     re.IGNORECASE,
         # )
         self._NO_ISSUE_RE = re.compile(r"\b(?:looks\s+good|no\s+issues)\b", re.IGNORECASE)
+
+    def set_epoch(self, epoch):
+        """Called by Accelerate's dataloader wrapper before each epoch."""
+        self._epoch = int(epoch)
+
+    def make_worker_rng(self, worker_id):
+        """Build the RNG a DataLoader worker should use for this epoch."""
+        return random.Random(derive_seed(self.dataset_seed, self._epoch, worker_id))
 
     def _add_prompt_prefix(self, sources):
         sources = sources.copy()
@@ -719,14 +744,17 @@ class LazyParquetDataset(IterableDataset):
             for i in range(len(table)):
                 yield table.iloc[i].to_dict()
 
-    def _interleave_parquet_rows(self, file_paths, rng=None):
+    def _interleave_parquet_rows(self, file_paths, rng):
         """Interleave rows from a bounded window of parquet shards.
 
         Each active iterator retains at most one Arrow/Pandas batch. With the
         defaults this keeps at most 3 * 16 raw rows resident per worker, while
         ensuring that rows from every active shard are consumed each round.
+
+        `rng` is required: silently falling back to the `random` module would
+        reintroduce the shared-across-workers state this seeding exists to
+        avoid, and would do so without any visible symptom.
         """
-        rng = rng or random
         pending_files = iter(file_paths)
         active = []
         for _ in range(min(self.interleave_shards, len(file_paths))):
@@ -764,7 +792,9 @@ class LazyParquetDataset(IterableDataset):
         # the process-level split.
         if not self.urls_all:
             raise RuntimeError("No parquet files found for training")
-        rng = random.Random(self.dataset_seed + worker_id)
+        # Per-worker seed, so each worker walks its own stream instead of
+        # replaying the state it inherited from the forked parent.
+        rng = self.make_worker_rng(worker_id)
         urls = list(self.urls_all)
         if len(urls) < num_workers:
             urls.extend(urls[i % len(urls)] for i in range(num_workers - len(urls)))
@@ -782,8 +812,7 @@ class LazyParquetDataset(IterableDataset):
                     # print(sample)
                     continue
 
-    def parse_item(self, sources, rng=None):
-        rng = rng or random
+    def parse_item(self, sources, rng):
         # parse conversations
         if isinstance(sources['conversations'], str):
             sources['conversations'] = json.loads(sources['conversations'])
@@ -809,8 +838,7 @@ class LazyParquetDataset(IterableDataset):
                 sources['image'] = [Image.open(io.BytesIO(image)).convert('RGB') for image in images]
         return sources
 
-    def _get_item(self, sources, remove_eos=True, rng=None):
-        rng = rng or random
+    def _get_item(self, sources, rng, remove_eos=True):
         if self.add_prompt_prefix:
             sources = self._add_prompt_prefix(sources)
         if self.add_suffix_no_correction:
@@ -917,8 +945,8 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
         )
         self.no_eos = no_eos
 
-    def _get_item(self, sources, rng=None):
-        data_dict = super()._get_item(sources, remove_eos=False, rng=rng)
+    def _get_item(self, sources, rng, remove_eos=True):
+        data_dict = super()._get_item(sources, rng, remove_eos=False)
         data_dict["labels"] = self._mask_assistant_prefix(
             data_dict["input_ids"], data_dict["labels"]
         )
@@ -1012,12 +1040,17 @@ class FiniteParquetDatasetMixin:
 
     NO_CORRECTION_SUFFIX_PROBABILITY = 1.0
 
-    def parse_item(self, sources, rng=None):
+    def set_epoch(self, epoch):
+        # Validation must stay byte-identical between evals to be comparable,
+        # so it stays pinned to epoch 0 while training re-randomises.
+        return
+
+    def parse_item(self, sources, rng):
         # Training randomly alternates between long and short prompts. Keep
         # validation deterministic by always using the primary conversation.
         sources = sources.copy()
         sources.pop("conversations_short", None)
-        return super().parse_item(sources, rng=rng)
+        return super().parse_item(sources, rng)
 
     def _iter_parquet_rows(self, file_path):
         parquet_file = pq.ParquetFile(file_path)
@@ -1044,7 +1077,7 @@ class FiniteParquetDatasetMixin:
         # Accelerate shards the resulting iterable across distributed
         # processes. Divide work only among local DataLoader workers here to
         # avoid dropping validation rows through a second rank-level shard.
-        rng = random.Random(self.dataset_seed + worker_id)
+        rng = self.make_worker_rng(worker_id)
         self._val_row_group_id = 0
         self._val_row_group_count = 1
         if len(self.urls_all) < num_workers:
@@ -1082,17 +1115,21 @@ class LazyOnlySelfReflectParquetValDataset(
 
 
 class WeightedDataset(IterableDataset):
-    def __init__(self, tokenizer, data_path, data_args):
+    def __init__(self, tokenizer, data_path, data_args, is_eval=False):
         super().__init__()
+        # Validation must stay byte-identical across runs to be comparable, so
+        # it ignores the run-level seed and keeps the historical seeding.
+        self.is_eval = is_eval
+        self._epoch = 0
         with open(data_path, "r") as file:
             yaml_data = yaml.safe_load(file)
             datasets = yaml_data.get("datasets")
             self.datasets = []
             self.ratios = []
-            self.dataset_seed = int(getattr(data_args, "dataset_seed", 0) or 0)
-            for dataset in datasets:
-                dataset_cls = dataset.get('name', 'parquet')
-                dataset_cls = get_dataset_cls(dataset_cls)
+            run_seed = 0 if is_eval else int(getattr(data_args, "dataset_seed", 0) or 0)
+            self.dataset_seed = run_seed
+            for idx, dataset in enumerate(datasets):
+                dataset_cls = get_dataset_cls(dataset.get('name', 'parquet'))
                 ratio = dataset.get('ratio', 1)
                 data_type = dataset.get('data_type', None)
                 extra_kwargs = {}
@@ -1106,14 +1143,33 @@ class WeightedDataset(IterableDataset):
                 # if issubclass(dataset_cls, LazySelfReflectParquetDataset):
 
                 dataset = dataset_cls(tokenizer, dataset.get('json_path'), data_args, **extra_kwargs)
-                rank0_print(f"Loading dataset: {dataset}")
+                # Sub-datasets read `data_args.dataset_seed` themselves, so
+                # overwrite it with a per-entry value: without the `idx` offset
+                # every entry walks the same stream, so two entries on the same
+                # json_path would emit identical rows in lockstep and `ratio`
+                # would only change how fast each is consumed, never what it
+                # yields. For eval the run seed is dropped so validation content
+                # stays comparable across runs that vary --dataset_seed.
+                dataset.dataset_seed = derive_seed(self.dataset_seed, idx)
+                rank0_print(
+                    f"Loading dataset: {dataset} "
+                    f"(seed {getattr(dataset, 'dataset_seed', None)})"
+                )
                 self.datasets.append(dataset)
                 self.ratios.append(ratio)
+
+    def set_epoch(self, epoch):
+        self._epoch = int(epoch)
+        for dataset in self.datasets:
+            if hasattr(dataset, "set_epoch"):
+                dataset.set_epoch(epoch)
 
     def __iter__(self):
         worker_info = get_worker_info()
         worker_id = worker_info.id if worker_info else 0
-        rng = random.Random(self.dataset_seed + worker_id)
+        # Sub-datasets use derive_seed(self.dataset_seed, idx), so the raw
+        # run seed used here cannot collide with any of them.
+        rng = random.Random(derive_seed(self.dataset_seed, self._epoch, worker_id))
         iterators = [iter(dataset) for dataset in self.datasets]
         ratios = {it: r for r, it in zip(self.ratios, iterators)}
 
@@ -1198,10 +1254,15 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer, dat
     eval_dataset = None
     eval_data_path = getattr(data_args, "eval_data_path", None)
     if eval_data_path:
+        # Only the weighted mixture takes `is_eval`; it uses the flag to pin the
+        # validation seed so eval loss stays comparable across runs that vary
+        # `--dataset_seed`.
+        eval_kwargs = {"is_eval": True} if dataset_cls is WeightedDataset else {}
         eval_dataset = dataset_cls(
             tokenizer=tokenizer,
             data_path=eval_data_path,
             data_args=data_args,
+            **eval_kwargs,
         )
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
     return dict(train_dataset=train_dataset, eval_dataset=eval_dataset, data_collator=data_collator)
