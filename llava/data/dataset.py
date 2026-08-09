@@ -519,7 +519,7 @@ class LazyCustomDataset(Dataset):
 
 class LazyParquetDataset(IterableDataset):
     ITERATIVE_IMG_GEN_PROMPT_PREFIX = "Generate an image iteratively by self-reflecting and correcting.\n"
-    NO_CORRECTION_SUFFIX_PROBABILITY = 0.5
+    NO_CORRECTION_SUFFIX_PROBABILITY = 0.35
     NO_CORRECTION_SUFFIX = (
         "Self-reflect: no issues, it matches the prompt.\n\n"
         "Correction: looks good."
@@ -665,7 +665,7 @@ class LazyParquetDataset(IterableDataset):
 
         return sources
 
-    def _has_issue(self, conversations: object) -> bool:
+    def _correction_needed(self, conversations: object) -> bool:
         """Whether a GPT turn's self-correction contains a correction request. "Correction: looks good." is not present"""
         if isinstance(conversations, dict):
             conversations = conversations.get("conversations")
@@ -700,10 +700,11 @@ class LazyParquetDataset(IterableDataset):
             if marker is None:
                 continue
             correction = text[marker.end():].strip()
-            if correction and self._NO_ISSUE_RE.search(correction) is None:
-                return True
+            if correction and \
+                self._NO_ISSUE_RE.search(correction) is not None:   # Found "Correction: looks good"
+                return False
 
-        return False
+        return True
 
     def process_image(self, image):
         processor = self.data_args.image_processor
@@ -868,7 +869,7 @@ class LazyParquetDataset(IterableDataset):
         if self.no_eos and \
             self.tokenizer.eos_token_id is not None and \
             remove_eos and \
-            self._has_issue(sources):
+            self._correction_needed(sources):
             eos_positions = torch.where(
                 data_dict["input_ids"] == self.tokenizer.eos_token_id
             )[0]
@@ -922,7 +923,7 @@ class LazySelfReflectParquetDataset(LazyParquetDataset):
             data_dict["input_ids"], data_dict["labels"]
         )
 
-        if self.no_eos and self.tokenizer.eos_token_id is not None and self._has_issue(sources):
+        if self.no_eos and self.tokenizer.eos_token_id is not None and self._correction_needed(sources):
             eos_positions = torch.where(
                 data_dict["input_ids"] == self.tokenizer.eos_token_id
             )[0]
