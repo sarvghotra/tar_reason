@@ -153,15 +153,53 @@ class LlavaMetaForCausalLM(ABC):
 
         # remove the padding using attention_mask -- FIXME
         _input_ids = input_ids
-        input_ids = [cur_input_ids[cur_attention_mask] for cur_input_ids, cur_attention_mask in zip(input_ids, attention_mask)]
-        labels = [cur_labels[cur_attention_mask] for cur_labels, cur_attention_mask in zip(labels, attention_mask)]
+
+        # Every branch the per-sample loop below takes -- how many images a
+        # sample has, where they sit, whether a slot is self-reflect -- is a
+        # function of the integer id/mask tensors alone. Read those to the host
+        # ONCE here so that loop runs purely on Python values. Left on device it
+        # costs ~7 CUDA-queue drains per sample (boolean-mask indexing,
+        # `.tolist()`, `.item()`, `if <device tensor>`), i.e. ~450 stalls per
+        # optimizer step at global batch 256; this is 3 per micro-batch instead,
+        # regardless of batch size.
+        seq_in = input_ids.shape[1]
+        host_input_ids = input_ids.cpu().reshape(-1)
+        host_labels = labels.cpu().reshape(-1)
+        keep_pos = [row.nonzero(as_tuple=True)[0] for row in attention_mask.cpu()]
+        keep_counts = [int(p.numel()) for p in keep_pos]
+
+        # Gather the unpadded rows by explicit integer index rather than by
+        # boolean mask: the output shape is then known ahead of time, so the
+        # gather does not have to synchronize to discover it.
+        flat_keep = torch.cat([p + b * seq_in for b, p in enumerate(keep_pos)])
+        gather_idx = flat_keep.to(input_ids.device, non_blocking=True)
+        input_ids = list(torch.split(input_ids.reshape(-1).index_select(0, gather_idx), keep_counts))
+        labels = list(torch.split(labels.reshape(-1).index_select(0, gather_idx), keep_counts))
+        # Host-side mirrors of the same split, used only for the branch tests.
+        input_ids_host = list(torch.split(host_input_ids[flat_keep], keep_counts))
+        labels_host = list(torch.split(host_labels[flat_keep], keep_counts))
+
+        # `pool_scale` is fixed for the whole micro-batch, so build the scale
+        # token and its embedding once rather than per image.
+        pool_token = None
+        pool_embed = None
+        if pool_scale is not None:
+            pool_token = torch.tensor(
+                [self.config.scale_start_token_id + pool_scale - 1],
+                dtype=torch.long,
+                device=self.device,
+            )
+            pool_embed = self.get_model().embed_tokens(pool_token)
 
         new_input_embeds = []
         new_labels = []
         cur_image_idx = 0
         # rank_print("Inserting Images embedding")
         for batch_idx, cur_input_ids in enumerate(input_ids):
-            num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum()
+            cur_input_ids_host = input_ids_host[batch_idx]
+            cur_labels_host = labels_host[batch_idx]
+            image_positions = (cur_input_ids_host == IMAGE_TOKEN_INDEX).nonzero(as_tuple=True)[0].tolist()
+            num_images = len(image_positions)
             # rank0_print(num_images)
             if num_images == 0:
                 # cur_image_features = image_features[cur_image_idx]
@@ -173,13 +211,17 @@ class LlavaMetaForCausalLM(ABC):
                 cur_image_idx += 1
                 continue
 
-            image_token_indices = [-1] + torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].tolist() + [cur_input_ids.shape[0]]
+            image_token_indices = [-1] + image_positions + [cur_input_ids.shape[0]]
             cur_input_ids_noim = []
             cur_labels = labels[batch_idx]
             cur_labels_noim = []
+            # Host mirror of `cur_labels_noim`, sliced identically, so the
+            # self-reflect / image-start-tag tests below read Python ints.
+            cur_labels_noim_host = []
             for i in range(len(image_token_indices) - 1):
                 cur_input_ids_noim.append(cur_input_ids[image_token_indices[i] + 1 : image_token_indices[i + 1]])
                 cur_labels_noim.append(cur_labels[image_token_indices[i] + 1 : image_token_indices[i + 1]])
+                cur_labels_noim_host.append(cur_labels_host[image_token_indices[i] + 1 : image_token_indices[i + 1]])
             split_sizes = [x.shape[0] for x in cur_labels_noim]
             cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
@@ -199,23 +241,17 @@ class LlavaMetaForCausalLM(ABC):
                     # For self-reflect data the dataset masks <im_end> (first token after
                     # IMAGE_TOKEN_INDEX) to IGNORE_INDEX; for generation it keeps its real id.
                     is_self_reflect = (
-                        len(cur_labels_noim[i + 1]) > 0
-                        and cur_labels_noim[i + 1][0].item() == IGNORE_INDEX
+                        len(cur_labels_noim_host[i + 1]) > 0
+                        and int(cur_labels_noim_host[i + 1][0]) == IGNORE_INDEX
                     )
 
-                    if self.config.image_start_tag_id == cur_labels_noim[i][-1] and image_tokens is not None and not is_self_reflect:
+                    if self.config.image_start_tag_id == int(cur_labels_noim_host[i][-1]) and image_tokens is not None and not is_self_reflect:
                         cur_image_tokens = image_tokens[cur_image_idx]
                         if pool_scale is not None:
-                            pool_token = self.config.scale_start_token_id + pool_scale - 1
-                            pool_token = torch.tensor([pool_token], dtype=torch.long, device=cur_image_tokens.device)
                             cur_image_tokens = torch.cat([pool_token, cur_image_tokens])
-                            pool_embed = self.get_model().embed_tokens(pool_token)
                             cur_image_features = torch.cat([pool_embed, cur_image_features])
                     else:
                         if is_self_reflect and pool_scale is not None:
-                            pool_token = self.config.scale_start_token_id + pool_scale - 1
-                            pool_token = torch.tensor([pool_token], dtype=torch.long, device=cur_image_features.device)
-                            pool_embed = self.get_model().embed_tokens(pool_token)
                             cur_image_features = torch.cat([pool_embed, cur_image_features])
                         cur_image_tokens = torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype)
 
