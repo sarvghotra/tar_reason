@@ -1114,6 +1114,25 @@ class LazyOnlySelfReflectParquetValDataset(
     pass
 
 
+def _assert_finite_eval_cls(name, dataset_cls, data_path):
+    """Reject streaming dataset classes on the validation side.
+
+    `LazyParquetDataset.__iter__` re-cycles its files forever, so a validation
+    entry naming a non-`_val` class makes the eval dataloader infinite: the
+    trainer drains it until the walltime runs out, never reaching step 1 and
+    never logging. The `_val` classes mix in `FiniteParquetDatasetMixin`, which
+    drops that outer loop. Non-parquet classes are map-style and always finite.
+    """
+    if issubclass(dataset_cls, LazyParquetDataset) and not issubclass(
+        dataset_cls, FiniteParquetDatasetMixin
+    ):
+        raise ValueError(
+            f"Validation dataset '{name}' in {data_path} uses the streaming "
+            f"class {dataset_cls.__name__}, which never raises StopIteration. "
+            f"Use '{name}_val' instead."
+        )
+
+
 class WeightedDataset(IterableDataset):
     def __init__(self, tokenizer, data_path, data_args, is_eval=False):
         super().__init__()
@@ -1129,7 +1148,10 @@ class WeightedDataset(IterableDataset):
             run_seed = 0 if is_eval else int(getattr(data_args, "dataset_seed", 0) or 0)
             self.dataset_seed = run_seed
             for idx, dataset in enumerate(datasets):
-                dataset_cls = get_dataset_cls(dataset.get('name', 'parquet'))
+                dataset_name = dataset.get('name', 'parquet')
+                dataset_cls = get_dataset_cls(dataset_name)
+                if is_eval:
+                    _assert_finite_eval_cls(dataset_name, dataset_cls, data_path)
                 ratio = dataset.get('ratio', 1)
                 data_type = dataset.get('data_type', None)
                 extra_kwargs = {}
@@ -1257,7 +1279,13 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer, dat
         # Only the weighted mixture takes `is_eval`; it uses the flag to pin the
         # validation seed so eval loss stays comparable across runs that vary
         # `--dataset_seed`.
-        eval_kwargs = {"is_eval": True} if dataset_cls is WeightedDataset else {}
+        if dataset_cls is WeightedDataset:
+            eval_kwargs = {"is_eval": True}
+        else:
+            eval_kwargs = {}
+            _assert_finite_eval_cls(
+                data_args.dataset_cls, dataset_cls, eval_data_path
+            )
         eval_dataset = dataset_cls(
             tokenizer=tokenizer,
             data_path=eval_data_path,
