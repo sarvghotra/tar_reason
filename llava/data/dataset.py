@@ -1035,6 +1035,86 @@ class LazyOnlySelfReflectParquetDataset(LazySelfReflectParquetDataset):
         return masked_labels
 
 
+class LazyCorrectionParquetDataset(LazyParquetDataset):
+    """Re-use iterative image-generation data as image-editing data.
+
+    The source rows hold two images and a single assistant turn of the form
+    ``<image>\nSelf-reflect: ...\nCorrection: <instruction>\n<image>``, i.e. a
+    first draft, a critique of it and the corrected image. Rewritten here as a
+    plain edit pair::
+
+        human: <image> Correction: <instruction>
+        gpt:   <image>
+
+    The first image stays on the human side as the image to edit and the second
+    becomes the supervised target, so the loss covers only the edited image.
+
+    With probability ``NO_CHANGE_PROB`` the row is instead turned into a
+    no-change sample: the already-corrected image (``images[1]``) is used on
+    both sides, so the model learns to copy the input unchanged when the
+    requested edit is already present in it.
+    """
+
+    # Both spellings occur in the source shards ('Self-correction:' in
+    # HumanEdit, 'Correction:' in the gpt-edit shards).
+    CORRECTION_MARKER_RE = re.compile(r"(?:Self-)?Correction\s*:", re.IGNORECASE)
+    HUMAN_PROMPT_TEMPLATE = DEFAULT_IMAGE_TOKEN + " Correction: {correction}"
+    # Fraction of samples rewritten as 'edit already applied -> keep as is'.
+    NO_CHANGE_PROB = 0.1
+
+    def _extract_correction(self, conversations):
+        """Return the correction instruction from the assistant turn."""
+        for turn in conversations:
+            if not isinstance(turn, dict):
+                continue
+            if turn.get("from", turn.get("role")) not in ("gpt", "assistant"):
+                continue
+            text = turn.get("value", turn.get("content"))
+            if not isinstance(text, str):
+                continue
+            marker = self.CORRECTION_MARKER_RE.search(text)
+            if marker is None:
+                continue
+            correction = text[marker.end():]
+            # Drop the trailing target image token (and anything after it).
+            correction = correction.split(DEFAULT_IMAGE_TOKEN)[0].strip()
+            if correction:
+                return correction
+        return None
+
+    def parse_item(self, sources, rng):
+        sources = super().parse_item(sources, rng)
+
+        images = sources.get("image")
+        if not isinstance(images, list) or len(images) != 2:
+            raise ValueError(
+                f"correction_parquet expects exactly 2 images, got "
+                f"{0 if images is None else (len(images) if isinstance(images, list) else 1)}"
+            )
+
+        correction = self._extract_correction(sources["conversations"])
+        if correction is None:
+            raise ValueError("correction_parquet sample has no correction instruction")
+        if self._NO_ISSUE_RE.search(correction) is not None:
+            # 'Correction: looks good' — nothing to edit, so there is no
+            # image-editing supervision in this row.
+            raise ValueError("correction_parquet sample requires no correction")
+
+        if self.NO_CHANGE_PROB > 0 and rng.random() < self.NO_CHANGE_PROB:
+            # The correction is already applied in images[1]; ask for the same
+            # edit on it so the target is identical to the input image.
+            sources["image"] = [images[1], images[1]]
+
+        sources["conversations"] = [
+            {
+                "from": "human",
+                "value": self.HUMAN_PROMPT_TEMPLATE.format(correction=correction),
+            },
+            {"from": "gpt", "value": DEFAULT_IMAGE_TOKEN},
+        ]
+        return sources
+
+
 class FiniteParquetDatasetMixin:
     """Iterate over validation parquet rows exactly once across all workers."""
 
@@ -1112,6 +1192,13 @@ class LazyOnlySelfReflectParquetValDataset(
     FiniteParquetDatasetMixin, LazyOnlySelfReflectParquetDataset
 ):
     pass
+
+
+class LazyCorrectionParquetValDataset(
+    FiniteParquetDatasetMixin, LazyCorrectionParquetDataset
+):
+    # Validation stays edit-only so it is comparable across evals.
+    NO_CHANGE_PROB = 0.0
 
 
 def _assert_finite_eval_cls(name, dataset_cls, data_path):
@@ -1263,6 +1350,10 @@ def get_dataset_cls(name):
         dataset_cls = LazyOnlySelfReflectParquetDataset
     elif name == 'only_self_reflect_parquet_val':
         dataset_cls = LazyOnlySelfReflectParquetValDataset
+    elif name == 'correction_parquet':
+        dataset_cls = LazyCorrectionParquetDataset
+    elif name == 'correction_parquet_val':
+        dataset_cls = LazyCorrectionParquetValDataset
     elif name == 'weighted_parquet':
         dataset_cls = WeightedDataset
     else:
