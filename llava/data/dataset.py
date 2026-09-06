@@ -539,6 +539,9 @@ class LazyParquetDataset(IterableDataset):
     )
     DEFAULT_INTERLEAVE_SHARDS = 3
     DEFAULT_PARQUET_BATCH_SIZE = 16
+    # Shards that ship several conversation variants per image name them
+    # 'conversations_1', 'conversations_2', ... instead of 'conversations'.
+    CONVERSATION_VARIANT_RE = re.compile(r"^conversations_(\d+)$")
 
     def __init__(
         self,
@@ -614,6 +617,45 @@ class LazyParquetDataset(IterableDataset):
     def make_worker_rng(self, worker_id):
         """Build the RNG a DataLoader worker should use for this epoch."""
         return random.Random(derive_seed(self.dataset_seed, self._epoch, worker_id))
+
+    def _conversation_variant_keys(self, sources):
+        """Return 'conversations_<n>' keys, ordered by n, for a multi-variant row.
+
+        Empty when the row already carries a plain 'conversations' column, so
+        single-conversation shards keep their current behaviour untouched.
+        """
+        if sources.get("conversations") is not None:
+            return []
+        numbered = []
+        for key in sources:
+            match = self.CONVERSATION_VARIANT_RE.match(key)
+            if match is not None:
+                numbered.append((int(match.group(1)), key))
+        numbered.sort()
+        return [key for _, key in numbered]
+
+    def _pick_conversation_variant(self, variant_keys, rng):
+        return variant_keys[rng.randrange(len(variant_keys))]
+
+    def _select_conversation_variant(self, sources, rng):
+        """Collapse a 'conversations_1..n' row down to a single 'conversations'.
+
+        Rows in the multi-caption T2I shards hold several independent
+        conversations for the same image; one is drawn per sample so the rest
+        of the pipeline sees the single-conversation layout it expects.
+        `sources` is mutated in place because subclasses re-inspect the same
+        dict after `super()._get_item()` returns.
+        """
+        variant_keys = self._conversation_variant_keys(sources)
+        if not variant_keys:
+            return sources
+
+        chosen = self._pick_conversation_variant(variant_keys, rng)
+        sources["conversations"] = sources[chosen]
+        # Drop the unused variants so nothing downstream re-reads them.
+        for key in variant_keys:
+            sources.pop(key, None)
+        return sources
 
     def _add_prompt_prefix(self, sources):
         sources = sources.copy()
@@ -839,6 +881,7 @@ class LazyParquetDataset(IterableDataset):
         return sources
 
     def _get_item(self, sources, rng, remove_eos=True):
+        sources = self._select_conversation_variant(sources, rng)
         if self.add_prompt_prefix:
             sources = self._add_prompt_prefix(sources)
         if self.add_suffix_no_correction:
@@ -1124,6 +1167,11 @@ class FiniteParquetDatasetMixin:
         # Validation must stay byte-identical between evals to be comparable,
         # so it stays pinned to epoch 0 while training re-randomises.
         return
+
+    def _pick_conversation_variant(self, variant_keys, rng):
+        # Same reason as the short-prompt pop below: validation must stay
+        # byte-identical between evals, so it always takes the first variant.
+        return variant_keys[0]
 
     def parse_item(self, sources, rng):
         # Training randomly alternates between long and short prompts. Keep
