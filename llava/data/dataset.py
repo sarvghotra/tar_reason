@@ -1105,12 +1105,12 @@ class LazyCorrectionParquetDataset(LazyParquetDataset):
     # Fraction of samples rewritten as 'edit already applied -> keep as is'.
     NO_CHANGE_PROB = 0.1
 
-    def _extract_correction(self, conversations):
-        """Return the correction instruction from the assistant turn."""
+    def _extract_correction_from_roles(self, conversations, roles):
+        """Return the correction instruction carried by a turn of `roles`."""
         for turn in conversations:
             if not isinstance(turn, dict):
                 continue
-            if turn.get("from", turn.get("role")) not in ("gpt", "assistant"):
+            if turn.get("from", turn.get("role")) not in roles:
                 continue
             text = turn.get("value", turn.get("content"))
             if not isinstance(text, str):
@@ -1124,6 +1124,23 @@ class LazyCorrectionParquetDataset(LazyParquetDataset):
             if correction:
                 return correction
         return None
+
+    def _extract_correction(self, conversations):
+        """Return the correction instruction from the conversation.
+
+        The assistant turn carries it in the iterative-generation shards, but
+        some sources put the instruction on the human side instead (the
+        assistant turn then holds only the corrected image), so fall back to
+        the human turn when the assistant turn has no marker.
+        """
+        correction = self._extract_correction_from_roles(
+            conversations, ("gpt", "assistant")
+        )
+        if correction is None:
+            correction = self._extract_correction_from_roles(
+                conversations, ("human", "user")
+            )
+        return correction
 
     def parse_item(self, sources, rng):
         sources = super().parse_item(sources, rng)
