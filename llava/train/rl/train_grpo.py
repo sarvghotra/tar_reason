@@ -4,8 +4,10 @@
 Per optimizer step, each rank:
   1. samples a rollout tree for ``--prompts_per_gpu`` prompts
      (``--branch G0,G1,...``: G0 drafts per prompt, G_k children per node),
-  2. scores every image with the frozen base model answering the prompt's
-     VQA questions on the image tokens (no pixel decode),
+  2. scores every image by answering the prompt's VQA questions on it, either
+     in latent space with a frozen Tar LM (``--reward_kind latent``, no pixel
+     decode) or on the de-tokenized PNG with a served VLM judge
+     (``--reward_kind pixel``, see llava/train/rl/pixel_reward_server.py),
      reward(draft)  = a*AM + (1-a)*GM
      reward(round k)= a*(AM_k - AM_{k-1}) + (1-a)*(GM_k - GM_{k-1})   (0 if "looks good")
   3. normalises rewards within groups (drafts of a prompt / children of a node),
@@ -26,7 +28,7 @@ import os
 import shutil
 import sys
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import torch
 import torch.distributed as dist
@@ -38,6 +40,7 @@ if REPO_ROOT not in sys.path:
 
 from llava.train.rl.dataset import GenEval2PromptDataset
 from llava.train.rl.grpo import GRPOConfig, grpo_loss, masked_token_logprobs, normalize_groups
+from llava.train.rl.pixel_reward import PixelVQAReward
 from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQAReward
 from llava.train.rl.rollout import Node, RolloutBatch, RolloutConfig, TreeRollout
 
@@ -80,6 +83,16 @@ def parse_args():
     p.add_argument("--reward_model_name_or_path", default=None,
                    help="Checkpoint scoring the VQA reward. Default: reuse the policy's "
                         "frozen base weights (LoRA disabled), which costs no extra GPU memory.")
+    p.add_argument("--reward_kind", default="latent", choices=["latent", "pixel"],
+                   help="latent: score the emitted image tokens with a Tar LM. "
+                        "pixel: de-tokenize to a PNG and score it with the VLM judge "
+                        "served by llava/train/rl/pixel_reward_server.py.")
+    p.add_argument("--reward_server_url", default=None,
+                   help="Base URL of the pixel reward server (--reward_kind pixel).")
+    p.add_argument("--reward_images_per_request", type=int, default=8,
+                   help="Decoded images per POST to the reward server.")
+    p.add_argument("--reward_decode_batch", type=int, default=8,
+                   help="Images de-tokenized per de-tokenizer forward pass.")
     # GRPO
     p.add_argument("--group", default="parent", choices=["parent", "prompt"],
                    help="Normalise refinement rewards among siblings (parent) or all "
@@ -229,8 +242,12 @@ def save_checkpoint(model, optimizer, scheduler, step, args, device):
 # ---------------------------------------------------------------------------
 
 @torch.no_grad()
-def score_tree(batch: RolloutBatch, reward: TarLatentVQAReward):
-    """Fill node.am / node.gm / node.reward for every node (each image scored once)."""
+def score_tree(batch: RolloutBatch, reward):
+    """Fill node.am / node.gm / node.reward for every node (each image scored once).
+
+    ``reward`` is a TarLatentVQAReward or a PixelVQAReward; both expose the same
+    ``score_images`` / ``combine`` API.
+    """
     to_score: List[Node] = []
     for level in batch.nodes_by_round:
         for n in level:
@@ -403,17 +420,19 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
         for k, v in tree_stats(batch, "val/", rollout.cfg.num_rounds).items():
             sums[k] = sums.get(k, 0.0) + v
         if decoder is not None and is_main() and len(samples) < args.log_images:
-            samples.extend(batch.leaves[:args.log_images - len(samples)])
+            for leaf in batch.leaves[:args.log_images - len(samples)]:
+                samples.append((leaf, batch.prompts[leaf.prompt_idx]["prompt"]))
     rollout.cfg.reflect_sample = saved
     sums = reduce_sum(sums, device)
     out = finalize_stats(sums, "val/")
     if decoder is not None and is_main() and samples:
-        out["val/images"] = decoder.wandb_images(samples, batch_prompts=None)
+        out["val/images"] = decoder.wandb_images([l for l, _ in samples],
+                                                  prompts=[p for _, p in samples])
     return out
 
 
 class ImageDecoder:
-    """Decodes image codes to pixels for logging only."""
+    """Decodes image codes to pixels, for the pixel reward and/or wandb logging."""
 
     def __init__(self, args, device):
         from tok.mm_autoencoder import MMAutoEncoder
@@ -425,26 +444,89 @@ class ImageDecoder:
         self.tok.encoder.pool_scale = args.scale + 1
         self.device = device
         self.cfg_scale = args.cfg_scale
+        self.decode_batch = max(1, args.reward_decode_batch)
 
     @torch.inference_mode()
-    def wandb_images(self, leaves: List[Node], batch_prompts=None):
+    def decode_pils(self, codes_list):
+        """list of equal-length code lists -> list of PIL images."""
+        from PIL import Image
+        out = []
+        for start in range(0, len(codes_list), self.decode_batch):
+            chunk = codes_list[start:start + self.decode_batch]
+            codes = torch.tensor([list(c) for c in chunk], dtype=torch.long, device=self.device)
+            imgs = self.tok.decode_from_encoder_indices(codes, {"cfg_scale": self.cfg_scale})
+            out.extend(Image.fromarray(im.numpy()) for im in imgs)
+        return out
+
+    @torch.inference_mode()
+    def wandb_images(self, leaves: List[Node], prompts: Optional[List[str]] = None):
         import wandb
         from PIL import Image
         out = []
-        for leaf in leaves:
+        for idx, leaf in enumerate(leaves):
             chain = leaf.ancestors()
-            codes = torch.tensor([n.codes for n in chain], dtype=torch.long, device=self.device)
-            imgs = self.tok.decode_from_encoder_indices(codes, {"cfg_scale": self.cfg_scale})
-            pils = [Image.fromarray(im.numpy()) for im in imgs]
+            pils = self.decode_pils([n.codes for n in chain])
             w, h = pils[0].size
             canvas = Image.new("RGB", (w * len(pils), h))
             for i, im in enumerate(pils):
                 canvas.paste(im, (i * w, 0))
             caption = " | ".join(
+                ([f"prompt: {prompts[idx]}"] if prompts else []) +
                 [f"AM0={chain[0].am:.2f}"] +
-                [f"r{n.round}: {n.reflection[:120]} -> AM={n.am:.2f}" for n in chain[1:]])
+                [f"r{n.round}: {n.reflection} -> AM={n.am:.2f}" for n in chain[1:]])
             out.append(wandb.Image(canvas, caption=caption))
         return out
+
+
+# ---------------------------------------------------------------------------
+# Reward construction
+# ---------------------------------------------------------------------------
+
+def build_latent_reward(args, model, base, tokenizer, image_start_id,
+                        num_image_tokens, device) -> TarLatentVQAReward:
+    """Reward that answers the VQA questions on the image *tokens* with a Tar LM."""
+    if args.reward_model_name_or_path:
+        # Separate frozen reward model: one extra bf16 copy of the weights per GPU.
+        reward_tokenizer = AutoTokenizer.from_pretrained(args.reward_model_name_or_path)
+        if reward_tokenizer.pad_token is None:
+            reward_tokenizer.pad_token = reward_tokenizer.eos_token
+        reward_model = Qwen2ForCausalLM.from_pretrained(
+            args.reward_model_name_or_path, torch_dtype=torch.bfloat16,
+            attn_implementation=args.attn_implementation).to(device).eval()
+        reward_model.config.use_cache = False
+        for rp in reward_model.parameters():
+            rp.requires_grad_(False)
+        reward_image_start_id = reward_tokenizer.convert_tokens_to_ids("<I0>")
+        assert reward_image_start_id is not None and \
+            reward_image_start_id != reward_tokenizer.unk_token_id, \
+            "reward model tokenizer has no <I0> image vocab"
+        n_reward_image_tokens = sum(1 for t in reward_tokenizer.get_vocab()
+                                    if t.startswith("<I") and t[2:-1].isdigit())
+        assert n_reward_image_tokens == num_image_tokens, (
+            f"image vocab mismatch: policy {num_image_tokens} vs "
+            f"reward {n_reward_image_tokens}")
+        rank0_print(f"reward model: {args.reward_model_name_or_path} "
+                    f"(image start={reward_image_start_id})")
+        reward_lm_head = reward_model.lm_head
+
+        def forward_hidden(input_ids, attention_mask):
+            return reward_model.model(input_ids=input_ids, attention_mask=attention_mask,
+                                      use_cache=False, return_dict=True).last_hidden_state
+    else:
+        reward_tokenizer = tokenizer
+        reward_image_start_id = image_start_id
+        reward_lm_head = base.lm_head
+
+        def forward_hidden(input_ids, attention_mask):
+            with model.disable_adapter():
+                return base.model(input_ids=input_ids, attention_mask=attention_mask,
+                                  use_cache=False, return_dict=True).last_hidden_state
+
+    return TarLatentVQAReward(
+        reward_tokenizer, forward_hidden, reward_lm_head, device,
+        RewardConfig(batch_size=args.reward_batch_size, answer_suffix=args.answer_suffix,
+                     scale=args.scale, alpha=args.alpha),
+        reward_image_start_id)
 
 
 # ---------------------------------------------------------------------------
@@ -504,48 +586,30 @@ def main():
 
     base = model.get_base_model()
 
-    if args.reward_model_name_or_path:
-        # Separate frozen reward model: one extra bf16 copy of the weights per GPU.
-        reward_tokenizer = AutoTokenizer.from_pretrained(args.reward_model_name_or_path)
-        if reward_tokenizer.pad_token is None:
-            reward_tokenizer.pad_token = reward_tokenizer.eos_token
-        reward_model = Qwen2ForCausalLM.from_pretrained(
-            args.reward_model_name_or_path, torch_dtype=torch.bfloat16,
-            attn_implementation=args.attn_implementation).to(device).eval()
-        reward_model.config.use_cache = False
-        for rp in reward_model.parameters():
-            rp.requires_grad_(False)
-        reward_image_start_id = reward_tokenizer.convert_tokens_to_ids("<I0>")
-        assert reward_image_start_id is not None and \
-            reward_image_start_id != reward_tokenizer.unk_token_id, \
-            "reward model tokenizer has no <I0> image vocab"
-        n_reward_image_tokens = sum(1 for t in reward_tokenizer.get_vocab()
-                                    if t.startswith("<I") and t[2:-1].isdigit())
-        assert n_reward_image_tokens == num_image_tokens, (
-            f"image vocab mismatch: policy {num_image_tokens} vs "
-            f"reward {n_reward_image_tokens}")
-        rank0_print(f"reward model: {args.reward_model_name_or_path} "
-                    f"(image start={reward_image_start_id})")
-        reward_lm_head = reward_model.lm_head
+    # The visual de-tokenizer: on every rank for the pixel reward (it scores
+    # decoded PNGs), on rank 0 for decoded-image logging. One instance serves both.
+    decoder = None
+    if args.reward_kind == "pixel" or (args.log_images > 0 and is_main()):
+        assert args.ar_path and args.encoder_path and args.decoder_path, \
+            "--reward_kind pixel / --log_images need the de-tokenizer paths"
+        decoder = ImageDecoder(args, device)
 
-        def forward_hidden(input_ids, attention_mask):
-            return reward_model.model(input_ids=input_ids, attention_mask=attention_mask,
-                                      use_cache=False, return_dict=True).last_hidden_state
+    if args.reward_kind == "pixel":
+        assert args.reward_server_url, "--reward_kind pixel needs --reward_server_url"
+        assert not args.reward_model_name_or_path, (
+            "--reward_kind pixel scores with the served judge; "
+            "--reward_model_name_or_path only applies to the latent reward")
+        reward = PixelVQAReward(
+            decoder.decode_pils, args.reward_server_url,
+            RewardConfig(batch_size=args.reward_batch_size, answer_suffix=args.answer_suffix,
+                         scale=args.scale, alpha=args.alpha),
+            images_per_request=args.reward_images_per_request)
+        info = reward.health()      # fail fast (per rank) if the judge is not up
+        rank0_print(f"pixel reward judge: {info.get('model')} at {args.reward_server_url} "
+                    f"(answer_suffix={info.get('answer_suffix')})")
     else:
-        reward_tokenizer = tokenizer
-        reward_image_start_id = image_start_id
-        reward_lm_head = base.lm_head
-
-        def forward_hidden(input_ids, attention_mask):
-            with model.disable_adapter():
-                return base.model(input_ids=input_ids, attention_mask=attention_mask,
-                                  use_cache=False, return_dict=True).last_hidden_state
-
-    reward = TarLatentVQAReward(
-        reward_tokenizer, forward_hidden, reward_lm_head, device,
-        RewardConfig(batch_size=args.reward_batch_size, answer_suffix=args.answer_suffix,
-                     scale=args.scale, alpha=args.alpha),
-        reward_image_start_id)
+        reward = build_latent_reward(args, model, base, tokenizer, image_start_id,
+                                     num_image_tokens, device)
     gcfg = GRPOConfig(clip_eps=args.clip_eps, kl_coef=args.kl_coef, adv_norm=args.adv_norm,
                       reflect_token_weight=args.reflect_token_weight)
 
@@ -559,11 +623,6 @@ def main():
             val_rows = val_rows[:max(1, args.eval_max_prompts // world_size)]
     rank0_print(f"train prompts: {len(train_ds)} (per rank/epoch {train_ds.per_epoch()}), "
                 f"val prompts per rank: {len(val_rows)}")
-
-    decoder = None
-    if args.log_images > 0 and is_main():
-        assert args.ar_path and args.encoder_path and args.decoder_path, "--log_images needs the de-tokenizer paths"
-        decoder = ImageDecoder(args, device)
 
     use_wandb = args.report_to == "wandb" and is_main()
     if use_wandb:

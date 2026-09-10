@@ -1,4 +1,9 @@
-"""Sanity-check the latent VQA reward against GenEval2's Qwen3-VL soft-TIFA.
+"""Sanity-check the RL reward against GenEval2's Qwen3-VL soft-TIFA judge.
+
+``--reward_kind latent`` (default) checks the latent reward, which re-encodes
+every PNG with TA-Tok and scores the image tokens with a Tar LM.
+``--reward_kind pixel --reward_server_url ...`` instead checks the pixel reward,
+which scores the PNG itself with the served VLM judge.
 
 Takes a finished ``llava/train/rl/iterative_generation_adhoc_img_tokens.py``
 results directory, re-encodes every PNG with TA-Tok (pool_scale 1 -> 729
@@ -64,6 +69,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from llava.train.rl.pixel_reward import PixelVQAReward
 from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQAReward, geometric_mean
 from tok.ta_tok import TextAlignedTokenizer
 from tok.utils import ScalingLayer
@@ -77,8 +83,16 @@ SIGN_EPS = 0.05
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--model", required=True)
-    p.add_argument("--encoder_path", required=True, help="ta_tok.pth")
+    p.add_argument("--model", default=None,
+                   help="Tar LM scoring the latent reward (--reward_kind latent).")
+    p.add_argument("--encoder_path", default=None, help="ta_tok.pth (latent reward only)")
+    p.add_argument("--reward_kind", default="latent", choices=["latent", "pixel"],
+                   help="latent: score image tokens with a Tar LM. pixel: score the "
+                        "generated PNGs with the VLM judge served by "
+                        "llava/train/rl/pixel_reward_server.py.")
+    p.add_argument("--reward_server_url", default=None,
+                   help="Pixel reward server URL. Comma-separate one URL per rank "
+                        "(rank r uses url r % n) to shard over several judges.")
     p.add_argument("--benchmark_data", required=True)
     p.add_argument("--results_dir", required=True)
     p.add_argument("--iterations", default="1,2")
@@ -134,7 +148,8 @@ class Encoder:
         return out["bottleneck_rep"].long().cpu().tolist()
 
 
-SRC_LABELS = {"tokens": "orig image tokens", "roundtrip": "re-encoded images"}
+SRC_LABELS = {"tokens": "orig image tokens", "roundtrip": "re-encoded images",
+              "pixels": "judge on pixels"}
 
 
 def print_table(title, headers, rows):
@@ -315,7 +330,7 @@ def score_slot(it_dir, slot, single_slot, bench, prompt_to_idx, reward, encoder,
 
     tokens_file = slot_path(it_dir, "image_tokens", slot, single_slot)
     saved_tokens = None
-    if args.token_source in ("both", "tokens"):
+    if args.reward_kind == "latent" and args.token_source in ("both", "tokens"):
         if os.path.exists(tokens_file):
             saved_tokens = json.load(open(tokens_file))
         elif args.token_source == "tokens":
@@ -323,13 +338,17 @@ def score_slot(it_dir, slot, single_slot, bench, prompt_to_idx, reward, encoder,
         else:
             print(f"[{label}] no {tokens_file}; scoring re-encoded images only")
     sources = []
-    if saved_tokens is not None:
-        sources.append("tokens")
-    if args.token_source in ("both", "roundtrip") or not sources:
-        sources.append("roundtrip")
+    if args.reward_kind == "pixel":
+        # The judge reads the PNG directly: no tokens, no decode -> re-encode.
+        sources = ["pixels"]
+    else:
+        if saved_tokens is not None:
+            sources.append("tokens")
+        if args.token_source in ("both", "roundtrip") or not sources:
+            sources.append("roundtrip")
 
     idxs = [prompt_to_idx[p] for p in paths if p in prompt_to_idx]
-    if saved_tokens is not None:
+    if args.reward_kind == "latent" and saved_tokens is not None:
         idxs = [i for i in idxs if bench[i]["prompt"] in saved_tokens]
     idxs.sort()
     # Every rank scores a stride of the prompts, so even a single slot keeps
@@ -344,6 +363,8 @@ def score_slot(it_dir, slot, single_slot, bench, prompt_to_idx, reward, encoder,
         for src in sources:
             if src == "tokens":
                 codes = [saved_tokens[bench[i]["prompt"]] for i in chunk]
+            elif src == "pixels":
+                codes = [paths[bench[i]["prompt"]] for i in chunk]
             else:
                 codes = encoder([paths[bench[i]["prompt"]] for i in chunk])
             am, gm, per_q = reward.score_images(codes, vqa_lists)
@@ -508,20 +529,37 @@ def main():
         print(f"[layout] {tree['drafts']} draft(s) x {tree['children']} branch(es); "
               + "; ".join(f"iteration {it}: {' '.join(slots[it])}" for it in its))
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-    model = Qwen2ForCausalLM.from_pretrained(
-        args.model, torch_dtype=torch.bfloat16, attn_implementation=args.attn_implementation
-    ).to(device).eval()
-    image_start_id = tokenizer.convert_tokens_to_ids("<I0>")
+    encoder = None
+    if args.reward_kind == "pixel":
+        assert args.reward_server_url, "--reward_kind pixel needs --reward_server_url"
+        # One judge per rank when several URLs are given, so the ranks do not
+        # queue behind a single server.
+        urls = [u.strip() for u in args.reward_server_url.split(",") if u.strip()]
+        url = urls[rank % len(urls)]
+        reward = PixelVQAReward(
+            lambda png_paths: [Image.open(q).convert("RGB") for q in png_paths],
+            url, RewardConfig(batch_size=args.batch_size, answer_suffix=args.answer_suffix),
+            images_per_request=8)
+        info = reward.health()
+        print(f"[rank {rank}] pixel judge {info.get('model')} at {url} "
+              f"(answer_suffix={info.get('answer_suffix')})", flush=True)
+    else:
+        assert args.model and args.encoder_path, \
+            "--reward_kind latent needs --model and --encoder_path"
+        tokenizer = AutoTokenizer.from_pretrained(args.model)
+        model = Qwen2ForCausalLM.from_pretrained(
+            args.model, torch_dtype=torch.bfloat16, attn_implementation=args.attn_implementation
+        ).to(device).eval()
+        image_start_id = tokenizer.convert_tokens_to_ids("<I0>")
 
-    def forward_hidden(input_ids, attention_mask):
-        return model.model(input_ids=input_ids, attention_mask=attention_mask,
-                           use_cache=False, return_dict=True).last_hidden_state
+        def forward_hidden(input_ids, attention_mask):
+            return model.model(input_ids=input_ids, attention_mask=attention_mask,
+                               use_cache=False, return_dict=True).last_hidden_state
 
-    reward = TarLatentVQAReward(
-        tokenizer, forward_hidden, model.lm_head, device,
-        RewardConfig(batch_size=args.batch_size, answer_suffix=args.answer_suffix), image_start_id)
-    encoder = Encoder(os.path.expanduser(args.encoder_path), device)
+        reward = TarLatentVQAReward(
+            tokenizer, forward_hidden, model.lm_head, device,
+            RewardConfig(batch_size=args.batch_size, answer_suffix=args.answer_suffix), image_start_id)
+        encoder = Encoder(os.path.expanduser(args.encoder_path), device)
 
     lat, ref = {}, {}
     for it in its:
@@ -540,7 +578,7 @@ def main():
             lat[it][slot], ref[it][slot] = merge_shards(gathered)
 
     # Only compare sources every scored slot actually has.
-    sources = [src for src in ("tokens", "roundtrip")
+    sources = [src for src in ("tokens", "roundtrip", "pixels")
                if all(src in lat[it][s] for it in its for s in slots[it])]
     if not sources:
         raise RuntimeError("no image source is available across every slot")
