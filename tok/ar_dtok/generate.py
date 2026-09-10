@@ -106,21 +106,23 @@ def decode_n_tokens(
     model, cur_token: torch.Tensor, input_pos: torch.Tensor, num_new_tokens: int, 
     cfg_scale: float, cfg_interval: int,
     **sampling_kwargs):
-    new_tokens, new_probs = [], []
+    # The caller discards the per-step probabilities, but keeping them alive costs
+    # batch * vocab * 4 bytes per step (GBs over a full image), which caps the
+    # usable decode batch size for no benefit.
+    new_tokens = []
     cfg_flag = True
-    for i in range(num_new_tokens):
-        with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True): # Actually better for Inductor to codegen attention here
+    with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True): # Actually better for Inductor to codegen attention here
+        for i in range(num_new_tokens):
             if cfg_interval > -1 and i > cfg_interval:
                 cfg_flag = False
-            next_token, next_prob = decode_one_token(
+            next_token, _ = decode_one_token(
                 model, cur_token, input_pos, cfg_scale, cfg_flag, **sampling_kwargs
             )
             input_pos += 1
-            new_tokens.append(next_token.clone())
-            new_probs.append(next_prob.clone())
+            new_tokens.append(next_token)
             cur_token = next_token.view(-1, 1)
-    
-    return new_tokens, new_probs
+
+    return new_tokens, []
 
 
 @torch.no_grad()
