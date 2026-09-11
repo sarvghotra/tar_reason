@@ -119,3 +119,15 @@ wandb
 demos
 
 util_scripts/debug_vcot_dataset/
+
+# Cluster environments and experiment artifacts (results may be a symlink).
+/tar/
+/qwen_reward
+/results
+
+/data
+/models
+/sft_model
+/reward_model
+/.cluster
+/scripts/clusters/*/config.local.sh

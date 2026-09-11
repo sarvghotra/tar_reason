@@ -22,9 +22,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--prompts', type=str, default="../dpg_bench/prompts")
     parser.add_argument('--model', type=str, required=True)
-    parser.add_argument("--ar_path", type=str, default='/tmp/ar_dtok_lp_256px.pth')
-    parser.add_argument("--encoder_path", type=str, default='/tmp/ta_tok.pth')
-    parser.add_argument("--decoder_path", type=str, default='/tmp/vq_ds16_t2i.pt')
+    parser.add_argument("--ar_path", type=str, default=None)
+    parser.add_argument("--encoder_path", type=str, default=None)
+    parser.add_argument("--decoder_path", type=str, default=None)
     parser.add_argument('--seq_len', type=int, default=729)
     parser.add_argument('--seq_scale', type=int, default=1)
     parser.add_argument('--save_dir', type=str, required=True)
@@ -80,9 +80,9 @@ if __name__ == '__main__':
 
     args = parse_args()
     # load visual tokenizer
-    args.ar_path = hf_hub_download("csuhan/TA-Tok", "ar_dtok_lp_256px.pth")
-    args.encoder_path = hf_hub_download("csuhan/TA-Tok", "ta_tok.pth")
-    args.decoder_path = hf_hub_download("peizesun/llamagen_t2i", "vq_ds16_t2i.pt")
+    args.ar_path = args.ar_path or hf_hub_download("csuhan/TA-Tok", "ar_dtok_lp_256px.pth")
+    args.encoder_path = args.encoder_path or hf_hub_download("csuhan/TA-Tok", "ta_tok.pth")
+    args.decoder_path = args.decoder_path or hf_hub_download("peizesun/llamagen_t2i", "vq_ds16_t2i.pt")
     visual_tokenizer = load_visual_tokenizer(args).to(device)
 
     # load LLM

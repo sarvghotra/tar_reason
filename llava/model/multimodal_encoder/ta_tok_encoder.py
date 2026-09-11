@@ -19,7 +19,8 @@ class TATokVisionTower(nn.Module):
 
         self.image_processor = SiglipImageProcessor()
 
-        self.vision_tower_name = vision_tower
+        # Relocate checkpoints whose config still points to /tmp/ta_tok.pth.
+        self.vision_tower_name = os.environ.get("TAR_VISION_MODEL", vision_tower)
 
         if not delay_load:
             rank0_print(f"Loading vision tower: {vision_tower}")

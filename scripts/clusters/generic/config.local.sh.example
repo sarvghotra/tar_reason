@@ -1,0 +1,11 @@
+# Copy to config.local.sh and fill these in on the other cluster.
+# Kept as an unconfigured placeholder; submission fails without an account.
+SLURM_ACCOUNT=""
+GPU_TYPE=""
+TAR_MODULES=()
+TAR_REWARD_MODULES=()
+# TAR_ENV=/path/to/tar-environment
+# REWARD_PYTHON=/path/to/qwen-environment/bin/python
+# CPUS_PER_TASK=24
+# JOB_MEM=256G
+# JOB_TIME=03:00:00

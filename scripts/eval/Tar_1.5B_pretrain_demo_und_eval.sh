@@ -1,45 +1,20 @@
-# huggingface-cli login --token "YOUR HUGGINGFACE KEY HERE"
-
-VISION_MODEL=/tmp/ta_tok.pth
-# hf download csuhan/TA-Tok ta_tok.pth --local-dir /tmp/
-
-MODEL_PATH=/home/mila/s/sarvjeet-singh.ghotra/scratch/models/pre_train/tar/Tar-1.5B
-
-export LD_LIBRARY_PATH="/network/scratch/s/sarvjeet-singh.ghotra/installs/miniforge3/envs/tar/lib:$LD_LIBRARY_PATH"
-
-export no_proxy=""
-export OPENAI_API_KEY="your key here"
-
-# make sure you are in the root path of Tar
-export PYTHONPATH=$(pwd):$PYTHONPATH
-
-export POOL_SCALE=1
-
-torchrun \
---nproc_per_node=4 \
---nnodes=1 \
---node_rank=0 \
---master_addr=127.0.0.1 \
---master_port=29505 \
--m lmms_eval \
---model llava_onevision \
---model_args pretrained=${MODEL_PATH},conv_template=qwen_1_5,model_name=llava_qwen \
---tasks mme \
---batch_size 1 \
---log_samples \
---log_samples_suffix llava_onevision \
---output_path ./logs/
-
-# --tasks mme,gqa,pope,mmbench_en_dev,seedbench,mmmu \
-
-# Result of tar_1.5B_pretrain_demo
-# |Tasks|Version|Filter|n-shot|       Metric       |   |  Value  |   |Stderr|
-# |-----|-------|------|-----:|--------------------|---|--------:|---|------|
-# |mme  |Yaml   |none  |     0|mme_cognition_score |↑  | 278.2143|±  |   N/A|
-# |mme  |Yaml   |none  |     0|mme_perception_score|↑  |1328.1412|±  |   N/A|
-
-# On Mila cluster
-# |Tasks|Filter|n-shot|       Metric       |   |  Value  |   |Stderr|Stderr_CLT|
-# |-----|------|-----:|--------------------|---|--------:|---|------|---------:|
-# |mme  |none  |     0|mme_cognition_score |↑  | 335.0000|±  |N/A   |    0.0305|
-# |mme  |none  |     0|mme_perception_score|↑  |1391.2978|±  |N/A   |    0.0090|
+#!/bin/bash
+source "${TAR_REPO_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)}/scripts/cluster_env.sh"
+tar_init_run "understanding"
+MODEL_PATH="${MODEL_PATH:-$BASE_MODEL}"
+N_GPUS=${N_GPUS:-${SLURM_GPUS_ON_NODE:-4}}
+export POOL_SCALE="${POOL_SCALE:-1}"
+tar_require_paths "$MODEL_PATH/config.json" "$VISION_MODEL"
+if [[ "${TAR_DRY_RUN:-0}" != 1 ]]; then
+    python -c 'import lmms_eval' || { echo 'lmms_eval is not installed in tar; see scripts/CLUSTER.md.' >&2; exit 1; }
+fi
+tar_launch torchrun --standalone --nproc_per_node="$N_GPUS" \
+    -m lmms_eval \
+    --model llava_onevision \
+    --model_args "pretrained=${MODEL_PATH},conv_template=qwen_1_5,model_name=llava_qwen" \
+    --tasks "${TASKS:-mme}" \
+    --batch_size 1 \
+    --log_samples \
+    --log_samples_suffix llava_onevision \
+    --output_path "$EVAL_DIR" \
+    "$@"

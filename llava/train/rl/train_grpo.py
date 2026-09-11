@@ -1,22 +1,13 @@
-"""GRPO fine-tuning of Tar on iterative image generation
-(draft -> self-reflect -> refine), with a latent-space GenEval2-style reward.
+"""Final-image GRPO for independent, EOS-terminated image/reflection episodes.
 
-Per optimizer step, each rank:
-  1. samples a rollout tree for ``--prompts_per_gpu`` prompts
-     (``--branch G0,G1,...``: G0 drafts per prompt, G_k children per node),
-  2. scores every image with the frozen base model answering the prompt's
-     VQA questions on the image tokens (no pixel decode),
-     reward(draft)  = a*AM + (1-a)*GM
-     reward(round k)= a*(AM_k - AM_{k-1}) + (1-a)*(GM_k - GM_{k-1})   (0 if "looks good")
-  3. normalises rewards within groups (drafts of a prompt / children of a node),
-  4. takes a clipped policy-gradient step on the LoRA adapters with a KL penalty
-     to the frozen base (adapters disabled).
+Each prompt gets G independent trajectories. Only the last complete image of
+an episode is rendered and scored by frozen Qwen3-VL soft-TIFA AM. Its prompt-relative
+advantage trains every sampled action in that episode, including EOS. The loss
+averages tokens within episodes, then episodes within the batch. Safety-limit
+truncations are reported separately and score their last complete image.
 
-Only the LoRA parameters train, so plain torch DDP-style gradient all-reduce
-is used instead of DeepSpeed. Resumable: ``checkpoint-N/`` holds the adapter,
-optimizer, scheduler and data position.
-
-Launch: see output_dir/rl_ft/bash.sh.
+Only LoRA trains. Parameters are synchronized before optimizer creation and
+manual gradient all-reduce keeps ranks aligned. Launch: scripts/rl_ft/bash.sh.
 """
 
 import argparse
@@ -38,8 +29,11 @@ if REPO_ROOT not in sys.path:
 
 from llava.train.rl.dataset import GenEval2PromptDataset
 from llava.train.rl.grpo import GRPOConfig, grpo_loss, masked_token_logprobs, normalize_groups
-from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQAReward
-from llava.train.rl.rollout import Node, RolloutBatch, RolloutConfig, TreeRollout
+from llava.train.rl.pixel_reward import QwenPixelReward
+from llava.train.rl.rollout import Trajectory, RolloutBatch, RolloutConfig, EpisodeRollout
+
+
+RL_OBJECTIVE = "final_pixel_qwen3vl_soft_tifa_am_v1"
 
 
 # ---------------------------------------------------------------------------
@@ -62,29 +56,28 @@ def parse_args():
     p.add_argument("--max_atoms", type=int, default=None)
     p.add_argument("--prompts_per_gpu", type=int, default=2)
     # Rollout
-    p.add_argument("--branch", default="4,2", help="Fan-out per round: drafts,children,...")
+    p.add_argument("--num_rollouts", type=int, default=4, help="Independent episodes per prompt.")
+    p.add_argument("--max_refinements", type=int, default=3, help="Safety cap on image corrections; EOS can stop earlier.")
+    p.add_argument("--max_seq_len", type=int, default=4096, help="Total prompt + episode token budget.")
     p.add_argument("--scale", type=int, default=0, choices=[0, 1, 2])
     p.add_argument("--gen_seq_len", type=int, default=729)
     p.add_argument("--img_temperature", type=float, default=1.0)
-    p.add_argument("--img_top_k", type=int, default=1200)
-    p.add_argument("--img_top_p", type=float, default=0.95)
+    p.add_argument("--img_top_k", type=int, default=0)
+    p.add_argument("--img_top_p", type=float, default=1.0)
     p.add_argument("--reflect_tokens", type=int, default=128)
     p.add_argument("--reflect_temperature", type=float, default=1.0)
     p.add_argument("--reflect_top_k", type=int, default=0)
-    p.add_argument("--reflect_top_p", type=float, default=0.95)
+    p.add_argument("--reflect_top_p", type=float, default=1.0)
     p.add_argument("--gen_batch_size", type=int, default=16)
     # Reward
-    p.add_argument("--alpha", type=float, default=1.0, help="reward = a*AM + (1-a)*GM")
-    p.add_argument("--answer_suffix", default="llava", choices=sorted(ANSWER_SUFFIXES))
-    p.add_argument("--reward_batch_size", type=int, default=16)
-    p.add_argument("--reward_model_name_or_path", default=None,
-                   help="Checkpoint scoring the VQA reward. Default: reuse the policy's "
-                        "frozen base weights (LoRA disabled), which costs no extra GPU memory.")
+    p.add_argument("--reward_model_name_or_path", default="Qwen/Qwen3-VL-8B-Instruct",
+                   help="Local/cached official GenEval2 Qwen3-VL-8B-Instruct judge.")
+    p.add_argument("--reward_python", default=sys.executable,
+                   help="Python interpreter with Qwen3-VL support; may be a separate venv.")
+    p.add_argument("--reward_timeout", type=float, default=1800)
     # GRPO
-    p.add_argument("--group", default="parent", choices=["parent", "prompt"],
-                   help="Normalise refinement rewards among siblings (parent) or all "
-                        "same-round nodes of the prompt.")
-    p.add_argument("--adv_norm", default="std", choices=["std", "mean"])
+    p.add_argument("--adv_norm", default="mean", choices=["std", "mean"],
+                   help="Final reward minus prompt-group mean; optionally divide by group std.")
     p.add_argument("--clip_eps", type=float, default=0.2)
     p.add_argument("--kl_coef", type=float, default=0.01)
     p.add_argument("--reflect_token_weight", type=float, default=1.0)
@@ -98,6 +91,8 @@ def parse_args():
     p.add_argument("--max_steps", type=int, default=500)
     # Eval / IO
     p.add_argument("--output_dir", required=True)
+    p.add_argument("--eval_output_dir", default=None,
+                   help="Directory for validation metric JSON files; defaults to output_dir/evaluations.")
     p.add_argument("--eval_steps", type=int, default=25)
     p.add_argument("--eval_on_start", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--eval_max_prompts", type=int, default=None)
@@ -108,13 +103,31 @@ def parse_args():
     p.add_argument("--run_name", default=None)
     p.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--seed", type=int, default=42)
-    # Optional decoded-image logging (needs the visual de-tokenizer weights).
+    # Exemplar logging is optional; visual de-tokenizer weights are required for reward.
     p.add_argument("--log_images", type=int, default=0)
     p.add_argument("--ar_path", default=None)
     p.add_argument("--encoder_path", default=None)
     p.add_argument("--decoder_path", default=None)
     p.add_argument("--cfg_scale", type=float, default=4.0)
-    return p.parse_args()
+    args = p.parse_args()
+    try:
+        RolloutConfig(num_rollouts=args.num_rollouts, max_refinements=args.max_refinements,
+                      max_seq_len=args.max_seq_len, gen_seq_len=args.gen_seq_len,
+                      reflect_tokens=args.reflect_tokens, gen_batch_size=args.gen_batch_size,
+                      **{f"{phase}_{setting}": getattr(args, f"{phase}_{setting}")
+                         for phase in ("img", "reflect")
+                         for setting in ("temperature", "top_k", "top_p")}).validate_for_training()
+        if min(args.prompts_per_gpu, args.train_micro_batch, args.num_ppo_epochs) <= 0:
+            raise ValueError("Batch sizes and PPO epochs must be positive.")
+        if not math.isfinite(args.reflect_token_weight) or args.reflect_token_weight <= 0:
+            raise ValueError("Reflection token weight must be finite and positive, including EOS credit.")
+        if not math.isfinite(args.reward_timeout) or args.reward_timeout <= 0:
+            raise ValueError("Reward worker timeout must be finite and positive.")
+        if args.lora_dropout != 0.0:
+            raise ValueError("RL training requires --lora_dropout=0 so training matches sampling.")
+    except ValueError as exc:
+        p.error(str(exc))
+    return args
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +157,15 @@ def reduce_mean(values: Dict[str, float], device) -> Dict[str, float]:
     return {k: v / ws for k, v in out.items()}
 
 
+@torch.no_grad()
+def synchronize_trainable_parameters(model):
+    """Gradient averaging assumes identical parameters before the first update."""
+    if dist.is_initialized():
+        for p in model.parameters():
+            if p.requires_grad:
+                dist.broadcast(p, src=0)
+
+
 # ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
@@ -161,6 +183,9 @@ def find_all_linear_names(model, exclude=("embed_tokens", "lm_head")):
 def load_policy(args, device, adapter_dir=None):
     from peft import LoraConfig, PeftModel, get_peft_model
 
+    # torchrun processes start with independent RNG states. Initialize the
+    # policy identically; the training loop separately seeds per-rank rollouts.
+    torch.manual_seed(args.seed)
     base = Qwen2ForCausalLM.from_pretrained(
         args.model_name_or_path, torch_dtype=torch.bfloat16,
         attn_implementation=args.attn_implementation)
@@ -179,7 +204,12 @@ def load_policy(args, device, adapter_dir=None):
                          lora_dropout=args.lora_dropout, bias="none",
                          target_modules=target, task_type="CAUSAL_LM")
         model = get_peft_model(base, cfg)
+    if base.config.attention_dropout != 0.0 or any(
+            cfg.lora_dropout != 0.0 for cfg in model.peft_config.values()):
+        raise ValueError("RL policy attention and LoRA dropout must be zero so training matches sampling.")
     model.to(device)
+    # Also covers resumed adapters. Do this before constructing the optimizer.
+    synchronize_trainable_parameters(model)
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     rank0_print(f"Trainable params: {n_train / 1e6:.1f}M")
     return model
@@ -212,7 +242,7 @@ def save_checkpoint(model, optimizer, scheduler, step, args, device):
         torch.save(optimizer.state_dict(), os.path.join(ck, "optimizer.pt"))
         torch.save(scheduler.state_dict(), os.path.join(ck, "scheduler.pt"))
         with open(os.path.join(ck, "state.json"), "w") as f:
-            json.dump({"step": step}, f)
+            json.dump({"step": step, "objective": RL_OBJECTIVE}, f)
         # Prune.
         cks = sorted(
             (int(n.split("-")[1]), n) for n in os.listdir(args.output_dir)
@@ -225,107 +255,83 @@ def save_checkpoint(model, optimizer, scheduler, step, args, device):
 
 
 # ---------------------------------------------------------------------------
-# Reward + advantages over a rollout tree
+# Final image rewards and prompt-group episode advantages
 # ---------------------------------------------------------------------------
 
 @torch.no_grad()
-def score_tree(batch: RolloutBatch, reward: TarLatentVQAReward):
-    """Fill node.am / node.gm / node.reward for every node (each image scored once)."""
-    to_score: List[Node] = []
-    for level in batch.nodes_by_round:
-        for n in level:
-            if n.round == 0 or not n.looks_good:
-                to_score.append(n)
-    am, gm, _ = reward.score_images(
-        [n.codes for n in to_score],
-        [batch.prompts[n.prompt_idx]["vqa_list"] for n in to_score])
-    for n, a, g in zip(to_score, am, gm):
-        n.am, n.gm = a, g
-    for level in batch.nodes_by_round:
-        for n in level:
-            if n.round == 0:
-                n.reward = reward.combine(n.am, n.gm)
-            elif n.looks_good:
-                n.am, n.gm = n.parent.am, n.parent.gm
-                n.reward = 0.0
-            else:
-                n.reward = reward.combine(n.am, n.gm) - reward.combine(n.parent.am, n.parent.gm)
+def score_rollouts(batch: RolloutBatch, reward, decoder):
+    trajectories = batch.trajectories
+    # Render once. Reuse these exact pixels in validation logs, since rendering
+    # again could produce a different image under the stochastic second AR model.
+    for trajectory in trajectories:
+        trajectory.final_image = decoder.decode_codes([trajectory.codes])[0]
+        trajectory.vqa_list = batch.prompts[trajectory.prompt_idx]["vqa_list"]
+    if torch.cuda.is_available():
+        # The judge lives in another process on this GPU and cannot reuse our
+        # allocator's cached rollout/rendering buffers.
+        torch.cuda.empty_cache()
+    am, gm, per_question = reward.score_images(
+        [t.final_image for t in trajectories],
+        [batch.prompts[t.prompt_idx]["vqa_list"] for t in trajectories])
+    for trajectory, a, g, scores in zip(trajectories, am, gm, per_question):
+        trajectory.am, trajectory.gm = a, g
+        trajectory.reward = a
+        trajectory.question_scores = scores
 
 
-def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig):
-    zero_var = 0
-    groups_total = 0
-    for level in batch.nodes_by_round:
-        if not level:
-            continue
-        if level[0].round == 0 or args.group == "prompt":
-            keys = [n.prompt_idx for n in level]
-        else:
-            keys = [id(n.parent) for n in level]
-        adv, zv = normalize_groups([n.reward for n in level], keys, gcfg)
-        for n, a in zip(level, adv):
-            n.adv = a
-        zero_var += zv
-        groups_total += len(set(keys))
-    return zero_var, groups_total
+def assign_advantages(batch: RolloutBatch, gcfg: GRPOConfig):
+    keys = [t.prompt_idx for t in batch.trajectories]
+    advantages, zero_var = normalize_groups([t.reward for t in batch.trajectories], keys, gcfg)
+    for trajectory, advantage in zip(batch.trajectories, advantages):
+        trajectory.adv = advantage
+    return zero_var, len(set(keys))
 
 
-def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int) -> Dict[str, float]:
-    """Sums (not means) so they can be all-reduced; '*_n' carries counts.
-
-    Emits the same key set on every rank (all rounds, even empty ones) so the
-    all-reduce cannot desynchronise.
-    """
-    s: Dict[str, float] = {}
-    for r in range(num_rounds + 1):
-        level = batch.nodes_by_round[r] if r < len(batch.nodes_by_round) else []
-        s[f"{prefix}am_{r}"] = sum(n.am for n in level)
-        s[f"{prefix}gm_{r}"] = sum(n.gm for n in level)
-        s[f"{prefix}reward_{r}"] = sum(n.reward for n in level)
-        s[f"{prefix}n_{r}"] = len(level)
-        if r > 0:
-            s[f"{prefix}looks_good_{r}"] = sum(n.looks_good for n in level)
-            s[f"{prefix}reflect_len_{r}"] = sum(n.reflection_len for n in level)
-            deltas = [n.am - n.parent.am for n in level]
-            s[f"{prefix}delta_am_{r}"] = sum(deltas)
-            s[f"{prefix}improved_{r}"] = sum(d > 0.05 for d in deltas)
-            s[f"{prefix}degraded_{r}"] = sum(d < -0.05 for d in deltas)
-    # Final-image score per leaf (what the benchmark measures).
-    s[f"{prefix}am_final"] = sum(n.am for n in batch.leaves)
-    s[f"{prefix}n_final"] = len(batch.leaves)
-    return s
+def rollout_stats(batch: RolloutBatch, prefix: str) -> Dict[str, float]:
+    trajectories = batch.trajectories
+    stats = {
+        "n_final": len(trajectories),
+        "am_final": sum(t.am for t in trajectories),
+        "gm_final": sum(t.gm for t in trajectories),
+        "reward_final": sum(t.reward for t in trajectories),
+        "mean_refinements": sum(len(t.images) - 1 for t in trajectories),
+        "mean_sampled_tokens": sum(sum(k != 0 for k in t.kinds) for t in trajectories),
+        "truncated_rate": sum(t.stop_reason != "eos" for t in trajectories),
+    }
+    for reason in ("eos", "max_refinements", "max_seq_len", "reflection_limit"):
+        stats[f"{reason}_rate"] = sum(t.stop_reason == reason for t in trajectories)
+    return {prefix + k: v for k, v in stats.items()}
 
 
 def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
-    out = {}
-    rounds = sorted({int(k.rsplit("_", 1)[1]) for k in s
-                     if k.startswith(f"{prefix}n_") and k.rsplit("_", 1)[1].isdigit()})
-    for r in rounds:
-        n = max(s[f"{prefix}n_{r}"], 1.0)
-        out[f"{prefix}am_{r}"] = s[f"{prefix}am_{r}"] / n
-        out[f"{prefix}gm_{r}"] = s[f"{prefix}gm_{r}"] / n
-        out[f"{prefix}reward_{r}"] = s[f"{prefix}reward_{r}"] / n
-        if r > 0:
-            out[f"{prefix}looks_good_{r}"] = s[f"{prefix}looks_good_{r}"] / n
-            out[f"{prefix}reflect_len_{r}"] = s[f"{prefix}reflect_len_{r}"] / n
-            out[f"{prefix}delta_am_{r}"] = s[f"{prefix}delta_am_{r}"] / n
-            out[f"{prefix}improved_{r}"] = s[f"{prefix}improved_{r}"] / n
-            out[f"{prefix}degraded_{r}"] = s[f"{prefix}degraded_{r}"] / n
-    out[f"{prefix}am_final"] = s[f"{prefix}am_final"] / max(s[f"{prefix}n_final"], 1.0)
-    return out
+    count = max(s[f"{prefix}n_final"], 1.0)
+    return {prefix + name: s[prefix + name] / count for name in (
+        "am_final", "gm_final", "reward_final", "mean_refinements", "mean_sampled_tokens",
+        "truncated_rate", "eos_rate", "max_refinements_rate", "max_seq_len_rate", "reflection_limit_rate")}
+
+
+def validate_resume_checkpoint(path):
+    with open(os.path.join(path, "state.json")) as f:
+        state = json.load(f)
+    if state.get("objective") != RL_OBJECTIVE:
+        raise ValueError("Cannot resume a checkpoint from the old local-reward or semantic-reward objective. "
+                         "Use a new output directory/run name for pixel Qwen soft-TIFA AM GRPO.")
+    return state
 
 
 # ---------------------------------------------------------------------------
 # Training step
 # ---------------------------------------------------------------------------
 
-def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: GRPOConfig,
+def train_on_rollouts(model, rollout: EpisodeRollout, batch: RolloutBatch, args, gcfg: GRPOConfig,
                   optimizer, scheduler, device) -> Dict[str, float]:
+    rollout.cfg.validate_for_training()
     img_start, img_end = rollout.img_start, rollout.img_end
-    leaves = sorted(batch.leaves, key=lambda n: len(n.seq))
-    micro = [leaves[i:i + args.train_micro_batch] for i in range(0, len(leaves), args.train_micro_batch)]
+    trajectories = sorted(batch.trajectories, key=lambda t: len(t.seq))
+    micro = [trajectories[i:i + args.train_micro_batch]
+             for i in range(0, len(trajectories), args.train_micro_batch)]
     rows = [rollout.build_training_rows(m, args.reflect_token_weight) for m in micro]
-    denom = max(float(sum(r["weight"].sum() for r in rows)), 1.0)
+    denom = max(len(trajectories), 1)  # each row has unit total token weight
     n_tokens = int(sum(r["train_mask"].sum() for r in rows))
 
     # Reference log-probs (adapters off) are fixed for the whole step.
@@ -387,33 +393,71 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
 # ---------------------------------------------------------------------------
 
 @torch.no_grad()
-def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, step, decoder=None):
+def run_validation(model, rollout: EpisodeRollout, reward, val_rows, args, device, step, decoder):
     if not val_rows:
         return {}
     torch.manual_seed(args.seed * 7919 + 17)
-    branch = [1] * len(rollout.cfg.branch)
-    saved = rollout.cfg.reflect_sample
-    rollout.cfg.reflect_sample = False   # greedy reflection, like the eval script
     sums: Dict[str, float] = {}
     samples = []
     bs = max(args.gen_batch_size, 1)
     for start in range(0, len(val_rows), bs):
-        batch = rollout.run(model, val_rows[start:start + bs], branch=branch)
-        score_tree(batch, reward)
-        for k, v in tree_stats(batch, "val/", rollout.cfg.num_rounds).items():
+        # Same EOS-driven stochastic policy as training; one episode per prompt.
+        batch = rollout.run(model, val_rows[start:start + bs], num_rollouts=1)
+        score_rollouts(batch, reward, decoder)
+        for k, v in rollout_stats(batch, "val/").items():
             sums[k] = sums.get(k, 0.0) + v
-        if decoder is not None and is_main() and len(samples) < args.log_images:
-            samples.extend(batch.leaves[:args.log_images - len(samples)])
-    rollout.cfg.reflect_sample = saved
+        if is_main() and len(samples) < args.log_images:
+            samples.extend((batch.prompts[t.prompt_idx]["prompt"], t)
+                           for t in batch.trajectories[:args.log_images - len(samples)])
     sums = reduce_sum(sums, device)
     out = finalize_stats(sums, "val/")
-    if decoder is not None and is_main() and samples:
-        out["val/images"] = decoder.wandb_images(samples, batch_prompts=None)
+    if is_main() and samples:
+        eval_dir = args.eval_output_dir or os.path.join(args.output_dir, "evaluations")
+        images = save_visual_evaluation(decoder, samples, eval_dir, step, args.seed, out)
+        if args.report_to == "wandb":
+            import wandb
+            out["val/images"] = [wandb.Image(path, caption=caption) for path, caption in images]
     return out
 
 
+def save_visual_evaluation(decoder, samples, eval_dir, step, seed, metrics):
+    """Persist exemplars independently of W&B; keep renderer noise fixed across steps."""
+    directory = os.path.join(eval_dir, f"step-{step}")
+    os.makedirs(directory, exist_ok=True)
+    records, logged_images = [], []
+    for index, (prompt, trajectory) in enumerate(samples):
+        devices = [decoder.device] if decoder.device.type == "cuda" else []
+        with torch.random.fork_rng(devices=devices):
+            torch.manual_seed(seed * 7919 + index)
+            pils = decoder.decode_images(trajectory)
+        from PIL import Image
+        w, h = pils[0].size
+        canvas = Image.new("RGB", (w * len(pils), h))
+        image_files = []
+        for image_index, im in enumerate(pils):
+            name = f"example-{index:03d}-image-{image_index:02d}.png"
+            im.save(os.path.join(directory, name))
+            image_files.append(name)
+            canvas.paste(im, (image_index * w, 0))
+        strip = f"example-{index:03d}-trajectory.png"
+        canvas.save(os.path.join(directory, strip))
+        caption = (f"Step {step} | {prompt} | draft → refinements (final image at right) | "
+                   f"Final reward={trajectory.reward:.4f}; AM={trajectory.am:.4f}; "
+                   f"stop={trajectory.stop_reason} | " + " | ".join(trajectory.reflections))
+        logged_images.append((os.path.join(directory, strip), caption))
+        records.append(dict(prompt=prompt, reward=trajectory.reward, am=trajectory.am,
+                            gm=trajectory.gm, stop_reason=trajectory.stop_reason,
+                            reflections=trajectory.reflections, semantic_codes=trajectory.images,
+                            question_scores=trajectory.question_scores,
+                            vqa_list=trajectory.vqa_list,
+                            images=image_files, trajectory_image=strip))
+    with open(os.path.join(directory, "evaluation.json"), "w") as f:
+        json.dump(dict(step=step, objective=RL_OBJECTIVE, metrics=metrics, examples=records), f, indent=2)
+    return logged_images
+
+
 class ImageDecoder:
-    """Decodes image codes to pixels for logging only."""
+    """Frozen second AR model and VQ decoder, used for reward and logging."""
 
     def __init__(self, args, device):
         from tok.mm_autoencoder import MMAutoEncoder
@@ -427,24 +471,17 @@ class ImageDecoder:
         self.cfg_scale = args.cfg_scale
 
     @torch.inference_mode()
-    def wandb_images(self, leaves: List[Node], batch_prompts=None):
-        import wandb
+    def decode_codes(self, image_codes):
         from PIL import Image
-        out = []
-        for leaf in leaves:
-            chain = leaf.ancestors()
-            codes = torch.tensor([n.codes for n in chain], dtype=torch.long, device=self.device)
-            imgs = self.tok.decode_from_encoder_indices(codes, {"cfg_scale": self.cfg_scale})
-            pils = [Image.fromarray(im.numpy()) for im in imgs]
-            w, h = pils[0].size
-            canvas = Image.new("RGB", (w * len(pils), h))
-            for i, im in enumerate(pils):
-                canvas.paste(im, (i * w, 0))
-            caption = " | ".join(
-                [f"AM0={chain[0].am:.2f}"] +
-                [f"r{n.round}: {n.reflection[:120]} -> AM={n.am:.2f}" for n in chain[1:]])
-            out.append(wandb.Image(canvas, caption=caption))
-        return out
+        codes = torch.tensor(image_codes, dtype=torch.long, device=self.device)
+        imgs = self.tok.decode_from_encoder_indices(codes, {"cfg_scale": self.cfg_scale})
+        return [Image.fromarray(im.cpu().numpy()) for im in imgs]
+
+    def decode_images(self, trajectory: Trajectory):
+        if trajectory.final_image is None:
+            raise ValueError("An evaluation exemplar must retain its scored final image.")
+        previous = self.decode_codes(trajectory.images[:-1]) if len(trajectory.images) > 1 else []
+        return previous + [trajectory.final_image]
 
 
 # ---------------------------------------------------------------------------
@@ -453,11 +490,6 @@ class ImageDecoder:
 
 def main():
     args = parse_args()
-    branch = [int(x) for x in args.branch.split(",") if x.strip()]
-    assert len(branch) >= 1 and all(b >= 1 for b in branch), "--branch must be positive ints"
-    if branch[0] < 2:
-        rank0_print("WARNING: branch[0] < 2 gives zero advantage for every draft.")
-
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     rank = int(os.environ.get("RANK", "0"))
     if world_size > 1:
@@ -478,6 +510,7 @@ def main():
     rank0_print(f"image vocab: start={image_start_id} n={num_image_tokens}")
 
     resume_dir = latest_checkpoint(args.output_dir) if args.resume else None
+    resume_state = validate_resume_checkpoint(resume_dir) if resume_dir else None
     model = load_policy(args, device, adapter_dir=resume_dir)
 
     params = [p for p in model.parameters() if p.requires_grad]
@@ -490,62 +523,23 @@ def main():
     if resume_dir is not None:
         optimizer.load_state_dict(torch.load(os.path.join(resume_dir, "optimizer.pt"), map_location=device))
         scheduler.load_state_dict(torch.load(os.path.join(resume_dir, "scheduler.pt")))
-        with open(os.path.join(resume_dir, "state.json")) as f:
-            start_step = int(json.load(f)["step"])
+        start_step = int(resume_state["step"])
         rank0_print(f"Resumed from {resume_dir} at step {start_step}")
 
     rcfg = RolloutConfig(
-        branch=branch, scale=args.scale, gen_seq_len=args.gen_seq_len,
+        num_rollouts=args.num_rollouts, max_refinements=args.max_refinements,
+        max_seq_len=args.max_seq_len, scale=args.scale, gen_seq_len=args.gen_seq_len,
         img_temperature=args.img_temperature, img_top_k=args.img_top_k, img_top_p=args.img_top_p,
         reflect_tokens=args.reflect_tokens, reflect_sample=True,
         reflect_temperature=args.reflect_temperature, reflect_top_k=args.reflect_top_k,
         reflect_top_p=args.reflect_top_p, gen_batch_size=args.gen_batch_size)
-    rollout = TreeRollout(tokenizer, rcfg, image_start_id, num_image_tokens, device)
+    rollout = EpisodeRollout(tokenizer, rcfg, image_start_id, num_image_tokens, device)
 
-    base = model.get_base_model()
-
-    if args.reward_model_name_or_path:
-        # Separate frozen reward model: one extra bf16 copy of the weights per GPU.
-        reward_tokenizer = AutoTokenizer.from_pretrained(args.reward_model_name_or_path)
-        if reward_tokenizer.pad_token is None:
-            reward_tokenizer.pad_token = reward_tokenizer.eos_token
-        reward_model = Qwen2ForCausalLM.from_pretrained(
-            args.reward_model_name_or_path, torch_dtype=torch.bfloat16,
-            attn_implementation=args.attn_implementation).to(device).eval()
-        reward_model.config.use_cache = False
-        for rp in reward_model.parameters():
-            rp.requires_grad_(False)
-        reward_image_start_id = reward_tokenizer.convert_tokens_to_ids("<I0>")
-        assert reward_image_start_id is not None and \
-            reward_image_start_id != reward_tokenizer.unk_token_id, \
-            "reward model tokenizer has no <I0> image vocab"
-        n_reward_image_tokens = sum(1 for t in reward_tokenizer.get_vocab()
-                                    if t.startswith("<I") and t[2:-1].isdigit())
-        assert n_reward_image_tokens == num_image_tokens, (
-            f"image vocab mismatch: policy {num_image_tokens} vs "
-            f"reward {n_reward_image_tokens}")
-        rank0_print(f"reward model: {args.reward_model_name_or_path} "
-                    f"(image start={reward_image_start_id})")
-        reward_lm_head = reward_model.lm_head
-
-        def forward_hidden(input_ids, attention_mask):
-            return reward_model.model(input_ids=input_ids, attention_mask=attention_mask,
-                                      use_cache=False, return_dict=True).last_hidden_state
-    else:
-        reward_tokenizer = tokenizer
-        reward_image_start_id = image_start_id
-        reward_lm_head = base.lm_head
-
-        def forward_hidden(input_ids, attention_mask):
-            with model.disable_adapter():
-                return base.model(input_ids=input_ids, attention_mask=attention_mask,
-                                  use_cache=False, return_dict=True).last_hidden_state
-
-    reward = TarLatentVQAReward(
-        reward_tokenizer, forward_hidden, reward_lm_head, device,
-        RewardConfig(batch_size=args.reward_batch_size, answer_suffix=args.answer_suffix,
-                     scale=args.scale, alpha=args.alpha),
-        reward_image_start_id)
+    if not (args.ar_path and args.encoder_path and args.decoder_path):
+        raise ValueError("Pixel reward requires all three visual decoder checkpoint paths, even with log_images=0.")
+    decoder = ImageDecoder(args, device)
+    reward = QwenPixelReward(args.reward_python, args.reward_model_name_or_path,
+                             device, args.reward_timeout)
     gcfg = GRPOConfig(clip_eps=args.clip_eps, kl_coef=args.kl_coef, adv_norm=args.adv_norm,
                       reflect_token_weight=args.reflect_token_weight)
 
@@ -560,11 +554,6 @@ def main():
     rank0_print(f"train prompts: {len(train_ds)} (per rank/epoch {train_ds.per_epoch()}), "
                 f"val prompts per rank: {len(val_rows)}")
 
-    decoder = None
-    if args.log_images > 0 and is_main():
-        assert args.ar_path and args.encoder_path and args.decoder_path, "--log_images needs the de-tokenizer paths"
-        decoder = ImageDecoder(args, device)
-
     use_wandb = args.report_to == "wandb" and is_main()
     if use_wandb:
         import wandb
@@ -574,17 +563,22 @@ def main():
                    config=vars(args), resume="allow",
                    id=os.environ.get("WANDB_RUN_ID"))
 
-    def log(metrics: Dict, step: int):
+    def log(metrics: Dict, step: int, validation: bool = False):
         if is_main():
             printable = {k: (round(v, 4) if isinstance(v, float) else v)
                          for k, v in metrics.items() if not k.endswith("images")}
             print(f"step={step} {json.dumps(printable)}", flush=True)
+            if validation:
+                eval_dir = args.eval_output_dir or os.path.join(args.output_dir, "evaluations")
+                os.makedirs(eval_dir, exist_ok=True)
+                with open(os.path.join(eval_dir, f"step-{step}.json"), "w") as f:
+                    json.dump({"step": step, **printable}, f, indent=2)
             if use_wandb:
                 import wandb
                 wandb.log(metrics, step=step)
 
     if args.eval_on_start and start_step == 0 and val_rows:
-        log(run_validation(model, rollout, reward, val_rows, args, device, 0, decoder), 0)
+        log(run_validation(model, rollout, reward, val_rows, args, device, 0, decoder), 0, validation=True)
 
     prompt_iter = train_ds.iterate(args.prompts_per_gpu, skip_batches=start_step)
     for step in range(start_step + 1, args.max_steps + 1):
@@ -594,14 +588,14 @@ def main():
         batch = rollout.run(model, prompts)
         t1 = time.time()
         model.eval()
-        score_tree(batch, reward)
-        zero_var, n_groups = assign_advantages(batch, args, gcfg)
+        score_rollouts(batch, reward, decoder)
+        zero_var, n_groups = assign_advantages(batch, gcfg)
         t2 = time.time()
-        train_metrics = train_on_tree(model, rollout, batch, args, gcfg, optimizer, scheduler, device)
+        train_metrics = train_on_rollouts(model, rollout, batch, args, gcfg, optimizer, scheduler, device)
         t3 = time.time()
 
         if step % args.logging_steps == 0:
-            sums = tree_stats(batch, "train/", rollout.cfg.num_rounds)
+            sums = rollout_stats(batch, "train/")
             sums["train/zero_var_groups"] = zero_var
             sums["train/groups"] = n_groups
             sums = reduce_sum(sums, device)
@@ -616,10 +610,11 @@ def main():
         if args.save_steps and step % args.save_steps == 0:
             save_checkpoint(model, optimizer, scheduler, step, args, device)
         if args.eval_steps and val_rows and step % args.eval_steps == 0:
-            log(run_validation(model, rollout, reward, val_rows, args, device, step, decoder), step)
+            log(run_validation(model, rollout, reward, val_rows, args, device, step, decoder), step, validation=True)
 
     if args.max_steps % max(args.save_steps, 1) != 0:
         save_checkpoint(model, optimizer, scheduler, args.max_steps, args, device)
+    reward.close()
     rank0_print("Done.")
     if dist.is_initialized():
         dist.barrier()

@@ -1,58 +1,60 @@
-"""Forced multi-round tree rollout for generate -> self-reflect -> refine.
+"""Independent image/reflection episodes with final-outcome credit.
 
-The schedule mirrors ``eval/iterative_generation_adhoc.py`` so the RL policy
-is trained on exactly the sequence it is evaluated with::
-
-    <prefix><im_start><S0>                     round 0: draft image (729 codes)
-    <im_end>\\nSelf-reflect:                    reflection text (sampled, stops on
-                                               EOS / <|im_end|> / <im_start>)
-    \\n<im_start><S0>                           round k image, unless the
-                                               reflection says "looks good"
-
-Rollouts form a tree: every prompt gets ``branch[0]`` drafts, every live node of
-round k-1 gets ``branch[k]`` (reflection, image) children. A node whose
-reflection contains "looks good" is a leaf (its image is its parent's image).
-
-Each node owns one *segment* of sampled tokens (its image for round 0, its
-reflection + image for later rounds). A leaf's training sequence contains the
-segments of all its ancestors; to count every sampled token once, a leaf trains
-an ancestor's segment only if it is that ancestor's first-born line.
+Each episode starts with a forced image prefix. Images contain a fixed number
+of sampled semantic codes. After each image, a forced self-reflection prefix
+lets the policy sample text until either tokenizer EOS (episode completion) or
+<im_start> (another image). Both sampled boundary tokens are retained and
+trained. Safety limits truncate episodes without inventing EOS. The last
+complete image is scored even for truncated episodes.
 """
 
-import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
 
 import torch
-from transformers import LogitsProcessor, LogitsProcessorList
+from transformers import GenerationConfig, LogitsProcessor, LogitsProcessorList
 
 from llava.train.rl.grpo import KIND_IMG, KIND_NONE, KIND_TXT
 
 ITERATIVE_PROMPT_PREFIX = "Generate an image iteratively by self-reflecting and correcting.\n"
 SYSTEM_PROMPT = "You are a helpful assistant."
 REFLECT_SPLICE = "<im_end>\nSelf-reflect:"
-LOOKS_GOOD_RE = re.compile(r"looks good", re.IGNORECASE)
 SCALE_SEQ_LEN = {0: 729, 1: 169, 2: 81}
 
 
 @dataclass
 class RolloutConfig:
-    branch: List[int] = field(default_factory=lambda: [4, 2])   # per-round fan-out
+    num_rollouts: int = 4
+    max_refinements: int = 3
+    max_seq_len: int = 4096
     scale: int = 0
     gen_seq_len: int = 729
     img_temperature: float = 1.0
-    img_top_k: int = 1200
-    img_top_p: float = 0.95
+    img_top_k: int = 0
+    img_top_p: float = 1.0
     reflect_tokens: int = 128
     reflect_sample: bool = True
     reflect_temperature: float = 1.0
     reflect_top_k: int = 0
-    reflect_top_p: float = 0.95
+    reflect_top_p: float = 1.0
     gen_batch_size: int = 16
 
-    @property
-    def num_rounds(self) -> int:
-        return len(self.branch) - 1
+    def validate_for_training(self):
+        """The PPO log-probs implement only a vocabulary-restricted softmax."""
+        if self.num_rollouts < 2:
+            raise ValueError("RL training requires at least two rollouts per prompt.")
+        if self.max_refinements < 0:
+            raise ValueError("max_refinements must be nonnegative.")
+        if min(self.max_seq_len, self.gen_seq_len, self.reflect_tokens, self.gen_batch_size) <= 0:
+            raise ValueError("Sequence and batch limits must be positive.")
+        if not self.reflect_sample:
+            raise ValueError("RL training requires sampled reflections; greedy decoding is evaluation-only.")
+        for phase in ("img", "reflect"):
+            for setting, required in (("temperature", 1.0), ("top_k", 0), ("top_p", 1.0)):
+                name = f"{phase}_{setting}"
+                if getattr(self, name) != required:
+                    raise ValueError(f"RL training requires --{name}={required}; "
+                                     "other values make sampling disagree with PPO log-probs.")
 
 
 class ImageVocabOnly(LogitsProcessor):
@@ -75,56 +77,34 @@ class NoImageVocab(LogitsProcessor):
         return scores
 
 
-@dataclass(eq=False)   # identity semantics: nodes are tree vertices, never compared by value
-class Node:
+@dataclass
+class Trajectory:
     prompt_idx: int
-    round: int
-    parent: Optional["Node"]
-    first_born: bool
-    seq: List[int]                       # full token sequence so far
-    kinds: List[int]                     # per-token KIND_* aligned with seq
-    seg_start: int = 0                   # where this node's own segment starts
-    codes: Optional[List[int]] = None    # image of this round (parent's if looks_good)
-    looks_good: bool = False
-    reflection: str = ""
-    reflection_len: int = 0
-    children: List["Node"] = field(default_factory=list)
-    # Filled in by the trainer.
+    seq: List[int]
+    kinds: List[int]
+    images: List[List[int]] = field(default_factory=list)  # unshifted semantic codes
+    reflections: List[str] = field(default_factory=list)
+    stop_reason: Optional[str] = None
     am: float = 0.0
     gm: float = 0.0
     reward: float = 0.0
     adv: float = 0.0
+    final_image: object = field(default=None, repr=False)  # exact rendered reward input (PIL)
+    question_scores: List[float] = field(default_factory=list)
+    vqa_list: List = field(default_factory=list)
 
-    def ancestors(self) -> List["Node"]:
-        chain, n = [], self
-        while n is not None:
-            chain.append(n)
-            n = n.parent
-        return chain[::-1]
-
-    def trained_rounds(self) -> List[int]:
-        """Rounds whose segment this leaf trains: its own, plus each ancestor
-        reachable through an unbroken first-born line."""
-        rounds = [self.round]
-        n = self
-        while n.first_born and n.parent is not None:
-            n = n.parent
-            rounds.append(n.round)
-        return rounds
+    @property
+    def codes(self):
+        return self.images[-1]
 
 
 @dataclass
 class RolloutBatch:
     prompts: List[Dict]
-    roots: List[Node]            # round-0 nodes
-    leaves: List[Node]
-    nodes_by_round: List[List[Node]]
-
-    def all_nodes(self) -> List[Node]:
-        return [n for level in self.nodes_by_round for n in level]
+    trajectories: List[Trajectory]
 
 
-class TreeRollout:
+class EpisodeRollout:
     def __init__(self, tokenizer, cfg: RolloutConfig, image_start_id: int,
                  num_image_tokens: int, device):
         self.tok = tokenizer
@@ -135,15 +115,18 @@ class TreeRollout:
         self.pad_id = tokenizer.pad_token_id
         assert self.pad_id is not None
 
-        im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
-        eot_id = tokenizer.convert_tokens_to_ids("<|endoftext|>")
+        self.eos_id = tokenizer.eos_token_id
         self.im_start_tok = tokenizer.convert_tokens_to_ids("<im_start>")
-        self.text_stop_ids = sorted({tokenizer.eos_token_id, im_end_id, eot_id,
-                                     self.im_start_tok, self.pad_id} - {None})
+        if self.eos_id is None or self.eos_id == self.im_start_tok:
+            raise ValueError("Episode EOS must be defined and distinct from <im_start>.")
+        if self.img_start <= self.eos_id < self.img_end:
+            raise ValueError("Episode EOS must be outside the image vocabulary.")
+        self.text_stop_ids = sorted({self.eos_id, self.im_start_tok})
         self._check_special_tokens()
 
         self.reflect_splice = self._encode(REFLECT_SPLICE)
-        self.image_splice = self._encode(f"\n<im_start><S{cfg.scale}>")
+        # <im_start> is sampled by the policy; only the scale is forced here.
+        self.image_splice = self._encode(f"<S{cfg.scale}>")
         self.image_proc = LogitsProcessorList([ImageVocabOnly(self.img_start, self.img_end)])
         self.text_proc = LogitsProcessorList([NoImageVocab(self.img_start, self.img_end)])
         if SCALE_SEQ_LEN[cfg.scale] != cfg.gen_seq_len:
@@ -188,12 +171,15 @@ class TreeRollout:
             chunk = rows[start:start + self.cfg.gen_batch_size]
             ids, mask = self._left_pad(chunk)
             gen = model.generate(
+                # A checkpoint's decoding defaults must not add unmodelled
+                # probability transforms (including Transformers' fallback).
+                generation_config=GenerationConfig(), use_model_defaults=False,
                 input_ids=ids, attention_mask=mask,
                 min_new_tokens=self.cfg.gen_seq_len, max_new_tokens=self.cfg.gen_seq_len,
                 do_sample=True, temperature=self.cfg.img_temperature,
                 top_k=self.cfg.img_top_k, top_p=self.cfg.img_top_p,
                 repetition_penalty=1.0, logits_processor=self.image_proc,
-                pad_token_id=self.pad_id, use_cache=True,
+                pad_token_id=self.pad_id, eos_token_id=None, use_cache=True,
             )[:, ids.shape[1]:]
             if gen.shape[1] != self.cfg.gen_seq_len:
                 raise RuntimeError(f"image phase produced {gen.shape[1]} tokens")
@@ -203,7 +189,7 @@ class TreeRollout:
         return out
 
     @torch.no_grad()
-    def _sample_reflections(self, model, rows: List[List[int]]) -> List[List[int]]:
+    def _sample_reflections(self, model, rows: List[List[int]], max_new_tokens=None) -> List[List[int]]:
         out = []
         for start in range(0, len(rows), self.cfg.gen_batch_size):
             chunk = rows[start:start + self.cfg.gen_batch_size]
@@ -213,133 +199,123 @@ class TreeRollout:
                 kwargs = dict(do_sample=True, temperature=self.cfg.reflect_temperature,
                               top_k=self.cfg.reflect_top_k, top_p=self.cfg.reflect_top_p)
             gen = model.generate(
+                generation_config=GenerationConfig(), use_model_defaults=False,
                 input_ids=ids, attention_mask=mask,
-                max_new_tokens=self.cfg.reflect_tokens, repetition_penalty=1.0,
+                max_new_tokens=max_new_tokens or self.cfg.reflect_tokens, repetition_penalty=1.0,
                 logits_processor=self.text_proc, pad_token_id=self.pad_id,
                 eos_token_id=self.text_stop_ids, use_cache=True, **kwargs,
             )[:, ids.shape[1]:].tolist()
             for row in gen:
-                # Cut at the first stop token (the stop token itself is dropped,
-                # exactly as the eval script does before splicing the next image).
+                # Keep the sampled EOS/transition action, discard only batch padding.
                 cut = len(row)
                 for pos, t in enumerate(row):
                     if t in self.text_stop_ids:
-                        cut = pos
+                        cut = pos + 1
                         break
                 out.append(row[:cut])
         return out
 
-    # -- main entry ------------------------------------------------------------
+    # -- complete independent episodes -----------------------------------------
 
-    def run(self, model, prompts: List[Dict],
-            branch: Optional[List[int]] = None) -> RolloutBatch:
-        branch = list(branch or self.cfg.branch)
+    def run(self, model, prompts: List[Dict], num_rollouts: Optional[int] = None) -> RolloutBatch:
+        count = self.cfg.num_rollouts if num_rollouts is None else num_rollouts
+        if count < 1:
+            raise ValueError("num_rollouts must be positive.")
+        # Respect the model's architectural context limit as well as our budget.
+        limit = min(self.cfg.max_seq_len,
+                    getattr(model.config, "max_position_embeddings", self.cfg.max_seq_len))
         was_training = model.training
         model.eval()
         try:
-            return self._run(model, prompts, branch)
+            return self._run(model, prompts, count, limit)
         finally:
-            if was_training:
-                model.train()
+            model.train(was_training)
 
-    def _run(self, model, prompts, branch) -> RolloutBatch:
-        # Round 0: drafts.
-        roots: List[Node] = []
-        for p_idx, p in enumerate(prompts):
-            prefix = self.make_prefix(p["prompt"])
-            for g in range(branch[0]):
-                roots.append(Node(prompt_idx=p_idx, round=0, parent=None, first_born=(g == 0),
-                                  seq=list(prefix), kinds=[KIND_NONE] * len(prefix),
-                                  seg_start=len(prefix)))
-        images = self._sample_images(model, [n.seq for n in roots])
-        for n, img in zip(roots, images):
-            n.seq.extend(img)
-            n.kinds.extend([KIND_IMG] * len(img))
-            n.codes = [t - self.img_start for t in img]
+    def _run(self, model, prompts, count, limit):
+        trajectories = []
+        for p_idx, prompt in enumerate(prompts):
+            prefix = self.make_prefix(prompt["prompt"])
+            if len(prefix) + self.cfg.gen_seq_len + len(self.reflect_splice) + 1 > limit:
+                raise ValueError("Sequence budget cannot fit the prompt, draft, and an EOS decision.")
+            for _ in range(count):
+                trajectories.append(Trajectory(p_idx, list(prefix), [KIND_NONE] * len(prefix)))
 
-        nodes_by_round = [roots]
-        leaves: List[Node] = []
-        level = roots
-        for k in range(1, len(branch)):
-            children: List[Node] = []
-            for n in level:
-                if n.looks_good:
-                    leaves.append(n)
+        def append_images(pending):
+            images = self._sample_images(model, [t.seq for t in pending])
+            for trajectory, image in zip(pending, images):
+                trajectory.seq.extend(image)
+                trajectory.kinds.extend([KIND_IMG] * len(image))
+                trajectory.images.append([token - self.img_start for token in image])
+
+        if not trajectories:
+            return RolloutBatch(prompts, trajectories)
+        append_images(trajectories)
+        active = trajectories
+        while active:
+            # Group by remaining reflection budget so left-padding cannot make
+            # one row exceed its own sequence limit.
+            groups = {}
+            for trajectory in active:
+                room = limit - len(trajectory.seq) - len(self.reflect_splice)
+                if room <= 0:
+                    trajectory.stop_reason = "max_seq_len"
                     continue
-                for g in range(branch[k]):
-                    seq = n.seq + self.reflect_splice
-                    kinds = n.kinds + [KIND_NONE] * len(self.reflect_splice)
-                    child = Node(prompt_idx=n.prompt_idx, round=k, parent=n, first_born=(g == 0),
-                                 seq=seq, kinds=kinds, seg_start=len(seq))
-                    n.children.append(child)
-                    children.append(child)
-            if not children:
-                # Every live node said "looks good": keep an (empty) level so
-                # all ranks report the same set of per-round metrics.
-                nodes_by_round.append(children)
-                level = children
-                continue
-            reflections = self._sample_reflections(model, [c.seq for c in children])
-            for c, refl in zip(children, reflections):
-                c.seq.extend(refl)
-                c.kinds.extend([KIND_TXT] * len(refl))
-                c.reflection_len = len(refl)
-                c.reflection = self.tok.decode(refl, skip_special_tokens=True).strip()
-                c.looks_good = LOOKS_GOOD_RE.search(c.reflection) is not None
-            pending = [c for c in children if not c.looks_good]
-            for c in pending:
-                c.seq.extend(self.image_splice)
-                c.kinds.extend([KIND_NONE] * len(self.image_splice))
+                trajectory.seq.extend(self.reflect_splice)
+                trajectory.kinds.extend([KIND_NONE] * len(self.reflect_splice))
+                groups.setdefault(min(room, self.cfg.reflect_tokens), []).append(trajectory)
+            pending = []
+            for budget, group in groups.items():
+                reflections = self._sample_reflections(model, [t.seq for t in group], budget)
+                for trajectory, tokens in zip(group, reflections):
+                    trajectory.seq.extend(tokens)
+                    trajectory.kinds.extend([KIND_TXT] * len(tokens))
+                    trajectory.reflections.append(self.tok.decode(tokens, skip_special_tokens=True).strip())
+                    if tokens and tokens[-1] == self.eos_id:
+                        trajectory.stop_reason = "eos"
+                    elif tokens and tokens[-1] == self.im_start_tok:
+                        if len(trajectory.images) - 1 >= self.cfg.max_refinements:
+                            trajectory.stop_reason = "max_refinements"
+                        elif len(trajectory.seq) + len(self.image_splice) + self.cfg.gen_seq_len > limit:
+                            trajectory.stop_reason = "max_seq_len"
+                        else:
+                            trajectory.seq.extend(self.image_splice)
+                            trajectory.kinds.extend([KIND_NONE] * len(self.image_splice))
+                            pending.append(trajectory)
+                    else:
+                        trajectory.stop_reason = ("max_seq_len" if len(trajectory.seq) >= limit
+                                                  else "reflection_limit")
             if pending:
-                images = self._sample_images(model, [c.seq for c in pending])
-                for c, img in zip(pending, images):
-                    c.seq.extend(img)
-                    c.kinds.extend([KIND_IMG] * len(img))
-                    c.codes = [t - self.img_start for t in img]
-            for c in children:
-                if c.looks_good:
-                    c.codes = c.parent.codes
-            nodes_by_round.append(children)
-            level = children
-        leaves.extend(level)
-        return RolloutBatch(prompts=prompts, roots=roots, leaves=leaves,
-                            nodes_by_round=nodes_by_round)
+                append_images(pending)
+            active = pending
+        return RolloutBatch(prompts, trajectories)
 
-    # -- tensors for training ---------------------------------------------------
+    def build_training_rows(self, trajectories: List[Trajectory], reflect_token_weight: float):
+        """Every sampled token receives its episode's final-outcome advantage.
 
-    def build_training_rows(self, leaves: List[Node], reflect_token_weight: float):
-        """Right-padded tensors for a list of leaves.
-
-        Returns dict(input_ids, attention_mask, train_mask, pos_kind, adv, weight);
-        adv / weight are per position (zero outside trained segments).
+        Prompt/splice/padding positions are excluded. Each row's token weights
+        sum to one, so the batch loss averages trajectories rather than letting
+        long episodes dominate. Sampled EOS and <im_start> are text actions.
         """
-        width = max(len(n.seq) for n in leaves)
-        B = len(leaves)
-        input_ids = torch.full((B, width), self.pad_id, dtype=torch.long)
-        attention_mask = torch.zeros((B, width), dtype=torch.long)
-        train_mask = torch.zeros((B, width), dtype=torch.bool)
-        pos_kind = torch.zeros((B, width), dtype=torch.long)
-        adv = torch.zeros((B, width), dtype=torch.float32)
-        weight = torch.zeros((B, width), dtype=torch.float32)
-        for i, leaf in enumerate(leaves):
-            L = len(leaf.seq)
-            input_ids[i, :L] = torch.tensor(leaf.seq, dtype=torch.long)
-            attention_mask[i, :L] = 1
-            pos_kind[i, :L] = torch.tensor(leaf.kinds, dtype=torch.long)
-            trained = set(leaf.trained_rounds())
-            chain = leaf.ancestors()
-            for j, node in enumerate(chain):
-                if node.round not in trained:
-                    continue
-                # A node's segment runs from its seg_start up to the child's
-                # seg_start (the forced splice in between is KIND_NONE).
-                end = chain[j + 1].seg_start if j + 1 < len(chain) else L
-                for pos in range(node.seg_start, end):
-                    kind = leaf.kinds[pos]
-                    if kind == KIND_NONE:
-                        continue
-                    train_mask[i, pos] = True
-                    adv[i, pos] = node.adv
-                    weight[i, pos] = reflect_token_weight if kind == KIND_TXT else 1.0
+        if not trajectories or reflect_token_weight <= 0:
+            raise ValueError("Need trajectories and a positive reflection token weight.")
+        width = max(len(t.seq) for t in trajectories)
+        shape = (len(trajectories), width)
+        input_ids = torch.full(shape, self.pad_id, dtype=torch.long)
+        attention_mask = torch.zeros(shape, dtype=torch.long)
+        pos_kind = torch.zeros(shape, dtype=torch.long)
+        adv = torch.zeros(shape, dtype=torch.float32)
+        weight = torch.zeros(shape, dtype=torch.float32)
+        for i, trajectory in enumerate(trajectories):
+            length = len(trajectory.seq)
+            input_ids[i, :length] = torch.tensor(trajectory.seq)
+            attention_mask[i, :length] = 1
+            pos_kind[i, :length] = torch.tensor(trajectory.kinds)
+            sampled = pos_kind[i] != KIND_NONE
+            if sampled[0] or not sampled.any():
+                raise ValueError("An episode needs a prompt and at least one sampled action.")
+            adv[i, sampled] = trajectory.adv
+            weight[i, pos_kind[i] == KIND_IMG] = 1.0
+            weight[i, pos_kind[i] == KIND_TXT] = reflect_token_weight
+            weight[i] /= weight[i].sum()
         return dict(input_ids=input_ids, attention_mask=attention_mask,
-                    train_mask=train_mask, pos_kind=pos_kind, adv=adv, weight=weight)
+                    train_mask=pos_kind != KIND_NONE, pos_kind=pos_kind, adv=adv, weight=weight)

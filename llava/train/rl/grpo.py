@@ -1,4 +1,4 @@
-"""GRPO pieces: vocab-restricted log-probs, tree advantages, clipped loss.
+"""GRPO pieces: vocab-restricted log-probs, episode advantages, clipped loss.
 
 Position kinds (shared with rollout.py): a sampled token was drawn either from
 the image vocabulary (``KIND_IMG``: the contiguous ``<I0>..<I65535>`` range) or
@@ -27,7 +27,7 @@ LOGPROB_CHUNK = 1024
 class GRPOConfig:
     clip_eps: float = 0.2
     kl_coef: float = 0.01
-    adv_norm: str = "std"       # "std": (r - mean) / (std + eps); "mean": r - mean
+    adv_norm: str = "mean"       # "std": (r - mean) / (std + eps); "mean": r - mean
     adv_eps: float = 1e-4
     reflect_token_weight: float = 1.0
 

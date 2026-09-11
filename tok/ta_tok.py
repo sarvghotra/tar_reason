@@ -1,3 +1,5 @@
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -34,8 +36,7 @@ class TextAlignedTokenizer(nn.Module):
 
         self.bottleneck_dim = bottleneck['args']['bottleneck_dim']
 
-        if teacher == 'google/siglip2-so400m-patch14-384':
-            teacher = '/scratch/jeet/models/pre_train/siglip2-so400m-patch14-384'
+        teacher = os.environ.get("TAR_SIGLIP_MODEL", teacher)
 
         self.encoder_config = AutoConfig.from_pretrained(teacher)
         self.encoder = AutoModel.from_config(self.encoder_config).vision_model

@@ -1,3 +1,5 @@
+Cluster setup, filesystem links, and batch submission: [Cluster README](scripts/clusters/README.md).
+
 ### [NeurIPS 2025] Unifying Visual Understanding and Generation via Text-Aligned Representations
 > [Jiaming Han](https://csuhan.com), [Hao Chen](https://haochen-rye.github.io)<sup>†</sup>, [Yang Zhao](https://scholar.google.com/citations?user=uPmTOHAAAAAJ&hl=zh-CN), [Hanyu Wang](https://hywang66.github.io), [Qi Zhao](https://kevinz8866.github.io), [Ziyan Yang](https://ziyanyang.github.io), [Hao He](https://hehao13.github.io), [Xiangyu Yue](https://xyue.io)<sup>‡</sup>, [Lu Jiang](https://www.lujiang.info)<sup>‡</sup>
 >
@@ -54,6 +56,10 @@
 - [Evaluation](#evaluation)
 
 ### Install
+
+For this Alliance cluster checkout, see [the cluster run guide](scripts/CLUSTER.md)
+for the `tar` uv environment, shared data/checkpoint paths, Slurm submission,
+and outputs under `results/`.
 
 ```bash
 git clone https://github.com/csuhan/Tar && cd Tar
@@ -229,4 +235,3 @@ Note you still need to follow the instructions in [DPG Bench](https://github.com
 
 ### License
 This project is licensed under the [Apache 2.0 License](LICENSE).
-
