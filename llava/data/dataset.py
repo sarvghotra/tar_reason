@@ -1086,11 +1086,21 @@ class LazyCorrectionParquetDataset(LazyParquetDataset):
     first draft, a critique of it and the corrected image. Rewritten here as a
     plain edit pair::
 
-        human: <image> Correction: <instruction>
+        human: <im_start><image><im_end>\nCorrection: <instruction>
         gpt:   <image>
 
     The first image stays on the human side as the image to edit and the second
     becomes the supervised target, so the loss covers only the edited image.
+
+    The human image carries the ``<im_start>``/``<im_end>`` tags explicitly
+    (`preprocess_multimodal` only adds them on the gpt side). They stay masked
+    in the user turn, so `prepare_inputs_labels_for_multimodal` still routes
+    that image through the understanding path rather than treating it as a
+    generation target -- but the masked ``<im_end>`` after it now matches the
+    'self-reflect' test there, so the input image gets the ``<S{k}>`` pool-scale
+    embedding prepended, as it already does at inference time (where every
+    label is IGNORE_INDEX) and in the `self_reflect_parquet` view of the same
+    shards.
 
     With probability ``NO_CHANGE_PROB`` the row is instead turned into a
     no-change sample: the already-corrected image (``images[1]``) is used on
@@ -1101,7 +1111,12 @@ class LazyCorrectionParquetDataset(LazyParquetDataset):
     # Both spellings occur in the source shards ('Self-correction:' in
     # HumanEdit, 'Correction:' in the gpt-edit shards).
     CORRECTION_MARKER_RE = re.compile(r"(?:Self-)?Correction\s*:", re.IGNORECASE)
-    HUMAN_PROMPT_TEMPLATE = DEFAULT_IMAGE_TOKEN + " Correction: {correction}"
+    HUMAN_PROMPT_TEMPLATE = (
+        DEFAULT_IM_START_TOKEN
+        + DEFAULT_IMAGE_TOKEN
+        + DEFAULT_IM_END_TOKEN
+        + "\nCorrection: {correction}"
+    )
     # Fraction of samples rewritten as 'edit already applied -> keep as is'.
     NO_CHANGE_PROB = 0.1
 
