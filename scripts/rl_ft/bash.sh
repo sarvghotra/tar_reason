@@ -21,7 +21,7 @@ REWARD_MODEL_PATH="${REWARD_MODEL_PATH:-$RESULTS_ROOT/pretrained/Qwen3-VL-8B-Ins
 REWARD_PYTHON="${REWARD_PYTHON:-$REPO_ROOT/qwen_reward/bin/python}"
 
 # Independent complete trajectories; each group belongs to one prompt.
-PROMPTS_PER_GPU="${PROMPTS_PER_GPU:-2}"
+PROMPTS_PER_GPU="${PROMPTS_PER_GPU:-4}"
 NUM_ROLLOUTS="${NUM_ROLLOUTS:-4}"
 MAX_REFINEMENTS="${MAX_REFINEMENTS:-3}"
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-4096}"
@@ -36,6 +36,13 @@ CLIP_EPS="${CLIP_EPS:-0.2}"
 NUM_PPO_EPOCHS="${NUM_PPO_EPOCHS:-1}"
 REFLECT_TOKEN_WEIGHT="${REFLECT_TOKEN_WEIGHT:-1.0}"
 ADV_NORM="${ADV_NORM:-mean}"           # std | mean
+LENGTH_NORMALIZATION="${LENGTH_NORMALIZATION:-episode}"  # episode | constant (MAX_SEQ_LEN)
+KL_GRADIENT_CORRECTION="${KL_GRADIENT_CORRECTION:-0}"
+case "$KL_GRADIENT_CORRECTION" in
+    1|true) KL_GRADIENT_ARGS=(--kl_gradient_correction) ;;
+    0|false) KL_GRADIENT_ARGS=(--no-kl_gradient_correction) ;;
+    *) echo 'KL_GRADIENT_CORRECTION must be 0, 1, false, or true.' >&2; exit 1 ;;
+esac
 
 REFLECT_TOKENS="${REFLECT_TOKENS:-128}"
 REFLECT_TEMPERATURE="${REFLECT_TEMPERATURE:-1.0}"  # RL requires 1.0 to match PPO log-probs.
@@ -85,6 +92,8 @@ tar_launch torchrun --standalone --nproc_per_node=${N_GPUS} \
     --clip_eps "${CLIP_EPS}" \
     --kl_coef "${KL_COEF}" \
     --reflect_token_weight "${REFLECT_TOKEN_WEIGHT}" \
+    --length_normalization "${LENGTH_NORMALIZATION}" \
+    "${KL_GRADIENT_ARGS[@]}" \
     --num_ppo_epochs "${NUM_PPO_EPOCHS}" \
     --train_micro_batch "${TRAIN_MICRO_BATCH}" \
     --learning_rate "${LR}" \

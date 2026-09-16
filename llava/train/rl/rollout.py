@@ -289,15 +289,21 @@ class EpisodeRollout:
             active = pending
         return RolloutBatch(prompts, trajectories)
 
-    def build_training_rows(self, trajectories: List[Trajectory], reflect_token_weight: float):
+    def build_training_rows(self, trajectories: List[Trajectory], reflect_token_weight: float,
+                            length_normalization: str = "episode"):
         """Every sampled token receives its episode's final-outcome advantage.
 
-        Prompt/splice/padding positions are excluded. Each row's token weights
-        sum to one, so the batch loss averages trajectories rather than letting
-        long episodes dominate. Sampled EOS and <im_start> are text actions.
+        Prompt/splice/padding positions are excluded. Legacy episode mode makes
+        each row's weights sum to one. Constant mode divides by configured
+        max_seq_len regardless of sampled length (including capped episodes).
+        Sampled EOS and <im_start> remain text actions in both modes.
         """
         if not trajectories or reflect_token_weight <= 0:
             raise ValueError("Need trajectories and a positive reflection token weight.")
+        if length_normalization not in ("episode", "constant"):
+            raise ValueError("length_normalization must be episode or constant")
+        if length_normalization == "constant" and self.cfg.max_seq_len <= 0:
+            raise ValueError("Constant length normalization requires positive max_seq_len.")
         width = max(len(t.seq) for t in trajectories)
         shape = (len(trajectories), width)
         input_ids = torch.full(shape, self.pad_id, dtype=torch.long)
@@ -316,6 +322,7 @@ class EpisodeRollout:
             adv[i, sampled] = trajectory.adv
             weight[i, pos_kind[i] == KIND_IMG] = 1.0
             weight[i, pos_kind[i] == KIND_TXT] = reflect_token_weight
-            weight[i] /= weight[i].sum()
+            weight[i] /= (weight[i].sum() if length_normalization == "episode"
+                          else self.cfg.max_seq_len)
         return dict(input_ids=input_ids, attention_mask=attention_mask,
                     train_mask=pos_kind != KIND_NONE, pos_kind=pos_kind, adv=adv, weight=weight)

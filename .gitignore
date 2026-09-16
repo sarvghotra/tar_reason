@@ -131,3 +131,14 @@ util_scripts/debug_vcot_dataset/
 /reward_model
 /.cluster
 /scripts/clusters/*/config.local.sh
+
+# Local credentials, additional environments, and generated model artifacts.
+.env
+.env.*
+!.env.example
+!.env.*.example
+.venv/
+venv/
+*.safetensors
+/hf_cache/
+/checkpoints/

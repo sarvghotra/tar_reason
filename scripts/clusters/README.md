@@ -83,13 +83,20 @@ N_GPUS=1 CPUS_PER_TASK=8 JOB_MEM=64G JOB_TIME=01:00:00 \
   --job-name=tar-qwen-smoke
 ```
 
-Queue RL training (default: one node, four full H100 80 GB GPUs, 24 CPUs,
-256 GB host RAM, three-hour limit):
+Queue RL training (one node, four full H100 80 GB GPUs, 24 CPUs,
+256 GB host RAM, **seven-day limit**, online W&B, four prompts per GPU):
 
 ```bash
-RUN_NAME=rl_pixel_sft24k \
-  bash scripts/clusters/fir/submit.sh scripts/rl_ft/bash.sh --job-name=tar-rl
+RUN_NAME=rl_pixel_sft_t20_val32 \
+  bash scripts/clusters/fir/submit_rl.sh --job-name=tar-rl
 ```
+
+Authenticate with W&B before submission. The wrapper preserves explicit
+`JOB_TIME`, `WANDB_MODE`, and `PROMPTS_PER_GPU` overrides. It uses the current
+SFT symlink and the fixed 32-prompt validation YAML. Use a fresh run name unless
+intentionally resuming. The general submit wrapper retains its three-hour default
+for other workloads. A seven-day allocation is a maximum runtime; the trainer
+still stops at its configured `MAX_STEPS` (default 500).
 
 Override `N_GPUS`, `GPU_TYPE`, `CPUS_PER_TASK`, `JOB_MEM`, `JOB_TIME`, or
 `SLURM_ACCOUNT` as needed. Prefer `N_GPUS` to changing only sbatch's GPU flag,
@@ -123,8 +130,8 @@ tail -f results/logs/slurm/tar-rl-JOB_ID.out
 tail -f results/logs/slurm/tar-rl-JOB_ID.err
 ```
 
-W&B defaults to offline mode. Set `WANDB_MODE=online` and configure your own
-credentials to upload. Temporary files use `SLURM_TMPDIR` in allocations,
+W&B defaults to online mode; configure your own credentials to upload.
+Set `WANDB_MODE=offline` explicitly when needed. Temporary files use `SLURM_TMPDIR` in allocations,
 otherwise `results/tmp/`. An empty error log alone is not proof of success;
 check the job exit state and the test's saved report.
 

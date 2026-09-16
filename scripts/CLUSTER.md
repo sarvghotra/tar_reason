@@ -45,8 +45,8 @@ For a separate local SigLIP config directory, set `TAR_SIGLIP_MODEL`.
 | Validation metric JSON files and generated evaluation images | `results/evaluations/$RUN_NAME/` |
 | Hugging Face, Triton, extension and W&B caches | `results/cache/` |
 
-W&B defaults to `WANDB_MODE=offline`. To upload runs, explicitly set
-`WANDB_MODE=online` and provide your own W&B authentication and, if needed,
+W&B defaults to `WANDB_MODE=online` for future runs. Provide your own W&B
+authentication and, if needed,
 `WANDB_ENTITY`. No API keys or another user's W&B entity are embedded in scripts.
 Temporary files use `SLURM_TMPDIR` inside jobs and `results/tmp/` otherwise.
 

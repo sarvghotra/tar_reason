@@ -30,6 +30,12 @@ class GRPOConfig:
     adv_norm: str = "mean"       # "std": (r - mean) / (std + eps); "mean": r - mean
     adv_eps: float = 1e-4
     reflect_token_weight: float = 1.0
+    length_normalization: str = "episode"  # legacy episode mean | fixed max_seq_len
+    kl_gradient_correction: bool = False
+
+    def __post_init__(self):
+        if self.length_normalization not in ("episode", "constant"):
+            raise ValueError("length_normalization must be episode or constant")
 
 
 # ---------------------------------------------------------------------------
@@ -142,8 +148,8 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
     """Token-level clipped surrogate + KL(policy || ref) estimator.
 
     All inputs are flat (N,) over the trainable tokens of one micro-batch.
-    ``denom`` is the total token weight of the whole optimizer step so the
-    micro-batch losses sum to a proper weighted mean.
+    ``denom`` is the number of episodes in the whole optimizer step. Token
+    weights already include the selected episode or constant normalization.
     """
     log_ratio = logp - old_logp
     ratio = log_ratio.exp()
@@ -153,13 +159,20 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
 
     d = ref_logp - logp
     kl = d.exp() - d - 1.0
+    if cfg.kl_gradient_correction:
+        # Do not detach or clip this ratio: its derivative is needed even when
+        # the current policy equals the sampling policy and ratio == 1.
+        kl = ratio * kl
 
     tok = weight * (pg + cfg.kl_coef * kl)
     loss = tok.sum() / denom
 
     with torch.no_grad():
         w = weight
-        wsum = w.sum().clamp(min=1.0)
+        # Constant-normalized short episodes can have total weight below one.
+        # Preserve the historical metric formula in legacy mode.
+        wsum = w.sum().clamp(min=1.0 if cfg.length_normalization == "episode"
+                            else torch.finfo(w.dtype).tiny)
         img = kinds == KIND_IMG
         txt = kinds == KIND_TXT
         metrics = {

@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/linzhiqiu/t2v_metrics",
+  "revision": "6ecb74f92028f42c7e64546d3a71e98c8c73068f",
+  "files": {
+    "constants.py": "f93f748270e4461bd46b1c89a28b71d852fba0d7013ae3d8f6af8618ec0c7e3c",
+    "models/model.py": "4b85bffbe81e82dba796ab023eaa3f36d76c4253641da6ae8c538deb759710d4",
+    "models/vqascore_models/vqa_model.py": "7b3b2d3be37007d6aed60784ce75d96dc71fe27b57ba20d6d3b5e6592a30b5f5",
+    "models/vqascore_models/qwen3vl_model.py": "999009c94ec50f1458b696073dd16f452a2833c6ffb723497f664abeedf0717f"
+  },
+  "note": "Unmodified Qwen evaluator and its three base modules. Empty package initializers avoid loading unrelated API/audio/video models."
+}

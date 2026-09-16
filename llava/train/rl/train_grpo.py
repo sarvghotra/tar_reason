@@ -3,7 +3,8 @@
 Each prompt gets G independent trajectories. Only the last complete image of
 an episode is rendered and scored by frozen Qwen3-VL soft-TIFA AM. Its prompt-relative
 advantage trains every sampled action in that episode, including EOS. The loss
-averages tokens within episodes, then episodes within the batch. Safety-limit
+defaults to averaging tokens within episodes, then episodes within the batch;
+constant token normalization and corrected KL gradients are opt-in. Safety-limit
 truncations are reported separately and score their last complete image.
 
 Only LoRA trains. Parameters are synchronized before optimizer creation and
@@ -54,7 +55,7 @@ def parse_args():
     p.add_argument("--data_path", required=True, help="YAML listing train .jsonl files")
     p.add_argument("--eval_data_path", default=None, help="YAML listing val .jsonl files")
     p.add_argument("--max_atoms", type=int, default=None)
-    p.add_argument("--prompts_per_gpu", type=int, default=2)
+    p.add_argument("--prompts_per_gpu", type=int, default=4)
     # Rollout
     p.add_argument("--num_rollouts", type=int, default=4, help="Independent episodes per prompt.")
     p.add_argument("--max_refinements", type=int, default=3, help="Safety cap on image corrections; EOS can stop earlier.")
@@ -81,6 +82,10 @@ def parse_args():
     p.add_argument("--clip_eps", type=float, default=0.2)
     p.add_argument("--kl_coef", type=float, default=0.01)
     p.add_argument("--reflect_token_weight", type=float, default=1.0)
+    p.add_argument("--length_normalization", choices=["episode", "constant"], default="episode",
+                   help="Legacy episode mean, or divide token losses by fixed max_seq_len.")
+    p.add_argument("--kl_gradient_correction", action=argparse.BooleanOptionalAction, default=False,
+                   help="Multiply K3 KL by the differentiable, unclipped policy/old-policy ratio.")
     p.add_argument("--num_ppo_epochs", type=int, default=1)
     p.add_argument("--train_micro_batch", type=int, default=2)
     # Optim
@@ -242,7 +247,8 @@ def save_checkpoint(model, optimizer, scheduler, step, args, device):
         torch.save(optimizer.state_dict(), os.path.join(ck, "optimizer.pt"))
         torch.save(scheduler.state_dict(), os.path.join(ck, "scheduler.pt"))
         with open(os.path.join(ck, "state.json"), "w") as f:
-            json.dump({"step": step, "objective": RL_OBJECTIVE}, f)
+            json.dump({"step": step, "objective": RL_OBJECTIVE,
+                       "rl_method": rl_method_settings(args)}, f)
         # Prune.
         cks = sorted(
             (int(n.split("-")[1]), n) for n in os.listdir(args.output_dir)
@@ -310,12 +316,28 @@ def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
         "truncated_rate", "eos_rate", "max_refinements_rate", "max_seq_len_rate", "reflection_limit_rate")}
 
 
-def validate_resume_checkpoint(path):
+def rl_method_settings(args):
+    mode = getattr(args, "length_normalization", "episode")
+    return {"length_normalization": mode,
+            "normalization_constant": args.max_seq_len if mode == "constant" else None,
+            "kl_gradient_correction": getattr(args, "kl_gradient_correction", False)}
+
+
+def validate_resume_checkpoint(path, args=None):
     with open(os.path.join(path, "state.json")) as f:
         state = json.load(f)
     if state.get("objective") != RL_OBJECTIVE:
         raise ValueError("Cannot resume a checkpoint from the old local-reward or semantic-reward objective. "
                          "Use a new output directory/run name for pixel Qwen soft-TIFA AM GRPO.")
+    if args is not None:
+        legacy = {"length_normalization": "episode", "normalization_constant": None,
+                  "kl_gradient_correction": False}
+        saved = state.get("rl_method", legacy)
+        requested = rl_method_settings(args)
+        if saved != requested:
+            raise ValueError(f"RL method settings differ from checkpoint: saved={saved}, "
+                             f"requested={requested}. Use matching flags to resume, or a fresh "
+                             "output directory/run name for the new method.")
     return state
 
 
@@ -330,8 +352,17 @@ def train_on_rollouts(model, rollout: EpisodeRollout, batch: RolloutBatch, args,
     trajectories = sorted(batch.trajectories, key=lambda t: len(t.seq))
     micro = [trajectories[i:i + args.train_micro_batch]
              for i in range(0, len(trajectories), args.train_micro_batch)]
-    rows = [rollout.build_training_rows(m, args.reflect_token_weight) for m in micro]
-    denom = max(len(trajectories), 1)  # each row has unit total token weight
+    rows = [rollout.build_training_rows(m, args.reflect_token_weight, gcfg.length_normalization)
+            for m in micro]
+    denom = max(len(trajectories), 1)  # average episodes after token normalization
+    total_weight = sum(float(r["weight"].sum()) for r in rows)
+    if gcfg.length_normalization == "constant" and dist.is_initialized():
+        # The caller averages metrics across ranks. Divide ratio diagnostic
+        # numerators by the mean rank weight so that this gives a global
+        # weighted mean even when ranks sample different episode lengths.
+        rank_weight = torch.tensor(total_weight, dtype=torch.float64, device=device)
+        dist.all_reduce(rank_weight, op=dist.ReduceOp.SUM)
+        total_weight = float(rank_weight) / dist.get_world_size()
     n_tokens = int(sum(r["train_mask"].sum() for r in rows))
 
     # Reference log-probs (adapters off) are fixed for the whole step.
@@ -383,7 +414,12 @@ def train_on_rollouts(model, rollout: EpisodeRollout, batch: RolloutBatch, args,
     optimizer.zero_grad(set_to_none=True)
     for k in list(agg):
         if k not in ("loss", "grad_norm"):
-            agg[k] /= denom
+            # PG/KL retain the objective's normalization. Ratio diagnostics
+            # remain weighted means rather than shrinking with episode length.
+            metric_denom = (max(total_weight, 1e-30)
+                            if gcfg.length_normalization == "constant"
+                            and k in ("clip_frac", "approx_kl_old") else denom)
+            agg[k] /= metric_denom
     agg["train_tokens"] = n_tokens
     return agg
 
@@ -510,7 +546,7 @@ def main():
     rank0_print(f"image vocab: start={image_start_id} n={num_image_tokens}")
 
     resume_dir = latest_checkpoint(args.output_dir) if args.resume else None
-    resume_state = validate_resume_checkpoint(resume_dir) if resume_dir else None
+    resume_state = validate_resume_checkpoint(resume_dir, args) if resume_dir else None
     model = load_policy(args, device, adapter_dir=resume_dir)
 
     params = [p for p in model.parameters() if p.requires_grad]
@@ -541,7 +577,9 @@ def main():
     reward = QwenPixelReward(args.reward_python, args.reward_model_name_or_path,
                              device, args.reward_timeout)
     gcfg = GRPOConfig(clip_eps=args.clip_eps, kl_coef=args.kl_coef, adv_norm=args.adv_norm,
-                      reflect_token_weight=args.reflect_token_weight)
+                      reflect_token_weight=args.reflect_token_weight,
+                      length_normalization=args.length_normalization,
+                      kl_gradient_correction=args.kl_gradient_correction)
 
     train_ds = GenEval2PromptDataset(args.data_path, seed=args.seed, rank=rank,
                                      world_size=world_size, max_atoms=args.max_atoms)

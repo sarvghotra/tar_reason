@@ -32,7 +32,12 @@ Qwen3-VL-8B-Instruct judge computes GenEval2 soft-TIFA AM on those pixels. Do no
 restore semantic-token rewards or local improvement credit. All sampled actions
 in an episode receive its final reward minus the same prompt's mean reward
 (optional standard-deviation normalization remains supported). Loss weights
-are normalized within episodes, then averaged across episodes.
+default to normalization within episodes, then averaging across episodes.
+`--length_normalization constant` instead divides sampled token weights by the
+configured `max_seq_len` before averaging episodes. `--kl_gradient_correction`
+enables the differentiable, unclipped policy ratio on K3 KL. Both are opt-in;
+legacy defaults are `episode` and correction off. Checkpoint method metadata
+must match on resume; missing metadata means legacy settings.
 
 Safety caps currently default to 3 refinements, 128 tokens per reflection, and
 4096 total tokens subject to the architectural context limit. Capped episodes
@@ -96,3 +101,9 @@ allocation may be cancelled when its owning terminal disappears. Inspect
 `squeue`, `sacct`, and both stdout/stderr before reporting success. The GPU smoke
 test writes reports under `results/evaluations/qwen_reward_smoke/` and performs
 no optimizer updates. Passing it is not equivalent to validating a full RL run.
+
+## W&B preference
+
+Use online W&B logging for future runs by default (`WANDB_MODE=online`).
+Keep credentials outside version control. Do not restart existing offline runs
+just to change logging mode; job 59261866 was explicitly left offline.
