@@ -1180,14 +1180,118 @@ class LazyCorrectionParquetDataset(LazyParquetDataset):
             # edit on it so the target is identical to the input image.
             sources["image"] = [images[1], images[1]]
 
-        sources["conversations"] = [
+        sources["conversations"] = self._build_conversations(correction)
+        return sources
+
+    def _build_conversations(self, correction):
+        """Lay the two images and the instruction out as a conversation.
+
+        Overridden by `LazyRefineParquetDataset`, which keeps both images on
+        the assistant side instead of splitting them across the two turns.
+        """
+        return [
             {
                 "from": "human",
                 "value": self.HUMAN_PROMPT_TEMPLATE.format(correction=correction),
             },
             {"from": "gpt", "value": DEFAULT_IMAGE_TOKEN},
         ]
-        return sources
+
+
+class LazyRefineParquetDataset(LazyCorrectionParquetDataset):
+    """Image-edit rows re-cast as a draft-critique-refine rollout.
+
+    Consumes the same shards as `correction_parquet` (UnicEdit, the gpt-edit
+    shards, HumanEdit): two images plus a correction instruction, which may sit
+    on either side of the source conversation. Where `correction_parquet`
+    rewrites them into a single-step edit -- input image in the user turn,
+    target image in the assistant turn -- this keeps *both* images on the
+    assistant side::
+
+        human: <ITERATIVE_IMG_GEN_PROMPT_PREFIX>
+        gpt:   <im_start><image><im_end>
+               Correction: <instruction>
+               <im_start><image><im_end>
+
+    which is the shape the model rolls out at inference: draft the image,
+    critique it, emit the corrected one. Everything up to the final image is
+    masked, so the loss covers only the refined image (and the tokens closing
+    the assistant turn, exactly as in `correction_parquet`). The draft image
+    and the instruction are conditioning, not targets -- the draft is
+    teacher-forced here, so the user turn carries no caption beyond the prefix.
+
+    `add_prompt_prefix` is irrelevant for this class: the conversation is
+    rebuilt from scratch and always carries the prefix. `no_eos` defaults off,
+    since the refined image genuinely ends the rollout here.
+
+    `NO_CHANGE_PROB` is inherited: that fraction of rows is rewritten so the
+    draft already satisfies the instruction and the refined image reproduces
+    it, teaching the model to leave a good draft alone.
+    """
+
+    HUMAN_PROMPT = LazyParquetDataset.ITERATIVE_IMG_GEN_PROMPT_PREFIX.strip()
+    GPT_RESPONSE_TEMPLATE = (
+        DEFAULT_IMAGE_TOKEN
+        + "\nCorrection: {correction}\n"
+        + DEFAULT_IMAGE_TOKEN
+    )
+
+    def __init__(self, *args, add_suffix_no_correction=False, **kwargs):
+        if add_suffix_no_correction:
+            # The suffix turns the instruction into 'Correction: looks good',
+            # which `parse_item` then rejects as needing no edit -- i.e. it
+            # would silently drop every row.
+            raise ValueError(
+                "refine_parquet does not support add_suffix_no_correction"
+            )
+        super().__init__(*args, add_suffix_no_correction=False, **kwargs)
+
+    def _build_conversations(self, correction):
+        return [
+            {"from": "human", "value": self.HUMAN_PROMPT},
+            {
+                "from": "gpt",
+                "value": self.GPT_RESPONSE_TEMPLATE.format(correction=correction),
+            },
+        ]
+
+    def _get_item(self, sources, rng, remove_eos=True):
+        data_dict = super()._get_item(sources, rng, remove_eos=remove_eos)
+        data_dict["labels"] = self._mask_upto_last_image(
+            data_dict["input_ids"], data_dict["labels"]
+        )
+        return data_dict
+
+    def _mask_upto_last_image(self, input_ids, labels):
+        """Set ``IGNORE_INDEX`` on everything before the last assistant image."""
+        im_start_id = self.tokenizer.convert_tokens_to_ids(DEFAULT_IM_START_TOKEN)
+
+        inp = input_ids.tolist()
+        masked_labels = labels.clone()
+
+        image_positions = [
+            i
+            for i, token_id in enumerate(inp)
+            if token_id == IMAGE_TOKEN_INDEX
+            # An image whose label is already IGNORE_INDEX sits in a
+            # human/system turn; only assistant-side images count here.
+            and labels[i].item() != IGNORE_INDEX
+        ]
+        if len(image_positions) < 2:
+            raise ValueError(
+                f"refine_parquet expects 2 images in the assistant turn "
+                f"(draft + refined), got {len(image_positions)}"
+            )
+
+        last_image = image_positions[-1]
+        mask_end = (
+            last_image - 1
+            if last_image > 0 and inp[last_image - 1] == im_start_id
+            else last_image
+        )
+        masked_labels[:mask_end] = IGNORE_INDEX
+
+        return masked_labels
 
 
 class FiniteParquetDatasetMixin:
@@ -1278,6 +1382,14 @@ class LazyCorrectionParquetValDataset(
     FiniteParquetDatasetMixin, LazyCorrectionParquetDataset
 ):
     # Validation stays edit-only so it is comparable across evals.
+    NO_CHANGE_PROB = 0.0
+
+
+class LazyRefineParquetValDataset(
+    FiniteParquetDatasetMixin, LazyRefineParquetDataset
+):
+    # Same reason as the correction_parquet val class: keep every row a real
+    # refinement so the eval loss stays comparable across evals.
     NO_CHANGE_PROB = 0.0
 
 
@@ -1434,6 +1546,10 @@ def get_dataset_cls(name):
         dataset_cls = LazyCorrectionParquetDataset
     elif name == 'correction_parquet_val':
         dataset_cls = LazyCorrectionParquetValDataset
+    elif name == 'refine_parquet':
+        dataset_cls = LazyRefineParquetDataset
+    elif name == 'refine_parquet_val':
+        dataset_cls = LazyRefineParquetValDataset
     elif name == 'weighted_parquet':
         dataset_cls = WeightedDataset
     else:
