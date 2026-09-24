@@ -44,8 +44,9 @@ EVAL_SET_NAME=tiif-bench-testmini_eval
 # MODEL_NAME=7B
 # MODEL_PATH=/home/mila/s/sarvjeet-singh.ghotra/scratch/models/pre_train/tar/Tar-7B
 
-MODEL_NAME=slf_ref_edit_t20_16K_greedy_slf_ref_draft_S0
-MODEL_PATH=/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/output_dir/fir/slf_ref_edit_t20/checkpoint-16000
+MODEL_NAME=slf_ref_edit_t21_17K_greedy_slf_ref_draft_S0
+MODEL_PATH=/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/output_dir/fir/slf_ref_edit_t21/checkpoint-17000
+# /network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/output_dir/fir/slf_ref_edit_t20/checkpoint-16000
 
 AR_RES=512
 AR_MODEL=/home/mila/s/sarvjeet-singh.ghotra/scratch/models/pre_train/tar/ar_dtok_lp_${AR_RES}px.pth
@@ -54,7 +55,7 @@ AR_MODEL=/home/mila/s/sarvjeet-singh.ghotra/scratch/models/pre_train/tar/ar_dtok
 JUDGE_PATH=$(ls -d /network/scratch/s/sarvjeet-singh.ghotra/hf_home/models/models--Qwen--Qwen2.5-VL-7B-Instruct/snapshots/*/ | head -1)
 VLLM_PYTHON=/network/scratch/s/sarvjeet-singh.ghotra/installs/miniforge3/envs/vllm/bin/python
 
-SEEDS=(13 17 91)
+SEEDS=(13) # 17 91)
 OUTPUT_DIR=/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/${EVAL_SET_NAME}/
 
 # RL="_RL_rl_ft_oracle_t2_ckpt_500"
@@ -83,33 +84,33 @@ module load cuda/12.1.1
 export LD_LIBRARY_PATH="/network/scratch/s/sarvjeet-singh.ghotra/installs/miniforge3/envs/tar/lib:${LD_LIBRARY_PATH:-}"
 export PYTHONPATH=$(pwd):${PYTHONPATH:-}
 
-# torchrun --standalone --nproc_per_node=$N_GPUS \
-#     eval/iterative_tiif_bench_adhoc.py \
-#     --model ${MODEL_PATH} \
-#     --gen_model ${GEN_MODEL} \
-#     --output_dir ${OUTPUT_DIR} \
-#     --prompts_dir ${PROMPTS_DIR} \
-#     --eval_model_name ${MODEL_NAME} \
-#     --repeat $REPEAT \
-#     --seed $SEED \
-#     --temperature 1.0 \
-#     --top_k 1200 \
-#     --top_p 0.95 \
-#     --reflect_temperature 1.0 \
-#     --reflect_top_k 1200 \
-#     --reflect_top_p 0.95 \
-#     --batch_size 32 \
-#     --decode_batch_size 32 \
-#     --reflect_tokens 128 \
-#     --gen_seq_len 729 \
-#     --cfg_scale 4.0 \
-#     --ar_path $AR_MODEL \
-#     --encoder_path /tmp/ta_tok.pth \
-#     --decoder_path /home/mila/s/sarvjeet-singh.ghotra/scratch/models/pre_train/tar/vq_ds16_t2i.pt \
-#     --verbose \
-#     --draft_img_scale 0 \
-#     --draft_gen_seq_len 729 \
-#     $LORA_ARG
+torchrun --standalone --nproc_per_node=$N_GPUS \
+    eval/iterative_tiif_bench_adhoc.py \
+    --model ${MODEL_PATH} \
+    --gen_model ${GEN_MODEL} \
+    --output_dir ${OUTPUT_DIR} \
+    --prompts_dir ${PROMPTS_DIR} \
+    --eval_model_name ${MODEL_NAME} \
+    --repeat $REPEAT \
+    --seed $SEED \
+    --temperature 1.0 \
+    --top_k 1200 \
+    --top_p 0.95 \
+    --reflect_temperature 1.0 \
+    --reflect_top_k 1200 \
+    --reflect_top_p 0.95 \
+    --batch_size 64 \
+    --decode_batch_size 64 \
+    --reflect_tokens 128 \
+    --gen_seq_len 729 \
+    --cfg_scale 4.0 \
+    --ar_path $AR_MODEL \
+    --encoder_path /tmp/ta_tok.pth \
+    --decoder_path /home/mila/s/sarvjeet-singh.ghotra/scratch/models/pre_train/tar/vq_ds16_t2i.pt \
+    --verbose \
+    --draft_img_scale 0 \
+    --draft_gen_seq_len 729 \
+    $LORA_ARG
 
 
 ############################ 2. Qwen2.5-VL judge ############################
