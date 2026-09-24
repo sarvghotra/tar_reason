@@ -8,8 +8,12 @@ Per optimizer step, each rank:
      in latent space with a frozen Tar LM (``--reward_kind latent``, no pixel
      decode) or on the de-tokenized PNG with a served VLM judge
      (``--reward_kind pixel``, see llava/train/rl/pixel_reward_server.py),
-     reward(draft)  = a*AM + (1-a)*GM
-     reward(round k)= a*(AM_k - AM_{k-1}) + (1-a)*(GM_k - GM_{k-1})   (0 if "looks good")
+     score(node)    = a*AM + (1-a)*GM of the node's image
+     reward(draft)  = score(draft)                          (--draft_reward own)
+                    = mean score over the draft's leaves    (--draft_reward children)
+     reward(round k)= score(child) - score(parent)          (refined)
+                    = -stop_penalty * max(0, stop_threshold - score(parent))
+                                                            ("looks good")
   3. normalises rewards within groups (drafts of a prompt / children of a node),
   4. takes a clipped policy-gradient step on the LoRA adapters with a KL penalty
      to the frozen base (adapters disabled).
@@ -93,6 +97,21 @@ def parse_args():
                    help="Decoded images per POST to the reward server.")
     p.add_argument("--reward_decode_batch", type=int, default=8,
                    help="Images de-tokenized per de-tokenizer forward pass.")
+    p.add_argument("--draft_reward", default="own", choices=["own", "children"],
+                   help="own: a draft is rewarded with its own score. children: with the "
+                        "mean final score of its leaves, so it is credited for the outcome "
+                        "of the whole trajectory (refinement tokens keep the parent baseline).")
+    p.add_argument("--stop_penalty", type=float, default=0.0,
+                   help="A 'looks good' child is rewarded -stop_penalty * max(0, "
+                        "stop_threshold - parent_score) instead of 0, so stopping on an "
+                        "imperfect image costs something. 0 disables.")
+    p.add_argument("--stop_threshold", type=float, default=1.0,
+                   help="Parent score at or above which 'looks good' is free (see --stop_penalty).")
+    p.add_argument("--min_refines", type=int, default=0,
+                   help="The first N children of every parent must refine: a 'looks good' "
+                        "reflection is re-sampled (up to --refine_resample_tries times). "
+                        "Training only; validation always uses the policy as is.")
+    p.add_argument("--refine_resample_tries", type=int, default=3)
     # GRPO
     p.add_argument("--group", default="parent", choices=["parent", "prompt"],
                    help="Normalise refinement rewards among siblings (parent) or all "
@@ -114,6 +133,10 @@ def parse_args():
     p.add_argument("--eval_steps", type=int, default=25)
     p.add_argument("--eval_on_start", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--eval_max_prompts", type=int, default=None)
+    p.add_argument("--eval_branch", default=None,
+                   help="Fan-out per round for validation, e.g. '1,1,1,1' for a 3-round chain. "
+                        "Default: a chain as deep as --branch. Rounds beyond --branch are "
+                        "reported as val/am_k etc., so am can be tracked past the trained depth.")
     p.add_argument("--save_steps", type=int, default=25)
     p.add_argument("--save_total_limit", type=int, default=3)
     p.add_argument("--logging_steps", type=int, default=1)
@@ -241,12 +264,26 @@ def save_checkpoint(model, optimizer, scheduler, step, args, device):
 # Reward + advantages over a rollout tree
 # ---------------------------------------------------------------------------
 
+def descendant_leaves(n: Node) -> List[Node]:
+    if not n.children:
+        return [n]
+    return [leaf for c in n.children for leaf in descendant_leaves(c)]
+
+
 @torch.no_grad()
-def score_tree(batch: RolloutBatch, reward):
+def score_tree(batch: RolloutBatch, reward, draft_reward: str = "own",
+               stop_penalty: float = 0.0, stop_threshold: float = 1.0):
     """Fill node.am / node.gm / node.reward for every node (each image scored once).
 
     ``reward`` is a TarLatentVQAReward or a PixelVQAReward; both expose the same
     ``score_images`` / ``combine`` API.
+
+    Rewards (see the module docstring): a refined child gets its score minus its
+    parent's (the parent score is the within-group baseline); a "looks good"
+    child gets ``-stop_penalty * max(0, stop_threshold - parent_score)``; a
+    draft gets its own score (``draft_reward="own"``) or the mean final score of
+    its leaves (``"children"``). Intermediate rounds of deeper trees keep the
+    parent-relative delta.
     """
     to_score: List[Node] = []
     for level in batch.nodes_by_round:
@@ -264,9 +301,17 @@ def score_tree(batch: RolloutBatch, reward):
                 n.reward = reward.combine(n.am, n.gm)
             elif n.looks_good:
                 n.am, n.gm = n.parent.am, n.parent.gm
-                n.reward = 0.0
+                parent_score = reward.combine(n.parent.am, n.parent.gm)
+                n.reward = -stop_penalty * max(0.0, stop_threshold - parent_score)
             else:
                 n.reward = reward.combine(n.am, n.gm) - reward.combine(n.parent.am, n.parent.gm)
+    if draft_reward == "children":
+        # Leaves' am/gm are final at this point (inherited for "looks good").
+        for root in batch.roots:
+            leaves = descendant_leaves(root)
+            root.reward = sum(reward.combine(l.am, l.gm) for l in leaves) / len(leaves)
+    elif draft_reward != "own":
+        raise ValueError(f"Unknown draft_reward {draft_reward}")
 
 
 def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig):
@@ -302,6 +347,7 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int) -> Dict[str, f
         s[f"{prefix}n_{r}"] = len(level)
         if r > 0:
             s[f"{prefix}looks_good_{r}"] = sum(n.looks_good for n in level)
+            s[f"{prefix}forced_refine_{r}"] = sum(n.forced_refine for n in level)
             s[f"{prefix}reflect_len_{r}"] = sum(n.reflection_len for n in level)
             deltas = [n.am - n.parent.am for n in level]
             s[f"{prefix}delta_am_{r}"] = sum(deltas)
@@ -324,6 +370,7 @@ def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
         out[f"{prefix}reward_{r}"] = s[f"{prefix}reward_{r}"] / n
         if r > 0:
             out[f"{prefix}looks_good_{r}"] = s[f"{prefix}looks_good_{r}"] / n
+            out[f"{prefix}forced_refine_{r}"] = s[f"{prefix}forced_refine_{r}"] / n
             out[f"{prefix}reflect_len_{r}"] = s[f"{prefix}reflect_len_{r}"] / n
             out[f"{prefix}delta_am_{r}"] = s[f"{prefix}delta_am_{r}"] / n
             out[f"{prefix}improved_{r}"] = s[f"{prefix}improved_{r}"] / n
@@ -408,21 +455,23 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
     if not val_rows:
         return {}
     torch.manual_seed(args.seed * 7919 + 17)
-    branch = [1] * len(rollout.cfg.branch)
-    saved = rollout.cfg.reflect_sample
+    branch = args.eval_branch_list or [1] * len(rollout.cfg.branch)
+    num_rounds = len(branch) - 1
+    saved = (rollout.cfg.reflect_sample, rollout.cfg.min_refines)
     rollout.cfg.reflect_sample = False   # greedy reflection, like the eval script
+    rollout.cfg.min_refines = 0          # the policy decides when to stop, as in eval
     sums: Dict[str, float] = {}
     samples = []
     bs = max(args.gen_batch_size, 1)
     for start in range(0, len(val_rows), bs):
         batch = rollout.run(model, val_rows[start:start + bs], branch=branch)
-        score_tree(batch, reward)
-        for k, v in tree_stats(batch, "val/", rollout.cfg.num_rounds).items():
+        score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold)
+        for k, v in tree_stats(batch, "val/", num_rounds).items():
             sums[k] = sums.get(k, 0.0) + v
         if decoder is not None and is_main() and len(samples) < args.log_images:
             for leaf in batch.leaves[:args.log_images - len(samples)]:
                 samples.append((leaf, batch.prompts[leaf.prompt_idx]["prompt"]))
-    rollout.cfg.reflect_sample = saved
+    rollout.cfg.reflect_sample, rollout.cfg.min_refines = saved
     sums = reduce_sum(sums, device)
     out = finalize_stats(sums, "val/")
     if decoder is not None and is_main() and samples:
@@ -539,6 +588,12 @@ def main():
     assert len(branch) >= 1 and all(b >= 1 for b in branch), "--branch must be positive ints"
     if branch[0] < 2:
         rank0_print("WARNING: branch[0] < 2 gives zero advantage for every draft.")
+    args.eval_branch_list = None
+    if args.eval_branch:
+        eb = [int(x) for x in args.eval_branch.split(",") if x.strip()]
+        assert len(eb) >= 1 and all(b >= 1 for b in eb), "--eval_branch must be positive ints"
+        args.eval_branch_list = eb
+    rank0_print(f"branch: train={branch} eval={args.eval_branch_list or [1] * len(branch)}")
 
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     rank = int(os.environ.get("RANK", "0"))
@@ -581,8 +636,14 @@ def main():
         img_temperature=args.img_temperature, img_top_k=args.img_top_k, img_top_p=args.img_top_p,
         reflect_tokens=args.reflect_tokens, reflect_sample=True,
         reflect_temperature=args.reflect_temperature, reflect_top_k=args.reflect_top_k,
-        reflect_top_p=args.reflect_top_p, gen_batch_size=args.gen_batch_size)
+        reflect_top_p=args.reflect_top_p, gen_batch_size=args.gen_batch_size,
+        min_refines=args.min_refines, refine_resample_tries=args.refine_resample_tries)
     rollout = TreeRollout(tokenizer, rcfg, image_start_id, num_image_tokens, device)
+    if len(branch) > 1 and args.min_refines > branch[1]:
+        rank0_print(f"WARNING: --min_refines {args.min_refines} > branch[1] {branch[1]}; "
+                    f"every child is forced to refine.")
+    rank0_print(f"reward: draft_reward={args.draft_reward} stop_penalty={args.stop_penalty} "
+                f"stop_threshold={args.stop_threshold} min_refines={args.min_refines}")
 
     base = model.get_base_model()
 
@@ -653,7 +714,7 @@ def main():
         batch = rollout.run(model, prompts)
         t1 = time.time()
         model.eval()
-        score_tree(batch, reward)
+        score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold)
         zero_var, n_groups = assign_advantages(batch, args, gcfg)
         t2 = time.time()
         train_metrics = train_on_tree(model, rollout, batch, args, gcfg, optimizer, scheduler, device)

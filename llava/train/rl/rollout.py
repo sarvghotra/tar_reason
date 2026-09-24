@@ -49,6 +49,14 @@ class RolloutConfig:
     reflect_top_k: int = 0
     reflect_top_p: float = 0.95
     gen_batch_size: int = 16
+    # Forced refinement: the first ``min_refines`` children of every parent
+    # must refine. If such a child's reflection says "looks good" it is
+    # re-sampled up to ``refine_resample_tries`` times; if it still says so it
+    # is left as a "looks good" leaf. Sibling-relative advantages are
+    # unaffected, but the sampled reflection is then drawn from the policy
+    # conditioned on "not looks good", which the training log-prob ignores.
+    min_refines: int = 0
+    refine_resample_tries: int = 3
 
     @property
     def num_rounds(self) -> int:
@@ -84,10 +92,12 @@ class Node:
     seq: List[int]                       # full token sequence so far
     kinds: List[int]                     # per-token KIND_* aligned with seq
     seg_start: int = 0                   # where this node's own segment starts
+    sibling_idx: int = 0                 # position among the parent's children
     codes: Optional[List[int]] = None    # image of this round (parent's if looks_good)
     looks_good: bool = False
     reflection: str = ""
     reflection_len: int = 0
+    forced_refine: bool = False          # a "looks good" was re-sampled away
     children: List["Node"] = field(default_factory=list)
     # Filled in by the trainer.
     am: float = 0.0
@@ -270,7 +280,7 @@ class TreeRollout:
                     seq = n.seq + self.reflect_splice
                     kinds = n.kinds + [KIND_NONE] * len(self.reflect_splice)
                     child = Node(prompt_idx=n.prompt_idx, round=k, parent=n, first_born=(g == 0),
-                                 seq=seq, kinds=kinds, seg_start=len(seq))
+                                 seq=seq, kinds=kinds, seg_start=len(seq), sibling_idx=g)
                     n.children.append(child)
                     children.append(child)
             if not children:
@@ -281,11 +291,20 @@ class TreeRollout:
                 continue
             reflections = self._sample_reflections(model, [c.seq for c in children])
             for c, refl in zip(children, reflections):
-                c.seq.extend(refl)
-                c.kinds.extend([KIND_TXT] * len(refl))
-                c.reflection_len = len(refl)
-                c.reflection = self.tok.decode(refl, skip_special_tokens=True).strip()
-                c.looks_good = LOOKS_GOOD_RE.search(c.reflection) is not None
+                self._set_reflection(c, refl)
+            # Forced refinement: re-sample "looks good" away for the first
+            # min_refines children of each parent.
+            forced = [c for c in children
+                      if c.looks_good and c.sibling_idx < self.cfg.min_refines]
+            for _ in range(self.cfg.refine_resample_tries):
+                if not forced:
+                    break
+                reflections = self._sample_reflections(model, [c.seq[:c.seg_start] for c in forced])
+                for c, refl in zip(forced, reflections):
+                    self._set_reflection(c, refl)
+                    if not c.looks_good:
+                        c.forced_refine = True
+                forced = [c for c in forced if c.looks_good]
             pending = [c for c in children if not c.looks_good]
             for c in pending:
                 c.seq.extend(self.image_splice)
@@ -304,6 +323,16 @@ class TreeRollout:
         leaves.extend(level)
         return RolloutBatch(prompts=prompts, roots=roots, leaves=leaves,
                             nodes_by_round=nodes_by_round)
+
+    def _set_reflection(self, c: Node, refl: List[int]):
+        """(Re)write ``c``'s own segment with the sampled reflection tokens."""
+        del c.seq[c.seg_start:]
+        del c.kinds[c.seg_start:]
+        c.seq.extend(refl)
+        c.kinds.extend([KIND_TXT] * len(refl))
+        c.reflection_len = len(refl)
+        c.reflection = self.tok.decode(refl, skip_special_tokens=True).strip()
+        c.looks_good = LOOKS_GOOD_RE.search(c.reflection) is not None
 
     # -- tensors for training ---------------------------------------------------
 
