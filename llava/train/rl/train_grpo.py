@@ -36,7 +36,8 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.distributed as dist
-from transformers import AutoTokenizer, Qwen2ForCausalLM, get_cosine_schedule_with_warmup
+from transformers import (AutoTokenizer, Qwen2ForCausalLM, get_constant_schedule_with_warmup,
+                          get_cosine_schedule_with_warmup)
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if REPO_ROOT not in sys.path:
@@ -126,6 +127,8 @@ def parse_args():
     p.add_argument("--learning_rate", type=float, default=1e-5)
     p.add_argument("--weight_decay", type=float, default=0.0)
     p.add_argument("--warmup_ratio", type=float, default=0.03)
+    p.add_argument("--lr_scheduler_type", choices=["cosine", "constant"], default="cosine",
+                   help="LR after warmup: cosine decay to 0 at max_steps, or held constant.")
     p.add_argument("--max_grad_norm", type=float, default=1.0)
     p.add_argument("--max_steps", type=int, default=500)
     # Eval / IO
@@ -621,8 +624,11 @@ def main():
     optimizer = torch.optim.AdamW(params, lr=args.learning_rate, weight_decay=args.weight_decay,
                                   betas=(0.9, 0.999), eps=1e-8)
     total_updates = args.max_steps * args.num_ppo_epochs
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer, int(args.warmup_ratio * total_updates), total_updates)
+    warmup_updates = int(args.warmup_ratio * total_updates)
+    if args.lr_scheduler_type == "constant":
+        scheduler = get_constant_schedule_with_warmup(optimizer, warmup_updates)
+    else:
+        scheduler = get_cosine_schedule_with_warmup(optimizer, warmup_updates, total_updates)
     start_step = 0
     if resume_dir is not None:
         optimizer.load_state_dict(torch.load(os.path.join(resume_dir, "optimizer.pt"), map_location=device))
