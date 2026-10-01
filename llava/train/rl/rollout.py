@@ -19,14 +19,15 @@ segments of all its ancestors; to count every sampled token once, a leaf trains
 an ancestor's segment only if it is that ancestor's first-born line.
 
 With a ``critique_fn`` (``run(..., critique_fn=...)``) the reflection is not
-sampled: the trainer supplies one critique text per live parent (e.g. the
-oracle critique of the parent's failed VQA questions), it is spliced in as
-``KIND_NONE`` exactly as the eval script splices decoded text (``" " + text``),
-and every child of that parent shares it, so siblings differ only in their
-image. A parent whose critique is ``None`` becomes a leaf.
+sampled: the trainer supplies one ``Critique`` per live parent (e.g. the
+oracle critique of the parent's failed VQA questions), its text is spliced in
+as ``KIND_NONE`` exactly as the eval script splices decoded text
+(``" " + text``), and every child of that parent shares it, so siblings differ
+only in their image. A parent whose critique is ``None`` becomes a leaf.
 """
 
 import re
+import warnings
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Sequence
 
@@ -68,6 +69,20 @@ class RolloutConfig:
     @property
     def num_rounds(self) -> int:
         return len(self.branch) - 1
+
+
+@dataclass
+class Critique:
+    """One frozen critique for a parent node, returned by ``critique_fn``.
+
+    ``source`` / ``fallback`` are copied onto the parent's *children* (the
+    nodes whose context the critique is), never onto the parent itself: a
+    node's own ``critique_source`` must describe the critique it was refined
+    under, which in deeper trees differs from the one chosen for its children.
+    """
+    text: str
+    source: str = "oracle"     # "oracle" | "policy"
+    fallback: bool = False     # hybrid: policy critique kept saying "looks good", used oracle
 
 
 class ImageVocabOnly(LogitsProcessor):
@@ -255,6 +270,18 @@ class TreeRollout:
     def sample_critiques(self, model, parents: List[Node]) -> List[str]:
         """One policy reflection per parent, as decoded text (for critique_fn:
         the text is re-encoded and spliced untrained, like the eval script)."""
+        if not self.cfg.reflect_sample and not getattr(self, "_warned_greedy_critiques", False):
+            # Known limitation: this goes through _sample_reflections, which is
+            # greedy when reflect_sample is False. A critique_fn that re-draws
+            # "looks good" critiques (hybrid, see make_critique_fn) then gets
+            # the identical text on every retry, wasting up to resample_tries
+            # generate calls per parent before it falls back to the oracle,
+            # and critique_fallback counts every policy-chosen parent whose
+            # greedy critic says "looks good". Fix by sampling here regardless
+            # of reflect_sample, or by short-circuiting the retries.
+            warnings.warn("sample_critiques called with reflect_sample=False: critiques are "
+                          "greedy, so re-sampling a 'looks good' critique cannot change it.")
+            self._warned_greedy_critiques = True
         rows = [n.seq + self.reflect_splice for n in parents]
         refl = self._sample_reflections(model, rows)
         return [self.tok.decode(r, skip_special_tokens=True).strip() for r in refl]
@@ -264,10 +291,11 @@ class TreeRollout:
     def run(self, model, prompts: List[Dict], branch: Optional[List[int]] = None,
             critique_fn: Optional[Callable[..., List[Optional[str]]]] = None
             ) -> RolloutBatch:
-        """``critique_fn(parents, prompts, sample_fn) -> [text | None]`` replaces
-        reflection sampling with a fixed critique per parent (see the module
-        docstring). ``sample_fn(nodes) -> [text]`` draws one policy reflection
-        per node, for critique sources that want the frozen policy's own text."""
+        """``critique_fn(parents, prompts, sample_fn) -> [Critique | None]``
+        replaces reflection sampling with a fixed critique per parent (see the
+        module docstring). ``sample_fn(nodes) -> [text]`` draws one policy
+        reflection per node, for critique sources that want the frozen
+        policy's own text."""
         branch = list(branch or self.cfg.branch)
         was_training = model.training
         model.eval()
@@ -298,29 +326,32 @@ class TreeRollout:
         for k in range(1, len(branch)):
             live = [n for n in level if not n.looks_good]
             leaves.extend(n for n in level if n.looks_good)
-            texts: List[Optional[str]] = [None] * len(live)
+            crits: List[Optional[Critique]] = [None] * len(live)
             if critique_fn is not None and live:
-                texts = list(critique_fn(live, prompts, lambda nodes: self.sample_critiques(model, nodes)))
-                assert len(texts) == len(live), "critique_fn must return one text per parent"
+                crits = list(critique_fn(live, prompts, lambda nodes: self.sample_critiques(model, nodes)))
+                assert len(crits) == len(live), "critique_fn must return one Critique per parent"
+                assert all(c is None or isinstance(c, Critique) for c in crits), \
+                    "critique_fn must return Critique objects (or None)"
                 # No critique (nothing to fix): the parent's image is final.
-                leaves.extend(n for n, t in zip(live, texts) if t is None)
-                live = [n for n, t in zip(live, texts) if t is not None]
-                texts = [t for t in texts if t is not None]
+                leaves.extend(n for n, c in zip(live, crits) if c is None)
+                live = [n for n, c in zip(live, crits) if c is not None]
+                crits = [c for c in crits if c is not None]
             children: List[Node] = []
-            for n, text in zip(live, texts):
+            for n, crit in zip(live, crits):
                 splice = self.reflect_splice
-                if text is not None:
+                if crit is not None:
                     # Spliced like the eval script splices decoded reflection
                     # text; untrained, so the child's segment is just its image.
-                    splice = splice + self._encode(" " + text)
+                    splice = splice + self._encode(" " + crit.text)
                 for g in range(branch[k]):
                     seq = n.seq + splice
                     kinds = n.kinds + [KIND_NONE] * len(splice)
                     child = Node(prompt_idx=n.prompt_idx, round=k, parent=n, first_born=(g == 0),
                                  seq=seq, kinds=kinds, seg_start=len(seq), sibling_idx=g,
-                                 teacher_forced=text is not None, reflection=text or "",
-                                 critique_source=n.critique_source if text is not None else "",
-                                 critique_fallback=n.critique_fallback if text is not None else False)
+                                 teacher_forced=crit is not None,
+                                 reflection=crit.text if crit is not None else "",
+                                 critique_source=crit.source if crit is not None else "",
+                                 critique_fallback=crit.fallback if crit is not None else False)
                     n.children.append(child)
                     children.append(child)
             if not children:

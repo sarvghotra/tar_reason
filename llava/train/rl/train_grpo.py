@@ -53,7 +53,7 @@ from llava.train.rl.grpo import GRPOConfig, grpo_loss, masked_token_logprobs, no
 from llava.train.rl.oracle_critique import SKILL_ORDER, oracle_critique
 from llava.train.rl.pixel_reward import PixelVQAReward
 from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQAReward
-from llava.train.rl.rollout import LOOKS_GOOD_RE, Node, RolloutBatch, RolloutConfig, TreeRollout
+from llava.train.rl.rollout import Critique, LOOKS_GOOD_RE, Node, RolloutBatch, RolloutConfig, TreeRollout
 
 # Per-skill stats buckets; questions with any other skill tag land in "other".
 STAT_SKILLS = tuple(SKILL_ORDER) + ("other",)
@@ -141,8 +141,10 @@ def parse_args():
                    help="A question fails when the judge's answer probability is below this "
                         "(oracle critique, and the fix/break rates in the stats).")
     p.add_argument("--break_weight", type=float, default=1.0,
-                   help="Refine reward = mean over questions of (p_child - p_parent), with the "
-                        "questions the parent passed weighted by this. 1.0 is exactly "
+                   help="Refine reward = alpha * mean over questions of w_q * (p_child - p_parent) "
+                        "+ (1 - alpha) * (GM_child - GM_parent), with w_q = this for the "
+                        "questions the parent passed and 1 otherwise (the GM term has no "
+                        "per-question split, so it is unweighted). 1.0 is exactly "
                         "score(child) - score(parent); >1 makes breaking a passed atom cost "
                         "more than fixing a failed one earns.")
     p.add_argument("--eval_oracle", action=argparse.BooleanOptionalAction, default=False,
@@ -321,26 +323,40 @@ def score_nodes(nodes: List[Node], prompts: List[Dict], reward):
 
 
 def refine_reward(n: Node, reward, fail_threshold: float, break_weight: float) -> float:
-    """score(child) - score(parent), optionally per question with the parent's
-    passed questions up-weighted so collateral damage costs more."""
+    """score(child) - score(parent), where score = alpha * AM + (1 - alpha) * GM.
+
+    With ``break_weight != 1`` the AM delta is taken per question with the
+    parent's passed questions up-weighted so collateral damage costs more; the
+    GM delta (no per-question split) stays unweighted, and ``alpha`` balances
+    the two exactly as in ``reward.combine``. At ``break_weight == 1`` this is
+    identically ``combine(child) - combine(parent)``.
+    """
     if break_weight == 1.0 or not n.per_question or not n.parent.per_question:
         return reward.combine(n.am, n.gm) - reward.combine(n.parent.am, n.parent.gm)
-    total = 0.0
+    am_delta = 0.0
     for pc, pp in zip(n.per_question, n.parent.per_question):
-        total += (break_weight if pp >= fail_threshold else 1.0) * (pc - pp)
-    return total / len(n.per_question)
+        am_delta += (break_weight if pp >= fail_threshold else 1.0) * (pc - pp)
+    am_delta /= len(n.per_question)
+    gm_delta = n.gm - n.parent.gm
+    alpha = reward.cfg.alpha
+    return alpha * am_delta + (1.0 - alpha) * gm_delta
 
 
 def make_critique_fn(reward, fail_threshold: float, source: str = "oracle",
                      oracle_frac: float = 1.0, resample_tries: int = 3):
     """``critique_fn`` for TreeRollout.run: scores the parents and returns one
-    frozen critique per parent (None when the parent fails nothing).
+    frozen ``Critique`` per parent (None when the parent fails nothing). The
+    source / fallback flag travel with the Critique and land on the children
+    (the parent node is not touched, so a round-k node keeps the source it was
+    itself refined under when it later becomes a parent).
 
     source="oracle": the oracle critique of the failed questions.
     source="hybrid": with prob ``oracle_frac`` the oracle critique, otherwise a
     single reflection sampled from the policy (``sample_fn``) and shared by all
     children; "looks good" reflections are re-sampled ``resample_tries`` times,
-    then the oracle critique is used (``node.critique_fallback``).
+    then the oracle critique is used (``Critique.fallback``). Note the retries
+    only help when the rollout samples reflections (``reflect_sample=True``);
+    with greedy decoding every retry returns the same text (the rollout warns).
     """
     assert source in ("oracle", "hybrid")
 
@@ -348,9 +364,9 @@ def make_critique_fn(reward, fail_threshold: float, source: str = "oracle",
         p = prompts[n.prompt_idx]
         return oracle_critique(p["vqa_list"], p["skills"], n.per_question, fail_threshold)
 
-    def fn(parents: List[Node], prompts: List[Dict], sample_fn=None) -> List[Optional[str]]:
+    def fn(parents: List[Node], prompts: List[Dict], sample_fn=None) -> List[Optional[Critique]]:
         score_nodes(parents, prompts, reward)
-        texts: List[Optional[str]] = [None] * len(parents)
+        texts: List[Optional[Critique]] = [None] * len(parents)
         todo = [i for i, n in enumerate(parents)
                 if not all(q >= fail_threshold for q in n.per_question)]
         policy_idx = []
@@ -365,14 +381,12 @@ def make_critique_fn(reward, fail_threshold: float, source: str = "oracle",
             got = sample_fn([parents[i] for i in pending])
             for i, t in zip(pending, got):
                 if t and not LOOKS_GOOD_RE.search(t):
-                    texts[i] = t
-                    parents[i].critique_source = "policy"
+                    texts[i] = Critique(t, source="policy")
             pending = [i for i in pending if texts[i] is None]
         for i in todo:
             if texts[i] is None:
-                texts[i] = oracle_text(parents[i], prompts)
-                parents[i].critique_source = "oracle"
-                parents[i].critique_fallback = i in policy_idx
+                texts[i] = Critique(oracle_text(parents[i], prompts), source="oracle",
+                                    fallback=i in policy_idx)
         return texts
     return fn
 

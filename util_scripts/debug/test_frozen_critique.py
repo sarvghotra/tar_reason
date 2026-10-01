@@ -63,9 +63,13 @@ def main():
     torch.manual_seed(7)
     fn = tg.make_critique_fn(rw, 0.5, "hybrid", 0.5, 3)
     b = ro.run(model, prompts, critique_fn=fn)
-    assert {n.critique_source for n in b.roots} == {"oracle", "policy"}, \
+    # Sources live on the children (the nodes refined under the critique);
+    # the parents are never mutated by critique_fn.
+    assert all(n.critique_source == "" and not n.critique_fallback for n in b.roots)
+    assert {k.critique_source for k in b.nodes_by_round[1]} == {"oracle", "policy"}, \
         "expected both sources at frac 0.5 with this seed"
-    print("parents:", [(n.critique_source, n.critique_fallback) for n in b.roots])
+    print("per parent:", [({k.critique_source for k in n.children}, {k.critique_fallback for k in n.children})
+                          for n in b.roots])
     print("children/parent:", [len(n.children) for n in b.roots], "reflections sampled:", n_reflect[0])
     kids = b.nodes_by_round[1]
     print("child sources:", {s: sum(k.critique_source == s for k in kids) for s in ("oracle", "policy")},
