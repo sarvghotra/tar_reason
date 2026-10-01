@@ -70,9 +70,16 @@ class GenEval2PromptDataset:
                     vqa_list = [tuple(qa) for qa in obj["vqa_list"]]
                     if not vqa_list:
                         continue
+                    # Per-question skill tags; the oracle critique phrases a
+                    # fix by skill. Older files lack them.
+                    skills = list(obj.get("skills") or ["unknown"] * len(vqa_list))
+                    if len(skills) != len(vqa_list):
+                        raise ValueError(f"{path}:{line_number}: {len(skills)} skills for "
+                                         f"{len(vqa_list)} questions")
                     rows.append({
                         "prompt": str(obj["prompt"]).strip(),
                         "vqa_list": vqa_list,
+                        "skills": skills,
                         "atom_count": int(obj.get("atom_count", len(vqa_list))),
                     })
         return rows

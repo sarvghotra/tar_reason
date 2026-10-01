@@ -18,6 +18,11 @@ Per optimizer step, each rank:
   4. takes a clipped policy-gradient step on the LoRA adapters with a KL penalty
      to the frozen base (adapters disabled).
 
+``--critique_source oracle`` trains the refiner alone: the reflection is not
+sampled but teacher-forced from the draft's failed VQA questions
+(llava/train/rl/oracle_critique.py), so all children of a draft share one
+correct critique and their image tokens are compared under a fixed context.
+
 Only the LoRA parameters train, so plain torch DDP-style gradient all-reduce
 is used instead of DeepSpeed. Resumable: ``checkpoint-N/`` holds the adapter,
 optimizer, scheduler and data position.
@@ -45,9 +50,14 @@ if REPO_ROOT not in sys.path:
 
 from llava.train.rl.dataset import GenEval2PromptDataset
 from llava.train.rl.grpo import GRPOConfig, grpo_loss, masked_token_logprobs, normalize_groups
+from llava.train.rl.oracle_critique import SKILL_ORDER, oracle_critique
 from llava.train.rl.pixel_reward import PixelVQAReward
 from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQAReward
-from llava.train.rl.rollout import Node, RolloutBatch, RolloutConfig, TreeRollout
+from llava.train.rl.rollout import LOOKS_GOOD_RE, Node, RolloutBatch, RolloutConfig, TreeRollout
+
+# Per-skill stats buckets; questions with any other skill tag land in "other".
+STAT_SKILLS = tuple(SKILL_ORDER) + ("other",)
+CRITIQUE_SOURCES = ("oracle", "policy")   # frozen-critique sources split in the stats
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +123,31 @@ def parse_args():
                         "reflection is re-sampled (up to --refine_resample_tries times). "
                         "Training only; validation always uses the policy as is.")
     p.add_argument("--refine_resample_tries", type=int, default=3)
+    p.add_argument("--critique_source", default="policy", choices=["policy", "oracle", "hybrid"],
+                   help="policy: sample the reflection from the policy and train it. oracle: "
+                        "teacher-force the oracle critique of the parent's failed VQA "
+                        "questions (llava/train/rl/oracle_critique.py), untrained, so every "
+                        "child of a parent shares one correct, complete critique and only the "
+                        "refiner's image tokens get gradient. hybrid: per parent, with prob "
+                        "--hybrid_oracle_frac the oracle critique, otherwise ONE reflection "
+                        "sampled from the (frozen) policy and shared by all children, also "
+                        "untrained; a policy reflection that says 'looks good' is re-sampled "
+                        "--refine_resample_tries times, then the oracle is used. In both, "
+                        "parents that fail nothing get no children. Validation always uses "
+                        "the policy's own critic.")
+    p.add_argument("--hybrid_oracle_frac", type=float, default=0.5,
+                   help="--critique_source hybrid: fraction of parents given the oracle critique.")
+    p.add_argument("--oracle_fail_threshold", type=float, default=0.5,
+                   help="A question fails when the judge's answer probability is below this "
+                        "(oracle critique, and the fix/break rates in the stats).")
+    p.add_argument("--break_weight", type=float, default=1.0,
+                   help="Refine reward = mean over questions of (p_child - p_parent), with the "
+                        "questions the parent passed weighted by this. 1.0 is exactly "
+                        "score(child) - score(parent); >1 makes breaking a passed atom cost "
+                        "more than fixing a failed one earns.")
+    p.add_argument("--eval_oracle", action=argparse.BooleanOptionalAction, default=False,
+                   help="Also validate with oracle critiques (val_oracle/*): the refiner's "
+                        "fix/break rates under a correct critique, independent of the critic.")
     # GRPO
     p.add_argument("--group", default="parent", choices=["parent", "prompt"],
                    help="Normalise refinement rewards among siblings (parent) or all "
@@ -274,40 +309,105 @@ def descendant_leaves(n: Node) -> List[Node]:
 
 
 @torch.no_grad()
+def score_nodes(nodes: List[Node], prompts: List[Dict], reward):
+    """Score the images of ``nodes`` that have no score yet (each image once)."""
+    todo = [n for n in nodes if n.per_question is None]
+    if not todo:
+        return
+    am, gm, pq = reward.score_images(
+        [n.codes for n in todo], [prompts[n.prompt_idx]["vqa_list"] for n in todo])
+    for n, a, g, q in zip(todo, am, gm, pq):
+        n.am, n.gm, n.per_question = a, g, list(q)
+
+
+def refine_reward(n: Node, reward, fail_threshold: float, break_weight: float) -> float:
+    """score(child) - score(parent), optionally per question with the parent's
+    passed questions up-weighted so collateral damage costs more."""
+    if break_weight == 1.0 or not n.per_question or not n.parent.per_question:
+        return reward.combine(n.am, n.gm) - reward.combine(n.parent.am, n.parent.gm)
+    total = 0.0
+    for pc, pp in zip(n.per_question, n.parent.per_question):
+        total += (break_weight if pp >= fail_threshold else 1.0) * (pc - pp)
+    return total / len(n.per_question)
+
+
+def make_critique_fn(reward, fail_threshold: float, source: str = "oracle",
+                     oracle_frac: float = 1.0, resample_tries: int = 3):
+    """``critique_fn`` for TreeRollout.run: scores the parents and returns one
+    frozen critique per parent (None when the parent fails nothing).
+
+    source="oracle": the oracle critique of the failed questions.
+    source="hybrid": with prob ``oracle_frac`` the oracle critique, otherwise a
+    single reflection sampled from the policy (``sample_fn``) and shared by all
+    children; "looks good" reflections are re-sampled ``resample_tries`` times,
+    then the oracle critique is used (``node.critique_fallback``).
+    """
+    assert source in ("oracle", "hybrid")
+
+    def oracle_text(n: Node, prompts: List[Dict]) -> str:
+        p = prompts[n.prompt_idx]
+        return oracle_critique(p["vqa_list"], p["skills"], n.per_question, fail_threshold)
+
+    def fn(parents: List[Node], prompts: List[Dict], sample_fn=None) -> List[Optional[str]]:
+        score_nodes(parents, prompts, reward)
+        texts: List[Optional[str]] = [None] * len(parents)
+        todo = [i for i, n in enumerate(parents)
+                if not all(q >= fail_threshold for q in n.per_question)]
+        policy_idx = []
+        if source == "hybrid":
+            # One coin per parent; the trainer seeds torch per (step, rank).
+            coins = torch.rand(len(todo)).tolist()
+            policy_idx = [i for i, c in zip(todo, coins) if c >= oracle_frac]
+        pending = list(policy_idx)
+        for _ in range(resample_tries + 1):
+            if not pending:
+                break
+            got = sample_fn([parents[i] for i in pending])
+            for i, t in zip(pending, got):
+                if t and not LOOKS_GOOD_RE.search(t):
+                    texts[i] = t
+                    parents[i].critique_source = "policy"
+            pending = [i for i in pending if texts[i] is None]
+        for i in todo:
+            if texts[i] is None:
+                texts[i] = oracle_text(parents[i], prompts)
+                parents[i].critique_source = "oracle"
+                parents[i].critique_fallback = i in policy_idx
+        return texts
+    return fn
+
+
+@torch.no_grad()
 def score_tree(batch: RolloutBatch, reward, draft_reward: str = "own",
-               stop_penalty: float = 0.0, stop_threshold: float = 1.0):
-    """Fill node.am / node.gm / node.reward for every node (each image scored once).
+               stop_penalty: float = 0.0, stop_threshold: float = 1.0,
+               fail_threshold: float = 0.5, break_weight: float = 1.0):
+    """Fill node.am / node.gm / node.per_question / node.reward for every node
+    (each image scored once; nodes already scored mid-rollout by the oracle
+    critique_fn are not re-scored).
 
     ``reward`` is a TarLatentVQAReward or a PixelVQAReward; both expose the same
     ``score_images`` / ``combine`` API.
 
     Rewards (see the module docstring): a refined child gets its score minus its
-    parent's (the parent score is the within-group baseline); a "looks good"
-    child gets ``-stop_penalty * max(0, stop_threshold - parent_score)``; a
-    draft gets its own score (``draft_reward="own"``) or the mean final score of
-    its leaves (``"children"``). Intermediate rounds of deeper trees keep the
+    parent's (the parent score is the within-group baseline; see refine_reward
+    for ``break_weight``); a "looks good" child gets
+    ``-stop_penalty * max(0, stop_threshold - parent_score)``; a draft gets its
+    own score (``draft_reward="own"``) or the mean final score of its leaves
+    (``"children"``). Intermediate rounds of deeper trees keep the
     parent-relative delta.
     """
-    to_score: List[Node] = []
-    for level in batch.nodes_by_round:
-        for n in level:
-            if n.round == 0 or not n.looks_good:
-                to_score.append(n)
-    am, gm, _ = reward.score_images(
-        [n.codes for n in to_score],
-        [batch.prompts[n.prompt_idx]["vqa_list"] for n in to_score])
-    for n, a, g in zip(to_score, am, gm):
-        n.am, n.gm = a, g
+    score_nodes([n for level in batch.nodes_by_round for n in level
+                 if n.round == 0 or not n.looks_good], batch.prompts, reward)
     for level in batch.nodes_by_round:
         for n in level:
             if n.round == 0:
                 n.reward = reward.combine(n.am, n.gm)
             elif n.looks_good:
-                n.am, n.gm = n.parent.am, n.parent.gm
+                n.am, n.gm, n.per_question = n.parent.am, n.parent.gm, n.parent.per_question
                 parent_score = reward.combine(n.parent.am, n.parent.gm)
                 n.reward = -stop_penalty * max(0.0, stop_threshold - parent_score)
             else:
-                n.reward = reward.combine(n.am, n.gm) - reward.combine(n.parent.am, n.parent.gm)
+                n.reward = refine_reward(n, reward, fail_threshold, break_weight)
     if draft_reward == "children":
         # Leaves' am/gm are final at this point (inherited for "looks good").
         for root in batch.roots:
@@ -335,19 +435,47 @@ def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig):
     return zero_var, groups_total
 
 
-def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int) -> Dict[str, float]:
+def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
+               fail_threshold: float = 0.5) -> Dict[str, float]:
     """Sums (not means) so they can be all-reduced; '*_n' carries counts.
 
     Emits the same key set on every rank (all rounds, even empty ones) so the
     all-reduce cannot desynchronise.
+
+    fix / brk (refined children only): over the questions the parent failed /
+    passed at ``fail_threshold``, how many the child passes / fails. A refine
+    that executes its critique has a high fix rate and a low break rate. Both
+    are also split by question skill (``fix_count_1``) and, for frozen
+    critiques, by source (``fix_oracle_1`` / ``fix_policy_1``).
+    pass_<skill> (every round, and _final): fraction of that skill's questions
+    the image passes.
     """
     s: Dict[str, float] = {}
+
+    def skill_of(n: Node, qi: int) -> str:
+        sk = batch.prompts[n.prompt_idx]["skills"][qi]
+        return sk if sk in STAT_SKILLS else "other"
+
+    def rate(key: str, num: int, den: int):
+        s[f"{prefix}{key}_num"] = s.get(f"{prefix}{key}_num", 0.0) + num
+        s[f"{prefix}{key}_den"] = s.get(f"{prefix}{key}_den", 0.0) + den
+
+    def pass_rates(tag: str, nodes: List[Node]):
+        for sk in STAT_SKILLS:
+            rate(f"pass_{sk}_{tag}", 0, 0)        # fixed key set on every rank
+        for n in nodes:
+            if n.per_question is None:
+                continue
+            for qi, p in enumerate(n.per_question):
+                rate(f"pass_{skill_of(n, qi)}_{tag}", p >= fail_threshold, 1)
+
     for r in range(num_rounds + 1):
         level = batch.nodes_by_round[r] if r < len(batch.nodes_by_round) else []
         s[f"{prefix}am_{r}"] = sum(n.am for n in level)
         s[f"{prefix}gm_{r}"] = sum(n.gm for n in level)
         s[f"{prefix}reward_{r}"] = sum(n.reward for n in level)
         s[f"{prefix}n_{r}"] = len(level)
+        pass_rates(str(r), level)
         if r > 0:
             s[f"{prefix}looks_good_{r}"] = sum(n.looks_good for n in level)
             s[f"{prefix}forced_refine_{r}"] = sum(n.forced_refine for n in level)
@@ -356,9 +484,31 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int) -> Dict[str, f
             s[f"{prefix}delta_am_{r}"] = sum(deltas)
             s[f"{prefix}improved_{r}"] = sum(d > 0.05 for d in deltas)
             s[f"{prefix}degraded_{r}"] = sum(d < -0.05 for d in deltas)
+            for src in CRITIQUE_SOURCES:
+                s[f"{prefix}critique_{src}_{r}"] = sum(n.critique_source == src for n in level)
+            s[f"{prefix}critique_fallback_{r}"] = sum(n.critique_fallback for n in level)
+            keys = ([f"{kind}_{r}" for kind in ("fix", "brk")]
+                    + [f"{kind}_{sk}_{r}" for kind in ("fix", "brk") for sk in STAT_SKILLS]
+                    + [f"{kind}_{src}_{r}" for kind in ("fix", "brk") for src in CRITIQUE_SOURCES])
+            for k in keys:
+                rate(k, 0, 0)
+            for n in level:
+                if n.looks_good or n.per_question is None or n.parent.per_question is None:
+                    continue
+                src = n.critique_source if n.critique_source in CRITIQUE_SOURCES else None
+                for qi, (pc, pp) in enumerate(zip(n.per_question, n.parent.per_question)):
+                    if pp < fail_threshold:
+                        kind, hit = "fix", pc >= fail_threshold
+                    else:
+                        kind, hit = "brk", pc < fail_threshold
+                    rate(f"{kind}_{r}", hit, 1)
+                    rate(f"{kind}_{skill_of(n, qi)}_{r}", hit, 1)
+                    if src:
+                        rate(f"{kind}_{src}_{r}", hit, 1)
     # Final-image score per leaf (what the benchmark measures).
     s[f"{prefix}am_final"] = sum(n.am for n in batch.leaves)
     s[f"{prefix}n_final"] = len(batch.leaves)
+    pass_rates("final", batch.leaves)
     return s
 
 
@@ -378,7 +528,16 @@ def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
             out[f"{prefix}delta_am_{r}"] = s[f"{prefix}delta_am_{r}"] / n
             out[f"{prefix}improved_{r}"] = s[f"{prefix}improved_{r}"] / n
             out[f"{prefix}degraded_{r}"] = s[f"{prefix}degraded_{r}"] / n
+            for src in CRITIQUE_SOURCES:
+                out[f"{prefix}critique_{src}_{r}"] = s[f"{prefix}critique_{src}_{r}"] / n
+            out[f"{prefix}critique_fallback_{r}"] = s[f"{prefix}critique_fallback_{r}"] / n
     out[f"{prefix}am_final"] = s[f"{prefix}am_final"] / max(s[f"{prefix}n_final"], 1.0)
+    # Ratio stats (fix_*, brk_*, pass_*): "<key>_num" / "<key>_den". A bucket
+    # with no questions is logged as 0, so the wandb key set stays fixed.
+    for k in s:
+        if k.startswith(prefix) and k.endswith("_num"):
+            key = k[len(prefix):-4]
+            out[f"{prefix}{key}"] = s[k] / max(s[f"{prefix}{key}_den"], 1.0)
     return out
 
 
@@ -454,7 +613,10 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
 # ---------------------------------------------------------------------------
 
 @torch.no_grad()
-def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, step, decoder=None):
+def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, step, decoder=None,
+                   critique_fn=None, prefix: str = "val/"):
+    """Greedy-critic validation of the loop as deployed; with ``critique_fn``
+    (oracle critiques) it measures the refiner alone, under ``prefix``."""
     if not val_rows:
         return {}
     torch.manual_seed(args.seed * 7919 + 17)
@@ -467,19 +629,20 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
     samples = []
     bs = max(args.gen_batch_size, 1)
     for start in range(0, len(val_rows), bs):
-        batch = rollout.run(model, val_rows[start:start + bs], branch=branch)
-        score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold)
-        for k, v in tree_stats(batch, "val/", num_rounds).items():
+        batch = rollout.run(model, val_rows[start:start + bs], branch=branch, critique_fn=critique_fn)
+        score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold,
+                   args.oracle_fail_threshold, args.break_weight)
+        for k, v in tree_stats(batch, prefix, num_rounds, args.oracle_fail_threshold).items():
             sums[k] = sums.get(k, 0.0) + v
         if decoder is not None and is_main() and len(samples) < args.log_images:
             for leaf in batch.leaves[:args.log_images - len(samples)]:
                 samples.append((leaf, batch.prompts[leaf.prompt_idx]["prompt"]))
     rollout.cfg.reflect_sample, rollout.cfg.min_refines = saved
     sums = reduce_sum(sums, device)
-    out = finalize_stats(sums, "val/")
+    out = finalize_stats(sums, prefix)
     if decoder is not None and is_main() and samples:
-        out["val/images"] = decoder.wandb_images([l for l, _ in samples],
-                                                  prompts=[p for _, p in samples])
+        out[f"{prefix}images"] = decoder.wandb_images([l for l, _ in samples],
+                                                      prompts=[p for _, p in samples])
     return out
 
 
@@ -649,7 +812,10 @@ def main():
         rank0_print(f"WARNING: --min_refines {args.min_refines} > branch[1] {branch[1]}; "
                     f"every child is forced to refine.")
     rank0_print(f"reward: draft_reward={args.draft_reward} stop_penalty={args.stop_penalty} "
-                f"stop_threshold={args.stop_threshold} min_refines={args.min_refines}")
+                f"stop_threshold={args.stop_threshold} min_refines={args.min_refines} "
+                f"critique_source={args.critique_source} "
+                f"hybrid_oracle_frac={args.hybrid_oracle_frac} break_weight={args.break_weight} "
+                f"fail_threshold={args.oracle_fail_threshold}")
 
     base = model.get_base_model()
 
@@ -709,25 +875,49 @@ def main():
                 import wandb
                 wandb.log(metrics, step=step)
 
+    # Frozen critiques for training (--critique_source oracle | hybrid); the
+    # extra validation pass (--eval_oracle) always uses the pure oracle.
+    oracle_fn = None
+    if args.critique_source != "policy" or args.eval_oracle:
+        oracle_fn = make_critique_fn(reward, args.oracle_fail_threshold, "oracle")
+    train_critique_fn = None
+    if args.critique_source == "oracle":
+        train_critique_fn = oracle_fn
+    elif args.critique_source == "hybrid":
+        train_critique_fn = make_critique_fn(reward, args.oracle_fail_threshold, "hybrid",
+                                             args.hybrid_oracle_frac, args.refine_resample_tries)
+
+    def validate(step):
+        # Always the loop as deployed (policy critic, greedy); optionally the
+        # refiner alone under oracle critiques.
+        out = run_validation(model, rollout, reward, val_rows, args, device, step, decoder)
+        if args.eval_oracle:
+            out.update(run_validation(model, rollout, reward, val_rows, args, device, step, None,
+                                      critique_fn=oracle_fn, prefix="val_oracle/"))
+        return out
+
     if args.eval_on_start and start_step == 0 and val_rows:
-        log(run_validation(model, rollout, reward, val_rows, args, device, 0, decoder), 0)
+        log(validate(0), 0)
 
     prompt_iter = train_ds.iterate(args.prompts_per_gpu, skip_batches=start_step)
     for step in range(start_step + 1, args.max_steps + 1):
         prompts = next(prompt_iter)
         torch.manual_seed(args.seed * 1_000_003 + step * 7919 + rank)
         t0 = time.time()
-        batch = rollout.run(model, prompts)
+        # With oracle critiques the drafts are scored inside the rollout, so
+        # time/rollout then includes that part of the reward cost.
+        batch = rollout.run(model, prompts, critique_fn=train_critique_fn)
         t1 = time.time()
         model.eval()
-        score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold)
+        score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold,
+                   args.oracle_fail_threshold, args.break_weight)
         zero_var, n_groups = assign_advantages(batch, args, gcfg)
         t2 = time.time()
         train_metrics = train_on_tree(model, rollout, batch, args, gcfg, optimizer, scheduler, device)
         t3 = time.time()
 
         if step % args.logging_steps == 0:
-            sums = tree_stats(batch, "train/", rollout.cfg.num_rounds)
+            sums = tree_stats(batch, "train/", rollout.cfg.num_rounds, args.oracle_fail_threshold)
             sums["train/zero_var_groups"] = zero_var
             sums["train/groups"] = n_groups
             sums = reduce_sum(sums, device)
@@ -742,7 +932,7 @@ def main():
         if args.save_steps and step % args.save_steps == 0:
             save_checkpoint(model, optimizer, scheduler, step, args, device)
         if args.eval_steps and val_rows and step % args.eval_steps == 0:
-            log(run_validation(model, rollout, reward, val_rows, args, device, step, decoder), step)
+            log(validate(step), step)
 
     if args.max_steps % max(args.save_steps, 1) != 0:
         save_checkpoint(model, optimizer, scheduler, args.max_steps, args, device)

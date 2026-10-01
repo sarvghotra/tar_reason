@@ -17,11 +17,18 @@ Each node owns one *segment* of sampled tokens (its image for round 0, its
 reflection + image for later rounds). A leaf's training sequence contains the
 segments of all its ancestors; to count every sampled token once, a leaf trains
 an ancestor's segment only if it is that ancestor's first-born line.
+
+With a ``critique_fn`` (``run(..., critique_fn=...)``) the reflection is not
+sampled: the trainer supplies one critique text per live parent (e.g. the
+oracle critique of the parent's failed VQA questions), it is spliced in as
+``KIND_NONE`` exactly as the eval script splices decoded text (``" " + text``),
+and every child of that parent shares it, so siblings differ only in their
+image. A parent whose critique is ``None`` becomes a leaf.
 """
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence
 
 import torch
 from transformers import LogitsProcessor, LogitsProcessorList
@@ -98,10 +105,15 @@ class Node:
     reflection: str = ""
     reflection_len: int = 0
     forced_refine: bool = False          # a "looks good" was re-sampled away
+    teacher_forced: bool = False         # reflection supplied by critique_fn, not sampled
+    critique_source: str = ""            # "sampled" | "oracle" | "policy" (frozen, via critique_fn)
+    critique_fallback: bool = False      # hybrid: policy critique kept saying "looks good", used oracle
     children: List["Node"] = field(default_factory=list)
-    # Filled in by the trainer.
+    # Filled in by the trainer. per_question is set once the image is scored
+    # (critique_fn scores parents mid-rollout; score_tree does the rest).
     am: float = 0.0
     gm: float = 0.0
+    per_question: Optional[List[float]] = None
     reward: float = 0.0
     adv: float = 0.0
 
@@ -239,20 +251,33 @@ class TreeRollout:
                 out.append(row[:cut])
         return out
 
+    @torch.no_grad()
+    def sample_critiques(self, model, parents: List[Node]) -> List[str]:
+        """One policy reflection per parent, as decoded text (for critique_fn:
+        the text is re-encoded and spliced untrained, like the eval script)."""
+        rows = [n.seq + self.reflect_splice for n in parents]
+        refl = self._sample_reflections(model, rows)
+        return [self.tok.decode(r, skip_special_tokens=True).strip() for r in refl]
+
     # -- main entry ------------------------------------------------------------
 
-    def run(self, model, prompts: List[Dict],
-            branch: Optional[List[int]] = None) -> RolloutBatch:
+    def run(self, model, prompts: List[Dict], branch: Optional[List[int]] = None,
+            critique_fn: Optional[Callable[..., List[Optional[str]]]] = None
+            ) -> RolloutBatch:
+        """``critique_fn(parents, prompts, sample_fn) -> [text | None]`` replaces
+        reflection sampling with a fixed critique per parent (see the module
+        docstring). ``sample_fn(nodes) -> [text]`` draws one policy reflection
+        per node, for critique sources that want the frozen policy's own text."""
         branch = list(branch or self.cfg.branch)
         was_training = model.training
         model.eval()
         try:
-            return self._run(model, prompts, branch)
+            return self._run(model, prompts, branch, critique_fn)
         finally:
             if was_training:
                 model.train()
 
-    def _run(self, model, prompts, branch) -> RolloutBatch:
+    def _run(self, model, prompts, branch, critique_fn=None) -> RolloutBatch:
         # Round 0: drafts.
         roots: List[Node] = []
         for p_idx, p in enumerate(prompts):
@@ -271,40 +296,57 @@ class TreeRollout:
         leaves: List[Node] = []
         level = roots
         for k in range(1, len(branch)):
+            live = [n for n in level if not n.looks_good]
+            leaves.extend(n for n in level if n.looks_good)
+            texts: List[Optional[str]] = [None] * len(live)
+            if critique_fn is not None and live:
+                texts = list(critique_fn(live, prompts, lambda nodes: self.sample_critiques(model, nodes)))
+                assert len(texts) == len(live), "critique_fn must return one text per parent"
+                # No critique (nothing to fix): the parent's image is final.
+                leaves.extend(n for n, t in zip(live, texts) if t is None)
+                live = [n for n, t in zip(live, texts) if t is not None]
+                texts = [t for t in texts if t is not None]
             children: List[Node] = []
-            for n in level:
-                if n.looks_good:
-                    leaves.append(n)
-                    continue
+            for n, text in zip(live, texts):
+                splice = self.reflect_splice
+                if text is not None:
+                    # Spliced like the eval script splices decoded reflection
+                    # text; untrained, so the child's segment is just its image.
+                    splice = splice + self._encode(" " + text)
                 for g in range(branch[k]):
-                    seq = n.seq + self.reflect_splice
-                    kinds = n.kinds + [KIND_NONE] * len(self.reflect_splice)
+                    seq = n.seq + splice
+                    kinds = n.kinds + [KIND_NONE] * len(splice)
                     child = Node(prompt_idx=n.prompt_idx, round=k, parent=n, first_born=(g == 0),
-                                 seq=seq, kinds=kinds, seg_start=len(seq), sibling_idx=g)
+                                 seq=seq, kinds=kinds, seg_start=len(seq), sibling_idx=g,
+                                 teacher_forced=text is not None, reflection=text or "",
+                                 critique_source=n.critique_source if text is not None else "",
+                                 critique_fallback=n.critique_fallback if text is not None else False)
                     n.children.append(child)
                     children.append(child)
             if not children:
-                # Every live node said "looks good": keep an (empty) level so
-                # all ranks report the same set of per-round metrics.
+                # Every live node said "looks good" (or had nothing to fix):
+                # keep an (empty) level so all ranks report the same set of
+                # per-round metrics.
                 nodes_by_round.append(children)
                 level = children
                 continue
-            reflections = self._sample_reflections(model, [c.seq for c in children])
-            for c, refl in zip(children, reflections):
-                self._set_reflection(c, refl)
-            # Forced refinement: re-sample "looks good" away for the first
-            # min_refines children of each parent.
-            forced = [c for c in children
-                      if c.looks_good and c.sibling_idx < self.cfg.min_refines]
-            for _ in range(self.cfg.refine_resample_tries):
-                if not forced:
-                    break
-                reflections = self._sample_reflections(model, [c.seq[:c.seg_start] for c in forced])
-                for c, refl in zip(forced, reflections):
+            if critique_fn is None:
+                reflections = self._sample_reflections(model, [c.seq for c in children])
+                for c, refl in zip(children, reflections):
                     self._set_reflection(c, refl)
-                    if not c.looks_good:
-                        c.forced_refine = True
-                forced = [c for c in forced if c.looks_good]
+                # Forced refinement: re-sample "looks good" away for the first
+                # min_refines children of each parent.
+                forced = [c for c in children
+                          if c.looks_good and c.sibling_idx < self.cfg.min_refines]
+                for _ in range(self.cfg.refine_resample_tries):
+                    if not forced:
+                        break
+                    reflections = self._sample_reflections(model, [c.seq[:c.seg_start] for c in forced])
+                    for c, refl in zip(forced, reflections):
+                        self._set_reflection(c, refl)
+                        if not c.looks_good:
+                            c.forced_refine = True
+                    forced = [c for c in forced if c.looks_good]
             pending = [c for c in children if not c.looks_good]
             for c in pending:
                 c.seq.extend(self.image_splice)
@@ -333,6 +375,7 @@ class TreeRollout:
         c.reflection_len = len(refl)
         c.reflection = self.tok.decode(refl, skip_special_tokens=True).strip()
         c.looks_good = LOOKS_GOOD_RE.search(c.reflection) is not None
+        c.critique_source = "sampled"
 
     # -- tensors for training ---------------------------------------------------
 
