@@ -27,7 +27,7 @@ DATA_PATH="output_dir/${RUN_NAME}/data.yaml"
 VAL_DATA_PATH="output_dir/${RUN_NAME}/val.yaml"
 
 # ===================== Config params ========================
-N_GPUS=4
+N_GPUS=${N_GPUS:-4}
 
 PREV_STAGE_CHECKPOINT=/home/dars11/scratch/models/tar/sft/slf_ref_edit_t21_ckpt17000
 
