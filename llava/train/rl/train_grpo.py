@@ -155,6 +155,10 @@ def parse_args():
                    help="Normalise refinement rewards among siblings (parent) or all "
                         "same-round nodes of the prompt.")
     p.add_argument("--adv_norm", default="std", choices=["std", "mean"])
+    p.add_argument("--adv_std_floor", type=float, default=0.0,
+                   help="With --adv_norm std, divide by max(group std, this). Groups whose "
+                        "reward spread is below the floor (e.g. re-decode noise, sd ~0.04) "
+                        "keep proportionally small advantages instead of unit scale.")
     p.add_argument("--clip_eps", type=float, default=0.2)
     p.add_argument("--kl_coef", type=float, default=0.01)
     p.add_argument("--reflect_token_weight", type=float, default=1.0)
@@ -858,6 +862,7 @@ def main():
         reward = build_latent_reward(args, model, base, tokenizer, image_start_id,
                                      num_image_tokens, device)
     gcfg = GRPOConfig(clip_eps=args.clip_eps, kl_coef=args.kl_coef, adv_norm=args.adv_norm,
+                      adv_std_floor=args.adv_std_floor,
                       reflect_token_weight=args.reflect_token_weight)
 
     train_ds = GenEval2PromptDataset(args.data_path, seed=args.seed, rank=rank,

@@ -29,6 +29,9 @@ class GRPOConfig:
     kl_coef: float = 0.01
     adv_norm: str = "std"       # "std": (r - mean) / (std + eps); "mean": r - mean
     adv_eps: float = 1e-4
+    # "std" divides by max(std, adv_std_floor): a group whose rewards differ by
+    # less than the floor (e.g. de-tokenizer noise) is not blown up to unit scale.
+    adv_std_floor: float = 0.0
     reflect_token_weight: float = 1.0
 
 
@@ -124,7 +127,7 @@ def normalize_groups(rewards: List[float], groups: List[int], cfg: GRPOConfig
             zero_var += 1
             continue
         if cfg.adv_norm == "std":
-            centered = centered / (std + cfg.adv_eps)
+            centered = centered / (max(float(std), cfg.adv_std_floor) + cfg.adv_eps)
         elif cfg.adv_norm != "mean":
             raise ValueError(f"Unknown adv_norm {cfg.adv_norm}")
         for i, a in zip(members, centered.tolist()):
