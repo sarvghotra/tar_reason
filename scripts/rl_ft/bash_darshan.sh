@@ -5,7 +5,7 @@
 #SBATCH --gpus-per-node=h100:4
 #SBATCH --cpus-per-task=48
 #SBATCH --mem=0G
-#SBATCH --account=rrg-bengioy-ad_gpu
+#SBATCH --account=def-agrawal_gpu
 #SBATCH -J darshan_rl_test
 #SBATCH -o /home/dars11/scratch/git/tar_reason/output_dir/darshan_rl_test/%j_%t.out
 #SBATCH -e /home/dars11/scratch/git/tar_reason/output_dir/darshan_rl_test/%j_%t.err
@@ -29,7 +29,7 @@ VAL_DATA_PATH="output_dir/${RUN_NAME}/val.yaml"
 # ===================== Config params ========================
 N_GPUS=4
 
-PREV_STAGE_CHECKPOINT=/home/dars11/scratch/models/tar/sft/slf_ref_edit_t6_repro_w_corr_t2_ckpt20000
+PREV_STAGE_CHECKPOINT=/home/dars11/scratch/models/tar/sft/slf_ref_edit_t21_ckpt17000
 
 # Checkpoint scoring the VQA reward. Leave empty to score with the policy's own
 # frozen base weights (LoRA disabled), which costs no extra GPU memory. A separate
@@ -62,6 +62,7 @@ ANSWER_SUFFIX=llava   # llava | geneval2 | none
 MAX_STEPS=${MAX_STEPS:-500}
 EVAL_STEPS=${EVAL_STEPS:-25}
 SAVE_STEPS=${SAVE_STEPS:-25}
+EVAL_MAX_PROMPTS=${EVAL_MAX_PROMPTS:-}     # empty = full val set
 WARMUP_RATIO=0.03
 LOG_IMAGES=8
 SEED=421
@@ -95,6 +96,10 @@ mkdir -p "$LOCAL_DIR"
 REWARD_ARGS=()
 if [ -n "${REWARD_MODEL_PATH}" ]; then
     REWARD_ARGS+=(--reward_model_name_or_path "${REWARD_MODEL_PATH}")
+fi
+EVAL_ARGS=()
+if [ -n "${EVAL_MAX_PROMPTS}" ]; then
+    EVAL_ARGS+=(--eval_max_prompts "${EVAL_MAX_PROMPTS}")
 fi
 
 torchrun --standalone --nproc_per_node=${N_GPUS} \
@@ -134,6 +139,7 @@ torchrun --standalone --nproc_per_node=${N_GPUS} \
     --max_steps ${MAX_STEPS} \
     --output_dir ${LOCAL_DIR} \
     --eval_steps ${EVAL_STEPS} \
+    "${EVAL_ARGS[@]}" \
     --save_steps ${SAVE_STEPS} \
     --save_total_limit 3 \
     --logging_steps 1 \
