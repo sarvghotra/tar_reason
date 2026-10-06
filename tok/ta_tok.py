@@ -1,3 +1,5 @@
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -34,8 +36,12 @@ class TextAlignedTokenizer(nn.Module):
 
         self.bottleneck_dim = bottleneck['args']['bottleneck_dim']
 
+        # Only the config is read here (weights come from the TA-Tok checkpoint).
+        # SIGLIP2_PATH points at a local copy, for nodes without internet.
         if teacher == 'google/siglip2-so400m-patch14-384':
-            teacher = '/scratch/jeet/models/pre_train/siglip2-so400m-patch14-384'
+            local_teacher = os.environ.get('SIGLIP2_PATH', '/scratch/jeet/models/pre_train/siglip2-so400m-patch14-384')
+            if os.path.isdir(local_teacher):
+                teacher = local_teacher
 
         self.encoder_config = AutoConfig.from_pretrained(teacher)
         self.encoder = AutoModel.from_config(self.encoder_config).vision_model

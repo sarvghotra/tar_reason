@@ -98,6 +98,7 @@ fi
 AR_MODEL=${MODELS}/ar_dtok_lp_512px.pth
 DECODER=${MODELS}/vq_ds16_t2i.pt
 ENCODER=${TMP_DIR}/ta_tok.pth
+export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384   # TA-Tok encoder config
 
 mkdir -p "$LOCAL_DIR"
 
