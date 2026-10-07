@@ -1,20 +1,24 @@
 #!/bin/bash
-#SBATCH --time=24:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --partition=long
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:a100l:4
-#SBATCH --cpus-per-task=24
-#SBATCH --mem=256G
-#SBATCH -J darshan_rl_test_mila
-#SBATCH -o /network/scratch/s/singhsd/tar_reason/output_dir/darshan_rl_test_mila/%j_%t.out
-#SBATCH -e /network/scratch/s/singhsd/tar_reason/output_dir/darshan_rl_test_mila/%j_%t.err
+#SBATCH --gres=gpu:a100l:2
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH --open-mode=append
+#SBATCH -J darshan_rl_2gpu_mila
+#SBATCH -o /network/scratch/s/singhsd/tar_reason/output_dir/slurm_logs/%x_%j.out
+#SBATCH -e /network/scratch/s/singhsd/tar_reason/output_dir/slurm_logs/%x_%j.err
 
 # Mila version of bash_darshan.sh (GRPO on generate -> self-reflect -> refine with
 # the latent GenEval2-style VQA reward, llava/train/rl/train_grpo.py).
 #
-# Batch (4x A100 80GB on `long`, preemptible; resumes from the latest checkpoint-N):
-#   sbatch scripts/rl_ft/bash_mila.sh
+# Batch (2x A100 80GB on `long`; preemptible, requeued jobs resume from the latest
+# checkpoint-N, and --open-mode=append keeps the log across requeues):
+#   RUN_NAME=<name> sbatch scripts/rl_ft/bash_mila.sh
+# For 4 GPUs (8 prompts/step, the collaborator's batch): sbatch --gres=gpu:a100l:4 --mem=256G --cpus-per-task=24 ...
+# N_GPUS defaults to the GPUs SLURM allocated.
 # 1-GPU smoke test inside an existing allocation (run from the repo root):
 #   N_GPUS=1 MAX_STEPS=3 EVAL_STEPS=3 SAVE_STEPS=3 EVAL_MAX_PROMPTS=16 bash scripts/rl_ft/bash_mila.sh
 # `main` caps a user at 2 GPUs / 8 CPUs / 48G RAM, so multi-GPU runs go on `long`.
@@ -34,7 +38,7 @@ DATA_PATH="output_dir/${RUN_NAME}/data.yaml"
 VAL_DATA_PATH="output_dir/${RUN_NAME}/val.yaml"
 
 # ===================== Config params ========================
-N_GPUS=${N_GPUS:-4}
+N_GPUS=${N_GPUS:-${SLURM_GPUS_ON_NODE:-4}}
 
 PREV_STAGE_CHECKPOINT=${MODELS}/sft/slf_ref_edit_t21_ckpt17000
 
