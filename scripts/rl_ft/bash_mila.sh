@@ -51,7 +51,7 @@ REWARD_MODEL_PATH=${MODELS}/Tar-7B
 # Rollout tree: BRANCH="G0,G1[,G2...]" = drafts per prompt, children per node
 # per refinement round. Number of refinement rounds = number of entries - 1.
 PROMPTS_PER_GPU=2
-BRANCH="4,2"
+BRANCH=${BRANCH:-4,2}
 GEN_BATCH_SIZE=16
 TRAIN_MICRO_BATCH=2
 
