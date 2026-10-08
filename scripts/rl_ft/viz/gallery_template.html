@@ -1,0 +1,408 @@
+<title>{{TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: summary chart up top, then one horizontal filmstrip per prompt (or a two-column compare grid). */
+:root {
+  --bg: #f4f6f7; --surface: #ffffff; --fg: #1b2328; --muted: #59656e; --line: #d9dfe3; --accent: #0b6870;
+  --soft: #eef2f4;
+  --s-draft: #008a7d; --s-refined: #b86400;
+  --good: #1d7a3a; --good-bg: #e2f3e6; --bad: #b3261e; --bad-bg: #fbe5e3; --flat: #5f6a72; --flat-bg: #e6eaed;
+  --stop: #5f6a72; --stop-bg: #e6eaed;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11171a; --surface: #172025; --fg: #e3e8eb; --muted: #9aa7b0; --line: #2b363d; --accent: #5cc4c4; --soft: #0f161a;
+    --s-draft: #1fa393; --s-refined: #c47e1a;
+    --good: #6ccf86; --good-bg: #173322; --bad: #f08b84; --bad-bg: #3a1a18; --flat: #a9b4bb; --flat-bg: #263137;
+    --stop: #a9b4bb; --stop-bg: #263137;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11171a; --surface: #172025; --fg: #e3e8eb; --muted: #9aa7b0; --line: #2b363d; --accent: #5cc4c4; --soft: #0f161a;
+  --s-draft: #1fa393; --s-refined: #c47e1a;
+  --good: #6ccf86; --good-bg: #173322; --bad: #f08b84; --bad-bg: #3a1a18; --flat: #a9b4bb; --flat-bg: #263137;
+  --stop: #a9b4bb; --stop-bg: #263137;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.6 var(--font-body); padding-inline: 16px; padding-block: 0 64px; }
+.wrap { max-width: 1320px; margin: 0 auto; }
+header { padding-block: 36px 18px; border-bottom: 1px solid var(--line); }
+.eyebrow { font: 500 12px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+h1 { font: 600 clamp(28px, 4vw, 40px)/1.1 var(--font-display); margin: 0 0 12px; text-wrap: balance; }
+h2 { font: 600 22px/1.25 var(--font-display); margin: 0 0 6px; text-wrap: balance; }
+p { margin: 0 0 12px; max-width: 76ch; }
+.muted { color: var(--muted); }
+code { font: .9em var(--font-mono); background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+.howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 28px; margin: 16px 0 4px; padding: 0; list-style: none; font-size: 14px; }
+.howto li { max-width: none; }
+.howto strong { display: block; font-weight: 600; }
+
+.summary { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; padding-block: 24px; border-bottom: 1px solid var(--line); align-items: start; }
+.chart-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px 10px; position: relative; min-width: 0; }
+.chart-title { font: 600 15px/1.3 var(--font-display); margin: 0 0 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); margin: 4px 0 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.sw-draft { background: var(--s-draft); } .sw-refined { background: var(--s-refined); }
+svg text { font-family: var(--font-body); }
+.axis-label { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.grid line { stroke: var(--line); stroke-width: 1; }
+.line-draft { fill: none; stroke: var(--s-draft); stroke-width: 2; }
+.line-refined { fill: none; stroke: var(--s-refined); stroke-width: 2; }
+.dot-draft { fill: var(--s-draft); stroke: var(--surface); stroke-width: 2; }
+.dot-refined { fill: var(--s-refined); stroke: var(--surface); stroke-width: 2; }
+.direct-label { font-size: 12px; font-weight: 500; fill: var(--fg); }
+.hover-col { fill: transparent; cursor: crosshair; }
+.crosshair { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.tooltip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5; box-shadow: 0 4px 14px rgba(0,0,0,.12); white-space: nowrap; font-variant-numeric: tabular-nums; z-index: 5; }
+.tooltip b { font-weight: 600; }
+details.tbl { margin-top: 6px; font-size: 13px; }
+details.tbl summary { cursor: pointer; color: var(--accent); }
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; margin-top: 8px; }
+th, td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; }
+.reading { font-size: 14.5px; min-width: 0; }
+.reading ul { padding-left: 1.2em; margin: 6px 0 0; display: grid; gap: 6px; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding-block: 18px; position: sticky; top: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 4; border-bottom: 1px solid var(--line); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--surface); }
+.seg button { font: 500 13.5px var(--font-body); border: 0; background: none; color: var(--fg); padding: 7px 14px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+.seg button:focus-visible, select:focus-visible, .thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+label.sel { display: inline-flex; gap: 8px; align-items: center; font-size: 13.5px; color: var(--muted); }
+select { font: 500 13.5px var(--font-body); padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); }
+
+.prompt { padding-block: 26px 10px; border-bottom: 1px solid var(--line); }
+.prompt-head { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 18px 28px; align-items: start; margin-bottom: 12px; }
+.prompt-num { font: 500 12px var(--font-mono); color: var(--accent); }
+.checklist { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.checklist li { font-size: 12.5px; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 2px 8px; max-width: none; }
+.checklist .sk { font: 500 11px var(--font-mono); color: var(--muted); margin-right: 5px; text-transform: uppercase; letter-spacing: .04em; }
+.spark-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px 4px; position: relative; }
+.spark-card .t { font-size: 12px; color: var(--muted); }
+
+.strip { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 14px; scroll-snap-type: x proximity; }
+.card { flex: 0 0 300px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; scroll-snap-align: start; display: flex; flex-direction: column; min-width: 0; }
+.card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.step-tag { font: 600 13px var(--font-mono); }
+.thumb { position: relative; display: block; border: 0; padding: 0; background: var(--soft); cursor: zoom-in; width: 100%; }
+.thumb img { display: block; width: 100%; height: auto; aspect-ratio: 2 / 1; object-fit: cover; }
+.half { position: absolute; top: 6px; font: 500 10.5px var(--font-mono); background: rgba(0,0,0,.62); color: #fff; padding: 1px 6px; border-radius: 3px; }
+.half.l { left: 6px; } .half.r { left: calc(50% + 6px); }
+.scores { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px 0; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.scores .lab { color: var(--muted); font-size: 12px; }
+.pill { font: 600 12px var(--font-mono); padding: 1px 7px; border-radius: 10px; }
+.pill.good { color: var(--good); background: var(--good-bg); }
+.pill.bad { color: var(--bad); background: var(--bad-bg); }
+.pill.flat { color: var(--flat); background: var(--flat-bg); }
+.pill.stop { color: var(--stop); background: var(--stop-bg); font-weight: 500; }
+.crit { padding: 8px 10px 12px; font-size: 13px; line-height: 1.5; }
+.crit p { margin: 0 0 6px; max-width: none; }
+.crit .k { font: 500 11px var(--font-mono); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); display: block; }
+
+.compare { display: grid; gap: 18px; }
+.cmp-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.cmp-row .card { flex: none; width: auto; }
+.cmp-prompt { grid-column: 1 / -1; font: 600 16px/1.35 var(--font-display); margin-top: 8px; }
+
+dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; background: var(--surface); color: var(--fg); max-width: min(96vw, 1100px); width: 100%; }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+dialog img { display: block; width: 100%; height: auto; }
+.dlg-bar { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.dlg-bar button { font: 500 13px var(--font-body); border: 1px solid var(--line); background: var(--soft); color: var(--fg); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+.dlg-crit { padding: 12px 14px 16px; font-size: 14px; }
+
+@media (max-width: 900px) {
+  .summary, .prompt-head { grid-template-columns: minmax(0, 1fr); }
+  .cmp-row { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 420px) { .card { flex-basis: 84vw; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow" id="eyebrow"></p>
+    <h1 id="h1"></h1>
+    <p class="muted" id="intro"></p>
+    <ul class="howto">
+      <li><strong>Each card is one trajectory</strong>The draft on the left, the refined image on the right, and the critique the model wrote in between.</li>
+      <li><strong>AM is the judge's score</strong>The average probability that frozen Tar-7B answers each checklist question correctly. The pill shows refined minus draft.</li>
+      <li><strong>"Looks good" means it stopped</strong>The score is the draft's. The right half is the same image tokens decoded a second time, so it can look slightly different.</li>
+    </ul>
+  </header>
+
+  <section class="summary" aria-label="Summary over all validation prompts">
+    <div class="chart-card" id="sumcard">
+      <p class="chart-title" id="sumtitle"></p>
+      <div class="legend"><span><i class="swatch sw-draft"></i>Draft</span><span><i class="swatch sw-refined"></i>After refining (final image)</span></div>
+      <div id="sumchart"></div>
+      <details class="tbl"><summary>Show as table</summary><div class="table-scroll" id="sumtable"></div></details>
+    </div>
+    <div class="reading">
+      <h2>What to look for</h2>
+      <p class="muted" id="samplenote"></p>
+      <ul id="reading"></ul>
+    </div>
+  </section>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="View">
+      <button type="button" id="v-strip" aria-pressed="true">Across training</button>
+      <button type="button" id="v-cmp" aria-pressed="false">Compare two steps</button>
+    </div>
+    <span id="cmp-controls" hidden>
+      <label class="sel" for="stepA">Step A <select id="stepA"></select></label>
+      <label class="sel" for="stepB">Step B <select id="stepB"></select></label>
+    </span>
+  </div>
+
+  <main id="view"></main>
+</div>
+
+<dialog id="dlg" aria-label="Enlarged trajectory">
+  <div class="dlg-bar"><span id="dlg-title"></span><button type="button" id="dlg-close">Close</button></div>
+  <img id="dlg-img" alt="">
+  <div class="dlg-crit" id="dlg-crit"></div>
+</dialog>
+
+<script id="data" type="application/json">{{DATA}}</script>
+<script>
+(function () {
+  var D = JSON.parse(document.getElementById('data').textContent);
+  var STEPS = D.steps;
+  var NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs, html) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+  function sv(tag, attrs) { var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function f2(x) { return x.toFixed(2); }
+  function f3(x) { return x.toFixed(3); }
+
+  // ---------- line chart (shared by summary + sparklines) ----------
+  function lineChart(host, opts) {
+    var W = opts.w, H = opts.h, m = opts.m;
+    var svg = sv('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': opts.label });
+    var x = function (i) { return m.l + i * (W - m.l - m.r) / (STEPS.length - 1); };
+    var y = function (v) { return m.t + (opts.ymax - v) * (H - m.t - m.b) / (opts.ymax - opts.ymin); };
+    var g = sv('g', { 'class': 'grid' });
+    opts.yticks.forEach(function (t) {
+      g.appendChild(sv('line', { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t) }));
+      var tx = sv('text', { x: m.l - 6, y: y(t) + 4, 'text-anchor': 'end', 'class': 'axis-label' }); tx.textContent = opts.fmtY(t); svg.appendChild(tx);
+    });
+    svg.insertBefore(g, svg.firstChild);
+    STEPS.forEach(function (s, i) {
+      if (opts.xEvery && i % opts.xEvery) return;
+      var tx = sv('text', { x: x(i), y: H - m.b + 15, 'text-anchor': 'middle', 'class': 'axis-label' }); tx.textContent = s; svg.appendChild(tx);
+    });
+    opts.series.forEach(function (S) {
+      var d = S.values.map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' ');
+      svg.appendChild(sv('path', { d: d, 'class': 'line-' + S.key }));
+    });
+    opts.series.forEach(function (S) {
+      S.values.forEach(function (v, i) { svg.appendChild(sv('circle', { cx: x(i), cy: y(v), r: opts.r || 4, 'class': 'dot-' + S.key })); });
+      if (opts.directLabels) {
+        var last = S.values.length - 1;
+        var tx = sv('text', { x: x(last) + 8, y: y(S.values[last]) + 4 + (S.dy || 0), 'class': 'direct-label' }); tx.textContent = S.short + ' ' + f3(S.values[last]); svg.appendChild(tx);
+      }
+    });
+    var cross = sv('line', { 'class': 'crosshair', y1: m.t, y2: H - m.b, x1: 0, x2: 0, visibility: 'hidden' });
+    svg.appendChild(cross);
+    var tip = el('div', { 'class': 'tooltip', hidden: '' });
+    host.style.position = 'relative';
+    host.appendChild(svg); host.appendChild(tip);
+    var colW = (W - m.l - m.r) / (STEPS.length - 1);
+    STEPS.forEach(function (s, i) {
+      var r = sv('rect', { x: x(i) - colW / 2, y: 0, width: colW, height: H, 'class': 'hover-col' });
+      function show() {
+        cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('visibility', 'visible');
+        tip.innerHTML = opts.tipHtml(i); tip.hidden = false;
+        var hb = host.getBoundingClientRect(), sb = svg.getBoundingClientRect();
+        var px = (x(i) / W) * sb.width + (sb.left - hb.left);
+        var left = px + 12; if (left + tip.offsetWidth > hb.width) left = px - tip.offsetWidth - 12;
+        tip.style.left = Math.max(0, left) + 'px'; tip.style.top = ((m.t / H) * sb.height + (sb.top - hb.top)) + 'px';
+      }
+      function hide() { cross.setAttribute('visibility', 'hidden'); tip.hidden = true; }
+      r.addEventListener('mouseenter', show); r.addEventListener('mouseleave', hide);
+      r.addEventListener('touchstart', show, { passive: true });
+      svg.appendChild(r);
+    });
+  }
+
+  // ---------- summary ----------
+  var g0 = STEPS.map(function (s) { return D.global[s]['val/am_0']; });
+  var g1 = STEPS.map(function (s) { return D.global[s]['val/am_final']; });
+  var lo = Math.floor(Math.min.apply(null, g0.concat(g1)) * 100 - 0.5) / 100, hi = Math.ceil(Math.max.apply(null, g0.concat(g1)) * 100 + 0.5) / 100;
+  var ticks = []; for (var t = lo; t <= hi + 1e-9; t += 0.01) ticks.push(+t.toFixed(2));
+  if (ticks.length > 6) ticks = ticks.filter(function (_, i) { return i % 2 === 0; });
+  var endDraft = g0[g0.length - 1], endRef = g1[g1.length - 1];
+  lineChart(document.getElementById('sumchart'), {
+    w: 620, h: 250, m: { l: 42, r: 118, t: 12, b: 26 }, ymin: lo, ymax: hi, yticks: ticks, fmtY: f2,
+    label: 'Mean AM of drafts and final images at each evaluation step',
+    directLabels: true,
+    series: [
+      { key: 'draft', short: 'Draft', values: g0, dy: endDraft >= endRef ? -6 : 8 },
+      { key: 'refined', short: 'Final', values: g1, dy: endRef > endDraft ? -6 : 8 }
+    ],
+    tipHtml: function (i) {
+      var G = D.global[STEPS[i]];
+      return '<b>Step ' + STEPS[i] + '</b><br>Draft AM ' + f3(G['val/am_0']) + '<br>Final AM ' + f3(G['val/am_final']) +
+        '<br>Improved ' + (100 * G['val/improved_1']).toFixed(1) + '% · Degraded ' + (100 * G['val/degraded_1']).toFixed(1) + '%' +
+        '<br>Looks good ' + (100 * G['val/looks_good_1']).toFixed(1) + '%';
+    }
+  });
+  var th = '<table><thead><tr><th>Step</th><th>Draft AM</th><th>Final AM</th><th>Final − draft</th><th>Improved</th><th>Degraded</th><th>Looks good</th></tr></thead><tbody>';
+  STEPS.forEach(function (s) {
+    var G = D.global[s];
+    th += '<tr><td>' + s + '</td><td>' + f3(G['val/am_0']) + '</td><td>' + f3(G['val/am_final']) + '</td><td>' + (G['val/am_final'] - G['val/am_0'] >= 0 ? '+' : '') + f3(G['val/am_final'] - G['val/am_0']) +
+      '</td><td>' + (100 * G['val/improved_1']).toFixed(1) + '%</td><td>' + (100 * G['val/degraded_1']).toFixed(1) + '%</td><td>' + (100 * G['val/looks_good_1']).toFixed(1) + '%</td></tr>';
+  });
+  document.getElementById('sumtable').innerHTML = th + '</tbody></table>';
+
+  // Header text from the run's metadata.
+  var NP = D.prompts.length, NE = STEPS.length;
+  document.getElementById('eyebrow').textContent = D.run + (D.n_val ? ' · ' + D.n_val + ' validation prompts' : '');
+  document.getElementById('h1').textContent = D.run + ' trajectories';
+  document.getElementById('intro').textContent = 'At every evaluation (steps ' + STEPS.join(', ') + '), the run decoded its first ' + NP +
+    ' validation prompts to pictures. These are those ' + (NP * NE) + ' pictures: the same ' + NP + ' prompts, followed across training.';
+  document.getElementById('sumtitle').textContent = 'Mean AM over all ' + (D.n_val || '') + ' validation prompts';
+  document.getElementById('samplenote').textContent = 'These ' + NP + ' prompts are a small sample; the chart on the left is the reliable signal. Notes below are computed from the data.';
+
+  // "What to look for": computed, not hand-written.
+  var reading = [];
+  var gaps = STEPS.map(function (_, i) { return g1[i] - g0[i]; });
+  var meanGap = gaps.reduce(function (a, b) { return a + b; }, 0) / gaps.length;
+  reading.push('Drafts: mean draft AM goes from ' + f3(g0[0]) + ' at step ' + STEPS[0] + ' to ' + f3(endDraft) + ' at step ' + STEPS[NE - 1] +
+    ' (peak ' + f3(Math.max.apply(null, g0)) + '). Final images go from ' + f3(g1[0]) + ' to ' + f3(endRef) + '.');
+  reading.push('Refining: final minus draft AM averages ' + (meanGap >= 0 ? '+' : '') + f3(meanGap) + ' across evaluations (range ' +
+    f3(Math.min.apply(null, gaps)) + ' to ' + f3(Math.max.apply(null, gaps)) + '). Near zero means the gain, if any, comes from better drafts.');
+  var first = String(STEPS[0]), last = String(STEPS[NE - 1]);
+  var byDraftGain = D.prompts.map(function (p) { return { p: p, g: p.steps[last].am0 - p.steps[first].am0 }; }).sort(function (a, b) { return b.g - a.g; });
+  if (byDraftGain.length) {
+    var b = byDraftGain[0];
+    reading.push('Biggest draft change: "' + b.p.prompt + '", ' + f2(b.p.steps[first].am0) + ' at step ' + first + ' → ' + f2(b.p.steps[last].am0) + ' at step ' + last + '.');
+  }
+  var swings = D.prompts.map(function (p) {
+    var ds = STEPS.map(function (s) { var st = p.steps[s]; return { s: s, d: st.lg ? 0 : st.am1 - st.am0, st: st }; });
+    var up = ds.reduce(function (a, b) { return b.d > a.d ? b : a; }), dn = ds.reduce(function (a, b) { return b.d < a.d ? b : a; });
+    return { p: p, up: up, dn: dn, range: up.d - dn.d };
+  }).sort(function (a, b) { return b.range - a.range; });
+  if (swings.length && swings[0].range > 0.05) {
+    var w = swings[0];
+    reading.push('Least stable refinement: "' + w.p.prompt + '", from ' + f2(w.up.st.am0) + ' → ' + f2(w.up.st.am1) + ' at step ' + w.up.s +
+      ' to ' + f2(w.dn.st.am0) + ' → ' + f2(w.dn.st.am1) + ' at step ' + w.dn.s + '.');
+  }
+  var stopRate = D.prompts.map(function (p) { return { p: p, n: STEPS.filter(function (s) { return p.steps[s].lg; }).length }; }).sort(function (a, b) { return b.n - a.n; });
+  if (stopRate.length && stopRate[0].n > 0) {
+    reading.push('Most frequent stop: "' + stopRate[0].p.prompt + '" says "looks good" at ' + stopRate[0].n + ' of ' + NE + ' evaluations.');
+  }
+  var ru = document.getElementById('reading');
+  reading.forEach(function (r) { ru.appendChild(el('li', null, esc(r))); });
+
+  // ---------- cards ----------
+  function deltaPill(st) {
+    if (st.lg) return '<span class="pill stop">stopped · looks good</span>';
+    var d = st.am1 - st.am0, cls = d > 0.005 ? 'good' : d < -0.005 ? 'bad' : 'flat';
+    var sign = d > 0.005 ? '▲ +' : d < -0.005 ? '▼ ' : '= ';
+    return '<span class="pill ' + cls + '">' + sign + f2(d) + '</span>';
+  }
+  function critHtml(refl) {
+    var i = refl.search(/\n?Correction:/);
+    var a = i >= 0 ? refl.slice(0, i) : refl, b = i >= 0 ? refl.slice(i).replace(/^\n?Correction:\s*/, '') : '';
+    return '<p><span class="k">Self-reflect</span>' + esc(a.trim()) + '</p>' + (b ? '<p><span class="k">Correction</span>' + esc(b.trim()) + '</p>' : '');
+  }
+  function card(p, pi, s) {
+    var st = p.steps[s];
+    var c = el('article', { 'class': 'card' });
+    c.innerHTML = '<div class="card-top"><span class="step-tag">step ' + s + '</span>' + deltaPill(st) + '</div>' +
+      '<button type="button" class="thumb" aria-label="Enlarge step ' + s + ' for prompt ' + (pi + 1) + '"><img loading="lazy" src="' + st.img + '" alt="Draft and ' + (st.lg ? 're-decoded draft' : 'refined image') + ' for: ' + esc(p.prompt) + ', step ' + s + '">' +
+      '<span class="half l">draft</span><span class="half r">' + (st.lg ? 'same tokens' : 'refined') + '</span></button>' +
+      '<div class="scores"><span class="lab">AM</span><span>' + f2(st.am0) + ' → ' + f2(st.am1) + '</span></div>' +
+      '<div class="crit">' + critHtml(st.refl) + '</div>';
+    c.querySelector('.thumb').addEventListener('click', function () { openDlg(p, s); });
+    return c;
+  }
+
+  var dlg = document.getElementById('dlg');
+  function openDlg(p, s) {
+    var st = p.steps[s];
+    document.getElementById('dlg-title').textContent = 'Step ' + s + ' · ' + p.prompt + ' · AM ' + f2(st.am0) + ' → ' + f2(st.am1);
+    var im = document.getElementById('dlg-img'); im.src = st.img; im.alt = 'Enlarged: ' + p.prompt + ', step ' + s;
+    document.getElementById('dlg-crit').innerHTML = critHtml(st.refl);
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+  }
+  document.getElementById('dlg-close').addEventListener('click', function () { dlg.close ? dlg.close() : dlg.removeAttribute('open'); });
+  dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+
+  function promptHead(p, pi) {
+    var head = el('div', { 'class': 'prompt-head' });
+    var left = el('div');
+    left.innerHTML = '<span class="prompt-num">prompt ' + (pi + 1) + ' of ' + NP + '</span><h2>' + esc(p.prompt) + '</h2>' +
+      '<ul class="checklist">' + p.checklist.map(function (q) { return '<li><span class="sk">' + esc(q[2]) + '</span>' + esc(q[0]) + ' <span class="muted">→ ' + esc(q[1]) + '</span></li>'; }).join('') + '</ul>';
+    var sc = el('div', { 'class': 'spark-card' });
+    sc.innerHTML = '<span class="t">This prompt’s AM by step</span><div class="legend"><span><i class="swatch sw-draft"></i>Draft</span><span><i class="swatch sw-refined"></i>Final</span></div>';
+    var host = el('div'); sc.appendChild(host);
+    head.appendChild(left); head.appendChild(sc);
+    var a0 = STEPS.map(function (s) { return p.steps[s].am0; }), a1 = STEPS.map(function (s) { return p.steps[s].am1; });
+    setTimeout(function () {
+      lineChart(host, {
+        w: 260, h: 104, m: { l: 30, r: 8, t: 8, b: 20 }, ymin: 0.3, ymax: 1.0, yticks: [0.4, 0.6, 0.8, 1.0], fmtY: function (t) { return t.toFixed(1); },
+        xEvery: 2, r: 2.5, label: 'Draft and final AM for this prompt at each step',
+        series: [{ key: 'draft', values: a0 }, { key: 'refined', values: a1 }],
+        tipHtml: function (i) { var st = p.steps[STEPS[i]]; return '<b>Step ' + STEPS[i] + '</b><br>Draft ' + f2(st.am0) + '<br>Final ' + f2(st.am1) + (st.lg ? '<br>stopped (looks good)' : ''); }
+      });
+    }, 0);
+    return head;
+  }
+
+  var view = document.getElementById('view');
+  function renderStrips() {
+    view.innerHTML = '';
+    D.prompts.forEach(function (p, pi) {
+      var sec = el('section', { 'class': 'prompt', 'aria-label': 'Prompt ' + (pi + 1) });
+      sec.appendChild(promptHead(p, pi));
+      var strip = el('div', { 'class': 'strip', tabindex: '0', 'aria-label': 'Trajectories across training steps' });
+      STEPS.forEach(function (s) { strip.appendChild(card(p, pi, String(s))); });
+      sec.appendChild(strip);
+      view.appendChild(sec);
+    });
+  }
+  var selA = document.getElementById('stepA'), selB = document.getElementById('stepB');
+  STEPS.forEach(function (s) { selA.appendChild(el('option', { value: s }, 'step ' + s)); selB.appendChild(el('option', { value: s }, 'step ' + s)); });
+  selA.value = String(STEPS[0]); selB.value = String(STEPS[STEPS.length - 1]);
+  function renderCompare() {
+    view.innerHTML = '';
+    var wrap = el('div', { 'class': 'compare' });
+    D.prompts.forEach(function (p, pi) {
+      var row = el('div', { 'class': 'cmp-row' });
+      row.appendChild(el('div', { 'class': 'cmp-prompt' }, (pi + 1) + '. ' + esc(p.prompt)));
+      row.appendChild(card(p, pi, selA.value)); row.appendChild(card(p, pi, selB.value));
+      wrap.appendChild(row);
+    });
+    view.appendChild(wrap);
+  }
+  var bS = document.getElementById('v-strip'), bC = document.getElementById('v-cmp'), cc = document.getElementById('cmp-controls');
+  function setMode(m) {
+    bS.setAttribute('aria-pressed', m === 'strip'); bC.setAttribute('aria-pressed', m === 'cmp'); cc.hidden = m !== 'cmp';
+    if (m === 'strip') renderStrips(); else renderCompare();
+    try { localStorage.setItem('rltraj-mode', m); } catch (e) {}
+  }
+  bS.addEventListener('click', function () { setMode('strip'); });
+  bC.addEventListener('click', function () { setMode('cmp'); });
+  selA.addEventListener('change', renderCompare); selB.addEventListener('change', renderCompare);
+  var saved = 'strip'; try { saved = localStorage.getItem('rltraj-mode') || 'strip'; } catch (e) {}
+  setMode(saved === 'cmp' ? 'cmp' : 'strip');
+})();
+</script>
