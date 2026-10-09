@@ -36,6 +36,8 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `output_dir/slurm_logs/` must exist before `sbatch` (SLURM opens `-o/-e` before the script runs).
   - Scratch reads are slow: policy shards load in ~5.5 min, judge in ~2.5–4 min.
   - Queue: whole 4×H100 nodes waited ~75 min (1 h limit) on 2026-10-09.
+  - Claude: tmux session `claude` on `login2` (when away); conversation `2f24f487-5bff-422b-bf9d-8947af5a8a9f`,
+    resumed from `/scratch/dars11/git`.
   - tmux sessions are per login node; Ctrl-C in a pane where `salloc` waits cancels the request.
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 

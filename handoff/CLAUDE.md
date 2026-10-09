@@ -32,6 +32,17 @@ Rules:
 5. Work and push only on `darshan-rl-test`; never push to `main`. Commit with the user's identity (GitHub
    `Darshansingh11`). If this branch is ever merged into `main`, leave `handoff/` out.
 
+## How the user runs these sessions
+On every cluster the user works in the VSCode plugin while at their desk and resumes the *same* conversation in a
+tmux session named `claude` on a fixed login node only while away (so watchers keep running with the laptop closed).
+- Only one client may have a conversation open. Resuming it while it is open elsewhere makes Claude Code fork it
+  into a new session ID (`--fork-session`). When the user switches, remind them to close the chat tab or `/exit`
+  the other side first.
+- Background watchers die with the session that started them. After a switch, catch up from the logs and these
+  notes, and offer to restart the watchers.
+- Resume: `cd <notes folder> && claude --resume <session-id>`. Record the cluster's login node and session id in
+  its cluster file (Setup).
+
 ## Project status
 - SFT is done on Tar-7B (`slf_ref_edit_t20` @16K; newer `slf_ref_edit_t21` @17K is the RL starting point). It
   iterates on edit-style prompts but barely improves OOD (GenEval2, TIIF, GenAI-bench), and its single-pass
