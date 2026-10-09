@@ -2,12 +2,12 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-09 15:00)
+## Now (2026-10-09 15:30 EDT)
 - `darshan_t7_tamia` is **queued**: t7 recipe on **2 nodes × 4 H100**, 36 prompts/step (t7's batch), 300 steps,
   val800 every 50. Jobs 516259 → 516260 → 516261 (12 h each, `gpubase_bynode_b2`, `afterany` chain), code at
   `b0c8c31`. The user asked for it explicitly, in addition to the 1-node `darshan_t7_fir` (18/step): the pair tests
   the batch-size question. Different `RUN_NAME`s, so no wandb collision.
-- Estimated start 2026-10-09 23:45, held back by fair-share (see Setup). 300 steps at ~5 min/step + 7 val800 evals
+- Estimated start 2026-10-10 01:45 (was 23:45; slipping), held back by fair-share (see Setup). 300 steps at ~5 min/step + 7 val800 evals
   ≈ 30 h, i.e. all three jobs.
 - First checks once it starts (`output_dir/slurm_logs/darshan_t7_tamia_516259.out`): `judge ready` from both nodes;
   `train prompts: 49000 (per rank/epoch 8166 or 8167), val prompts per rank: 133 or 134`; `step=0`.
@@ -31,11 +31,14 @@ Owned by the TamIA session.
   `Priority`. 1 vs 2 nodes changes the estimate by minutes; 24 h jobs wait much longer than 12 h; one H200 node
   is no faster. `--test-only` estimates were ~6 h more optimistic than `squeue --start` for the real job.
 - Launcher `scripts/rl_ft/bash_tamia_t7.sh`: copy of `bash_fir_t7.sh` with only account, job name and paths changed.
+- Session: login node `tamia1`, session id `a2cf8ab9-d921-49b4-af79-f29b7522648d`; resume with
+  `cd ~/scratch/git && claude --resume a2cf8ab9-d921-49b4-af79-f29b7522648d` (in tmux `claude` when away). No watchers yet.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-09 15:30: pulled `839ccc2` (handoff-only); recorded login node and session id.
 - 2026-10-09: pulled `ba65f42` (handoff/ folder); `~/scratch/git/CLAUDE.md` is now a symlink to `handoff/CLAUDE.md`;
   local `TAMIA_HANDOFF.md` deleted (contents are here; original in `archive/`). Inbox from Fir handled: RUN_NAME fix
   pulled (line 125 verified), notes moved, Fir smoke reference noted in `runs.md`.
