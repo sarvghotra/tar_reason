@@ -5,7 +5,7 @@
 #SBATCH --gpus-per-node=h100:4
 #SBATCH --cpus-per-task=48
 #SBATCH --mem=0
-#SBATCH --account=def-agrawal_gpu
+#SBATCH --account=rrg-bengioy-ad_gpu
 #SBATCH --open-mode=append
 #SBATCH -J darshan_t7_fir
 #SBATCH -o /home/dars11/scratch/git/tar_reason/output_dir/slurm_logs/%x_%j.out
