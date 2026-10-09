@@ -56,7 +56,8 @@ PDFs can't be rendered where poppler is missing; extract text with `uv run --no-
   Don't confuse the two pairs of tags.
 - Iterative prompt prefix: `Generate an image iteratively by self-reflecting and correcting.`
 - Critique format: `Self-reflect: …` then `Correction: …`. A correction of "looks good" ends generation.
-  "no edit" / "no change" should also count as a stop signal.
+  "no edit" / "no change" should also count as a stop signal. Not implemented yet: the rollout's stop rule
+  (`LOOKS_GOOD_RE` in `llava/train/rl/rollout.py`) matches only "looks good".
 - Main metrics: GenEval2-style AM and GM. Also report the all-atoms-correct rate, critic recall and
   specificity, and the fix rate of named atoms.
 - Benchmarks: GenEval2, GenAI-bench, TIIF-bench (short/long). IID val sets are built in GenEval2 style.
@@ -76,9 +77,9 @@ RL code: `llava/train/rl/` (`train_grpo.py` entry point, `rollout.py`, `reward.p
 `oracle_critique.py`, `pixel_reward_server.py`). Launchers in `scripts/rl_ft/`: `bash.sh` (collaborator's),
 `bash_mila.sh` / `bash_darshan.sh` (latent reward, Mila / Fir), `bash_mila_t7.sh` / `bash_fir_t7.sh` /
 `bash_tamia_t7.sh` (t7 recipe). Line-by-line walkthrough of the RL code (commit `e535421`):
-https://claude.ai/artifact/KPqjbeJ5iZMWsFuAyVmUHk. Regenerate after code changes with
-`~/envs/tar/bin/python tools/walkthrough/build.py`, then republish `tools/walkthrough/out/tar_grpo_walkthrough.html`
-to the same URL.
+https://claude.ai/artifact/KPqjbeJ5iZMWsFuAyVmUHk. Its generator is not in the repo: it lives on Mila at
+`/home/mila/s/singhsd/CODE/LatentDCR/tools/walkthrough/build.py` (run with `~/envs/tar/bin/python`, reads excerpts
+from the repo and checks their line numbers); republish `tools/walkthrough/out/tar_grpo_walkthrough.html` to the same URL.
 
 ## Clusters (details in each cluster's file)
 - **Mila** (user `singhsd`): A100 80GB (`a100l`) / H100; internet on compute nodes. See `mila.md`.

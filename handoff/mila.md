@@ -1,34 +1,54 @@
 # Mila
 
-Owned by the Mila session. **Seeded from Fir on 2026-10-09** from the Fir copy of CLAUDE.md; the Mila session
-should rewrite this file from its own notes (its `MILA_HANDOFF.md` and CLAUDE.md), then delete this line.
+Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
+(`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (as last known on Fir, 2026-10-09 ~11:00)
-- **Running:** `darshan_t7_mila` (see `runs.md`): chain of 12 jobs 11145380 … 11145391 (`afterany`),
-  `MAX_STEPS=200 EVAL_STEPS=100` (evals at 0/100/200; extend to 300 later if promising, the LR is constant).
-  ~23 steps per 3 h job. Was at step 95 on 2026-10-09 11:00.
-- CPU job `keep_t7_ckpts` copies checkpoint-100/200 to `$SCRATCH/tar_reason/kept/darshan_t7_mila/`.
-- If refinement improves but slowly: rerun with `PROMPTS_PER_GPU=12` (36/step, t7's batch, ~2× time per step).
+## Now (2026-10-09 15:10 EDT)
+- **Running:** `darshan_t7_mila` (see `runs.md`), chain of 12 `short-unkillable` jobs 11145380 … 11145391
+  (`afterany`, 3 h each, `MAX_STEPS=200 EVAL_STEPS=100`), currently job 11145385 resumed from checkpoint-100.
+  ~23 steps per job; step 200 + its val800 eval expected around 2026-10-10 midday.
+- **Step-100 val800 is in and positive** (refined > draft with the model's own critique). Details in `runs.md`.
+- CPU job `keep_t7_ckpts` (11156033) copies checkpoint-100 (done 12:13) and checkpoint-200 to
+  `$SCRATCH/tar_reason/kept/darshan_t7_mila/` (the run keeps only its 5 newest checkpoints).
+- **Next:** at step 200, decide with the user whether to extend to 300 (LR is constant, so another chain with
+  `MAX_STEPS=300` continues seamlessly) and evaluate checkpoint-100/200 on the official benchmarks.
 
 ## Setup
-- User `singhsd`. Env `~/envs/tar`, `~/envs/qwen_judge`. Weights in `$SCRATCH/models/tar/` (Tar-7B, TA-Tok,
-  de-tokenizers, `siglip2-so400m-patch14-384` config, `sft/slf_ref_edit_t21_ckpt17000`) and
-  `$SCRATCH/models/vlm/Qwen3-VL-8B-Instruct`. Data `$SCRATCH/data/geneval2_50K_v2/`.
-- `tar_reason/output_dir` is a symlink to `$SCRATCH/tar_reason/output_dir`; SLURM logs in its `slurm_logs/`.
-- Partitions: `main` caps a user at 2 GPUs / 8 CPUs / 48 GB, so multi-GPU runs go on `long` (preemptible; the
-  trainer resumes from the latest checkpoint). Use `a100l` or `h100` (80 GB).
-- Launchers: `bash_mila.sh` (latent reward), `bash_mila_oracle.sh`, `bash_mila_t7.sh` (t7). Untracked
-  `scripts/rl_ft/bash_t7_sarv.sh` = the collaborator's original t7 script, for reference.
-- `--dataset_seed` was added on our branch; the collaborator's version is not pushed.
+- Envs: `~/envs/tar` (training), `~/envs/qwen_judge` (judge; freeze in `~/envs/qwen_judge.freeze.txt`).
+- Weights: `$SCRATCH/models/tar/` (Tar-7B, `ta_tok.pth`, `ar_dtok_lp_512px.pth`, `vq_ds16_t2i.pt`,
+  `siglip2-so400m-patch14-384/config.json`, `sft/slf_ref_edit_t21_ckpt17000`), `$SCRATCH/models/vlm/Qwen3-VL-8B-Instruct`.
+- Data: `$SCRATCH/data/geneval2_50K_v2/` (train 49,000 + val800 + val256). `$SCRATCH/data/geneval2_50K/` is the
+  old 49,488-row copy (288 val800 prompts inside); `val800_train_overlap.tsv` there lists them.
+- `tar_reason/output_dir` → `$SCRATCH/tar_reason/output_dir`; SLURM logs in `output_dir/slurm_logs/`.
+  Artifacts can't be published from there (resolves outside the allowed roots): copy out first.
+- Partitions: `main` caps a user at 2 GPUs / 8 CPUs / 48 GB; `long` has no cap but is preemptible (requeued jobs
+  resume); `short-unkillable` allows 4 GPUs for 3 h, not preempted (QoS: 4 GPUs per user). Use `a100l` (80 GB);
+  the 2 `h100` nodes are usually full. A full `a100l` node with 4 free GPUs is rare on `long`.
+- On A100, t7 is ~7.3 min/step (rollout ~225 s, decode+judge ~130 s, train ~95 s); a val800 validation with
+  `--eval_oracle` takes 1 h 46 min on 3 ranks. Judge loads in ~50 s.
+- sbatch copies the script at submission: editing a launcher does not change already-queued jobs.
+- Launchers: `bash_mila.sh` (latent reward, `BRANCH` from env), `bash_mila_oracle.sh` (latent + oracle critiques,
+  std floor 0.04, untruncated sampling), `bash_mila_t7.sh` (t7). Untracked `scripts/rl_ft/bash_t7_sarv.sh` = the
+  collaborator's original t7 script.
+- Tools outside the repo, Mila only: `tools/walkthrough/build.py` (generates the code-walkthrough artifact; run
+  with `~/envs/tar/bin/python`). In the repo: `scripts/rl_ft/viz/trajectory_gallery.py` (gallery of logged val
+  strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-09 from Fir: notes moved to `tar_reason/handoff/` (see CLAUDE.md "How the sessions coordinate").
-  Merge your `MILA_HANDOFF.md` and any CLAUDE.md edits into `mila.md` / `runs.md` / `handoff/CLAUDE.md`, then
-  replace your `~/scratch/git`-level `CLAUDE.md` with a symlink to `tar_reason/handoff/CLAUDE.md`.
-- 2026-10-09 from Fir: `darshan_t7_fir` (same recipe and batch, 1 node of H100) is running on Fir, ~4.8 min/step.
-  Compare against `darshan_t7_mila` in `runs.md`.
+(empty)
 
 ## Log (newest first)
-- 2026-10-08: started `darshan_t7_mila`; cancelled `darshan_rl_oracle_b25_mila` at step ~54.
-- 2026-10-07: `darshan_rl_2gpu_mila` finished (500 steps).
+- 2026-10-09: moved notes to `handoff/` (Fir's scheme): rewrote this file and the Mila rows of `runs.md`;
+  `LatentDCR/CLAUDE.md` is now a symlink to `tar_reason/handoff/CLAUDE.md` (old file kept as `CLAUDE.md.old`);
+  deleted `LatentDCR/MILA_HANDOFF.md` and `LatentDCR/FIR_HANDOFF.md` (frozen copies in `handoff/archive/`).
+- 2026-10-09 12:13: step-100 val800 done; checkpoint-100 copied to `kept/`. Started `keep_t7_ckpts`.
+- 2026-10-09: rewrote the code walkthrough for the t7 path (artifact KPqjbeJ5iZMWsFuAyVmUHk, commit `e535421`).
+- 2026-10-08 23:10: rechained `darshan_t7_mila` as `MAX_STEPS=200 EVAL_STEPS=100` (12 jobs after 11143217).
+- 2026-10-08: `darshan_t7_mila` started (job 11143217: step-0 eval + steps 1–11). Earlier attempts cancelled within
+  minutes to switch data: val256 → val800 → val800 minus 288 → the collaborator's leak-free v2 data.
+- 2026-10-08: added `--dataset_seed` and redo-of-interrupted-validation to `train_grpo.py` (`a533714`).
+- 2026-10-08: built `~/envs/qwen_judge`, downloaded Qwen3-VL-8B; t7 smoke test passed (job 11141217, 29 min).
+- 2026-10-08: cancelled `darshan_rl_oracle_b25_mila` at step ~54 after its step-0 diagnosis.
+- 2026-10-07: `darshan_rl_2gpu_mila` finished (500 steps, 19 h 20 min). Built the trajectory gallery tool.
 - 2026-10-06: latent-reward smoke test passed (1 A100: 42.5 GB peak, ~125 s/step); SigLIP2 path fix `39a6672`.
+- 2026-10-05: Mila setup (GitHub SSH key, clone, `~/envs/tar`, HF weights).
