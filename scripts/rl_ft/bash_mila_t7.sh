@@ -20,8 +20,9 @@
 #   * short-unkillable caps a job at 3 h: chain jobs (see below); training resumes
 #     from the latest checkpoint-N. SAVE_STEPS=5 (t7: 50) so a time-limit kill loses
 #     at most ~5 steps.
-#   * Validation uses our val256 until the collaborator's 800-prompt val file is
-#     copied over (set VAL_JSONL). logging_steps 1 (t7: 8), which does not affect training.
+#   * Validation is t7's 800-prompt set (~1.5 h per validation on 3 ranks). A job
+#     killed mid-validation has the next job redo it (eval_done_<step> markers).
+#     logging_steps 1 (t7: 8), which does not affect training.
 #
 # Submit a chain of N jobs (each starts when the previous ends, for any reason):
 #   cd ~/CODE/LatentDCR/tar_reason
@@ -37,7 +38,7 @@ REPO=/home/mila/s/singhsd/CODE/LatentDCR/tar_reason
 MODELS=/network/scratch/s/singhsd/models/tar
 DATA=/network/scratch/s/singhsd/data/geneval2_50K
 TRAIN_JSONL=${TRAIN_JSONL:-${DATA}/evaluation_metadata_shuf_train.jsonl}
-VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val256.jsonl}
+VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val800.jsonl}   # t7 val set (copied from Fir)
 JUDGE_MODEL=/network/scratch/s/singhsd/models/vlm/Qwen3-VL-8B-Instruct
 JUDGE_PY=/home/mila/s/singhsd/envs/qwen_judge/bin/python
 
@@ -98,6 +99,11 @@ EVAL_MAX_PROMPTS=${EVAL_MAX_PROMPTS:-}     # empty = full val set
 WARMUP_RATIO=0.05
 LOG_IMAGES=8
 SEED=421
+# Array jobs (sbatch --array=...): offset the base seed by the array task id.
+# Chained jobs of one run have no array id, so they all keep the same value and
+# resume the same prompt stream.
+DATASET_SEED=$(( ${DATASET_SEED:-19} + ${SLURM_ARRAY_TASK_ID:-0} ))
+echo "DATASET_SEED: ${DATASET_SEED}"
 # ===================== Config params END =====================
 
 cd ${REPO}
@@ -110,6 +116,7 @@ export WANDB_ENTITY="darshan-singh"
 export WANDB_MODE="${WANDB_MODE:-online}"
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384   # TA-Tok encoder config
 
+[ -f "${VAL_JSONL}" ] || { echo "Validation file not found: ${VAL_JSONL}" >&2; exit 1; }
 mkdir -p "$LOCAL_DIR"
 if [ ! -f "$DATA_PATH" ]; then
     printf 'datasets:\n    - json_path:\n      - %s\n      ratio: 1\n' "${TRAIN_JSONL}" > "$DATA_PATH"
@@ -228,6 +235,7 @@ torchrun --standalone --nproc_per_node=${N_TRAIN_GPUS} \
     --report_to wandb \
     --run_name ${RUN_NAME} \
     --seed ${SEED} \
+    --dataset_seed ${DATASET_SEED} \
     --log_images ${LOG_IMAGES} \
     --ar_path ${AR_MODEL} \
     --encoder_path ${ENCODER} \

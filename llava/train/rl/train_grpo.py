@@ -188,6 +188,9 @@ def parse_args():
     p.add_argument("--run_name", default=None)
     p.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--dataset_seed", type=int, default=None,
+                   help="Seed of the training-prompt shuffle only (default: --seed). Resumed jobs "
+                        "must keep the same value to continue the same prompt stream.")
     # Optional decoded-image logging (needs the visual de-tokenizer weights).
     p.add_argument("--log_images", type=int, default=0)
     p.add_argument("--ar_path", default=None)
@@ -865,7 +868,8 @@ def main():
                       adv_std_floor=args.adv_std_floor,
                       reflect_token_weight=args.reflect_token_weight)
 
-    train_ds = GenEval2PromptDataset(args.data_path, seed=args.seed, rank=rank,
+    dataset_seed = args.seed if args.dataset_seed is None else args.dataset_seed
+    train_ds = GenEval2PromptDataset(args.data_path, seed=dataset_seed, rank=rank,
                                      world_size=world_size, max_atoms=args.max_atoms)
     val_rows = []
     if args.eval_data_path:
@@ -885,14 +889,14 @@ def main():
                    config=vars(args), resume="allow",
                    id=os.environ.get("WANDB_RUN_ID"))
 
-    def log(metrics: Dict, step: int):
+    def log(metrics: Dict, step: int, wandb_step: Optional[int] = None):
         if is_main():
             printable = {k: (round(v, 4) if isinstance(v, float) else v)
                          for k, v in metrics.items() if not k.endswith("images")}
             print(f"step={step} {json.dumps(printable)}", flush=True)
             if use_wandb:
                 import wandb
-                wandb.log(metrics, step=step)
+                wandb.log(metrics, step=step if wandb_step is None else wandb_step)
 
     # Frozen critiques for training (--critique_source oracle | hybrid); the
     # extra validation pass (--eval_oracle) always uses the pure oracle.
@@ -915,8 +919,23 @@ def main():
                                       critique_fn=oracle_fn, prefix="val_oracle/"))
         return out
 
+    # A marker per finished validation, so a job killed mid-validation (e.g. at a
+    # time limit) has the next job redo that validation after resuming.
+    def eval_marker(step):
+        return os.path.join(args.output_dir, f"eval_done_{step}")
+
+    def validate_and_log(step, wandb_step=None):
+        log(validate(step), step, wandb_step)
+        if is_main():
+            open(eval_marker(step), "w").close()
+
     if args.eval_on_start and start_step == 0 and val_rows:
-        log(validate(0), 0)
+        validate_and_log(0)
+    elif (start_step > 0 and val_rows and args.eval_steps and start_step % args.eval_steps == 0
+          and not os.path.exists(eval_marker(start_step))):
+        rank0_print(f"Validation at step {start_step} did not finish before the last job ended; redoing it.")
+        # wandb already moved past start_step in the previous job, so this lands on the next step.
+        validate_and_log(start_step, wandb_step=start_step + 1)
 
     prompt_iter = train_ds.iterate(args.prompts_per_gpu, skip_batches=start_step)
     for step in range(start_step + 1, args.max_steps + 1):
@@ -951,7 +970,7 @@ def main():
         if args.save_steps and step % args.save_steps == 0:
             save_checkpoint(model, optimizer, scheduler, step, args, device)
         if args.eval_steps and val_rows and step % args.eval_steps == 0:
-            log(validate(step), step)
+            validate_and_log(step)
 
     if args.max_steps % max(args.save_steps, 1) != 0:
         save_checkpoint(model, optimizer, scheduler, args.max_steps, args, device)
