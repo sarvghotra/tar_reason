@@ -37,7 +37,8 @@
 REPO=/home/mila/s/singhsd/CODE/LatentDCR/tar_reason
 MODELS=/network/scratch/s/singhsd/models/tar
 DATA=/network/scratch/s/singhsd/data/geneval2_50K
-TRAIN_JSONL=${TRAIN_JSONL:-${DATA}/evaluation_metadata_shuf_train.jsonl}
+# 288 of the 800 val prompts are also in the full training file, so train on a copy without them.
+TRAIN_JSONL=${TRAIN_JSONL:-${DATA}/evaluation_metadata_shuf_train_minus_val800.jsonl}
 VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val800.jsonl}   # t7 val set (copied from Fir)
 JUDGE_MODEL=/network/scratch/s/singhsd/models/vlm/Qwen3-VL-8B-Instruct
 JUDGE_PY=/home/mila/s/singhsd/envs/qwen_judge/bin/python
