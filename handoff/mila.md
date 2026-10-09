@@ -14,6 +14,10 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   `MAX_STEPS=300` continues seamlessly) and evaluate checkpoint-100/200 on the official benchmarks.
 
 ## Setup
+- Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`, opened from the VSCode plugin via
+  `mila code CODE/LatentDCR --alloc …` (runs on a compute node, not a login node). Resume:
+  `cd ~/CODE/LatentDCR && claude --resume 830290ea-cb02-4188-9cf2-1c5fb3768fa2`. No tmux login node chosen yet
+  (Mila's `login.server.mila.quebec` round-robins over several login nodes; pick one with `ssh login-N`).
 - Envs: `~/envs/tar` (training), `~/envs/qwen_judge` (judge; freeze in `~/envs/qwen_judge.freeze.txt`).
 - Weights: `$SCRATCH/models/tar/` (Tar-7B, `ta_tok.pth`, `ar_dtok_lp_512px.pth`, `vq_ds16_t2i.pt`,
   `siglip2-so400m-patch14-384/config.json`, `sft/slf_ref_edit_t21_ckpt17000`), `$SCRATCH/models/vlm/Qwen3-VL-8B-Instruct`.
