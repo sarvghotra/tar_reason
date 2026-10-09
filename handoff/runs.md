@@ -11,7 +11,8 @@ Rows marked † were copied from the Fir copy of CLAUDE.md on 2026-10-09; the Mi
 | `darshan_t7_mila` † | Mila | t7: Qwen3-VL-8B pixel judge (GPU 3), hybrid critiques, `BRANCH=2,4`, LR 1e-4 const, KL 0.05, 2 PPO epochs, `draft_reward children`, stop 0.5@0.8, `DATASET_SEED=19`, data v2 + val800 | 18/step (3 A100 × 6) | running since 2026-10-08, `MAX_STEPS=200 EVAL_STEPS=100` (chain 11145380…91) | step 0 val800: own final−draft −0.010, fix 12.0%; oracle +0.009, fix 14.9%, brk 7.4%. Step 95: train fix_1 13.7% → 22.5%, fix_oracle_1 12.4% → 26%, reward_1 +0.01…+0.03, brk_1 ~7.5%. ~7.3 min/step. | `mila.md` |
 | `t7_smoke_fir` | Fir | t7, 2 steps, eval on 24 prompts | 18/step (3 H100 × 6) | done 2026-10-09, job 63829085 | pass: judge 260 s, steps 0–2, ckpt 1.9 GB. Rollout ~170 s, reward ~81 s, train ~35 s = **~4.8 min/step** | `fir.md` |
 | `darshan_t7_fir` | Fir | t7, same flags as `darshan_t7_mila`, 300 steps, val800 every 50 | 18/step (3 H100 × 6) | running since 2026-10-09 (jobs 63858143 → 44 → 45) | – | `fir.md` |
-| `t7_smoke_tamia` | TamIA | t7 smoke test | 18/step | planned | – | `tamia.md` |
+| `t7_smoke_tamia` | TamIA | t7, 2 steps, eval on 24 prompts | 18/step (3 H100 × 6) | done 2026-10-09, job 515432 | pass: judge 40 s, steps 0–2, ckpt 1.9 GB, 21 min total. Rollout ~155 s, reward ~75 s, train 33–63 s = **~4.5–5 min/step** | `tamia.md` |
+| `darshan_t7_tamia` | TamIA | t7, same flags as `darshan_t7_fir`, 300 steps, val800 every 50 | 36/step (2 nodes × 3 H100 × 6) | queued 2026-10-09 (jobs 516259 → 60 → 61, 12 h each; est. start 23:45) | – | `tamia.md` |
 
 ## Reference: the collaborator's runs (Fir, their account)
 - `rl_ft_oracle_t7`: the recipe above at 36 prompts/step (2 nodes × 3 train ranks × 6, per its header;
