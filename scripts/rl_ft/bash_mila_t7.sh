@@ -20,8 +20,7 @@
 #   * short-unkillable caps a job at 3 h: chain jobs (see below); training resumes
 #     from the latest checkpoint-N. SAVE_STEPS=5 (t7: 50) so a time-limit kill loses
 #     at most ~5 steps.
-#   * Validation is t7's 800-prompt set minus the 288 prompts that are also in the
-#     training file, so 512 prompts (~1 h per validation on 3 ranks). A job
+#   * Validation is t7's 800 prompts (~1.5 h per validation on 3 ranks). A job
 #     killed mid-validation has the next job redo it (eval_done_<step> markers).
 #     logging_steps 1 (t7: 8), which does not affect training.
 #
@@ -37,10 +36,11 @@
 
 REPO=/home/mila/s/singhsd/CODE/LatentDCR/tar_reason
 MODELS=/network/scratch/s/singhsd/models/tar
-DATA=/network/scratch/s/singhsd/data/geneval2_50K
+# The collaborator's leak-free copy (Fir /scratch/jeet/tmp/data/T2I_datasets/geneval2_50K, 2026-10-08):
+# train = first 49,000 rows of the old 49,488-row file, no overlap with val800/val256.
+DATA=/network/scratch/s/singhsd/data/geneval2_50K_v2
 TRAIN_JSONL=${TRAIN_JSONL:-${DATA}/evaluation_metadata_shuf_train.jsonl}
-# t7's 800 val prompts minus the 288 that are also in the training file (512 left).
-VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val800_minus_train.jsonl}
+VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val800.jsonl}   # t7's val set
 JUDGE_MODEL=/network/scratch/s/singhsd/models/vlm/Qwen3-VL-8B-Instruct
 JUDGE_PY=/home/mila/s/singhsd/envs/qwen_judge/bin/python
 
