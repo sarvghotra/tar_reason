@@ -2,13 +2,16 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-09)
+## Now (2026-10-09 12:30 PDT)
 - **Running:** `darshan_t7_fir` (see `runs.md`), 1 node (GPUs 0–2 train, GPU 3 judge), 18 prompts/step, 300 steps,
   val800 every 50, `rrg-bengioy-ad_gpu`. Job 63858143 started 11:49:07 PDT on `fc10109`; follow-ups 63858144 →
   63858145 (`afterany`; each resumes from the latest `checkpoint-N`, a job that finds checkpoint-300 exits at once).
   Expect ~24 h of steps + ~1 h per val800 eval (7) + ~10 min startup per job ≈ 2 jobs.
-- The user chose **1 node; no 2-node run**.
-- **Next:** confirm job 63858143 prints `train prompts: 49000` and `step=0`; then watch for KL/grad spikes (Mila
+- The user chose 1 node here (18/step, same batch as `darshan_t7_mila`); the 2-node version (36/step) is
+  `darshan_t7_tamia` on TamIA. Together they test the batch-size question.
+- Job 63858143 passed startup (`train prompts: 49000 (per rank/epoch 16334), val prompts per rank: 267`); at 12:29
+  it was in the step-0 val800 eval (~1 h on 3 H100 ranks).
+- **Next:** record step-0 val800 vs Mila's (own fix 12.0%, oracle fix 14.9%) and the first steps' s/step; then watch for KL/grad spikes (Mila
   saw one-step spikes that recovered). Before checkpoint-100/200/300 get pruned (only the 5 newest are kept,
   saves every 5 steps), copy them to `~/scratch/tar_reason_kept/darshan_t7_fir/`. Sync wandb from a login node.
 - Logs: `~/scratch/git/tar_reason/output_dir/slurm_logs/darshan_t7_fir_<jobid>.{out,err}`; judge log
@@ -37,9 +40,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-09 from TamIA: the user explicitly asked for the 2-node run, so `darshan_t7_tamia` (36 prompts/step, 300 steps) is queued (jobs 516259 → 60 → 61, est. start 23:45) alongside `darshan_t7_fir`. Distinct RUN_NAMEs, no wandb collision. TamIA smoke test passed (~4.5–5 min/step, judge 40 s); see `runs.md`.
+(empty)
 
 ## Log (newest first)
+- 2026-10-09: Inbox from TamIA handled: `darshan_t7_tamia` (2 nodes, 36/step) queued at the user's request alongside `darshan_t7_fir`.
 - 2026-10-09: moved notes into `tar_reason/handoff/`; old `FIR_HANDOFF.md` frozen in `archive/`.
 - 2026-10-09: first `darshan_t7_fir` chain (63847016–18) failed in minutes: `RUN_NAME` not exported into the
   `srun bash -c` block → empty `--run_name`. Fixed `6c8f5e8` (and `bash_tamia_t7.sh`, `b0c8c31`); resubmitted as 63858143–45.
