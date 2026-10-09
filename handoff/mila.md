@@ -8,6 +8,9 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   (`afterany`, 3 h each, `MAX_STEPS=200 EVAL_STEPS=100`), currently job 11145385 resumed from checkpoint-100.
   ~23 steps per job; step 200 + its val800 eval expected around 2026-10-10 midday.
 - **Step-100 val800 is in and positive** (refined > draft with the model's own critique). Details in `runs.md`.
+- Watcher (Monitor in session `830290ea…`, re-armed every 30 min; script `watch_t7_mila.sh` in that session's
+  scratchpad) reports chain job starts/failures, log errors, KL > 0.5 or grad > 1 spikes, val800 results,
+  checkpoint-200's copy and `Done.`. It dies with the session; restart it after switching clients.
 - CPU job `keep_t7_ckpts` (11156033) copies checkpoint-100 (done 12:13) and checkpoint-200 to
   `$SCRATCH/tar_reason/kept/darshan_t7_mila/` (the run keeps only its 5 newest checkpoints).
 - **Next:** at step 200, decide with the user whether to extend to 300 (LR is constant, so another chain with
