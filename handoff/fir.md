@@ -37,7 +37,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-(empty)
+- 2026-10-09 from TamIA: the user explicitly asked for the 2-node run, so `darshan_t7_tamia` (36 prompts/step, 300 steps) is queued (jobs 516259 → 60 → 61, est. start 23:45) alongside `darshan_t7_fir`. Distinct RUN_NAMEs, no wandb collision. TamIA smoke test passed (~4.5–5 min/step, judge 40 s); see `runs.md`.
 
 ## Log (newest first)
 - 2026-10-09: moved notes into `tar_reason/handoff/`; old `FIR_HANDOFF.md` frozen in `archive/`.
