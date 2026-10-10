@@ -3,21 +3,15 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-10 02:30 EDT)
-- **Running:** `darshan_t7_mila` (see `runs.md`), chain of `short-unkillable` jobs (`afterany`, 3 h each,
-  `MAX_STEPS=200 EVAL_STEPS=100`). Job 11145388 (resumed from checkpoint-170) is at step ~193 and ends ~02:38;
-  11145389 then does steps ~191–200, saves checkpoint-200 and runs the step-200 val800 eval (~1 h 46 min):
-  results expected ~05:30 EDT. 11145390/91 will find the run complete and exit.
-- KL baseline rose to ~0.2 around steps 180–185 with a one-step spike at 186 (KL 0.61, grad 1.16), then fell
-  back to ~0.09–0.12 by step 188. Training fix_1 ~20–38% per step, reward_1 positive.
-- Step-100 val800 positive (refined > draft with the model's own critique); numbers in `runs.md`.
-- CPU job `keep_t7_ckpts` (11156033) copied checkpoint-100 and waits for checkpoint-200 →
-  `$SCRATCH/tar_reason/kept/darshan_t7_mila/`.
-- Watcher: `tools/watch/watch_t7_mila.sh` (project folder, outside the repo; seen events in `tools/watch/state/`),
-  run by the Mila session as a background job that reports one event and is restarted. Dies with the session;
-  restart after switching clients.
-- **Next:** at step 200, decide with the user whether to extend to 300 (if so, likely with a lower LR given the
-  KL drift) and evaluate checkpoint-100/200 on the official benchmarks.
+## Now (2026-10-10 05:10 EDT)
+- **Nothing running on Mila.** `darshan_t7_mila` finished (200 steps, `Done.` at 05:02); the last two chain jobs
+  found checkpoint-200 and exited. Results in `runs.md`: at step 200 refined > draft with the model's own critique
+  (+0.018 AM on val800), fix 25.5%, final AM 0.764.
+- Checkpoints kept: `$SCRATCH/tar_reason/kept/darshan_t7_mila/checkpoint-{100,200}` (LoRA adapter + optimizer;
+  load on top of `sft/slf_ref_edit_t21_ckpt17000`). The run folder still has checkpoint-180…200.
+- **Next (for the user to decide):** extend to 300 (constant LR, so a new chain with `MAX_STEPS=300` continues;
+  consider a lower LR given the KL drift), evaluate checkpoint-100/200 on official GenEval2 / TIIF, compare with
+  `darshan_t7_fir` (same batch, H100) and `darshan_t7_tamia` (36/step).
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`, opened from the VSCode plugin via
@@ -48,6 +42,9 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 (empty)
 
 ## Log (newest first)
+- 2026-10-10 05:02: `darshan_t7_mila` done (step-200 val800 in `runs.md`); `keep_t7_ckpts` done (100 + 200 kept).
+- 2026-10-10 03:17: checkpoint-200 saved and copied. A leftover watcher from the previous session ate one event:
+  after a session restart, check `ps` for old `watch_t7_mila.sh` processes before starting a new one.
 - 2026-10-10 02:25: session restarted; rebuilt the watcher in `tools/watch/` (the scratchpad copy was lost).
 - 2026-10-09: moved notes to `handoff/` (Fir's scheme): rewrote this file and the Mila rows of `runs.md`;
   `LatentDCR/CLAUDE.md` is now a symlink to `tar_reason/handoff/CLAUDE.md` (old file kept as `CLAUDE.md.old`);
