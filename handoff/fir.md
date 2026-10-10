@@ -2,18 +2,20 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-09 13:40 PDT)
+## Now (2026-10-09 23:35 PDT)
 - **Running:** `darshan_t7_fir` (see `runs.md`), 1 node (GPUs 0–2 train, GPU 3 judge), 18 prompts/step, 300 steps,
-  val800 every 50, `rrg-bengioy-ad_gpu`. Job 63858143 started 11:49:07 PDT on `fc10109`; follow-ups 63858144 →
-  63858145 (`afterany`; each resumes from the latest `checkpoint-N`, a job that finds checkpoint-300 exits at once).
-  Expect ~24 h of steps + ~1 h per val800 eval (7) + ~10 min startup per job ≈ 2 jobs.
-- The user chose 1 node here (18/step, same batch as `darshan_t7_mila`); the 2-node version (36/step) is
-  `darshan_t7_tamia` on TamIA. Together they test the batch-size question.
-- Step-0 val800 done (~80 min) and matches Mila's within noise (numbers in `runs.md`); training steps 1–2 at
-  ~4.7–5.0 min/step, KL ≤ 0.001. Next eval at step 50 (~4–5 h after step 0, i.e. ~18:00–19:00 PDT 2026-10-09).
-- **Next:** check the step-50 eval; watch for KL/grad spikes (Mila
-  saw one-step spikes that recovered). Before checkpoint-100/200/300 get pruned (only the 5 newest are kept,
-  saves every 5 steps), copy them to `~/scratch/tar_reason_kept/darshan_t7_fir/`. Sync wandb from a login node.
+  val800 every 50, `rrg-bengioy-ad_gpu`. Job **63858144** (started 17:11 PDT on `fc10109`, resumed from
+  checkpoint-40, 24 h limit → ends ~17:10 on 10-10) was at step ~95 at 23:30; spare **63858145** queued behind it.
+- 63858143 died at step 41 (17:10:52) with SIGBUS (exit −7) on all 3 ranks at once, mid-step: likely a scratch
+  (Lustre) hiccup under memory-mapped files, not a code bug. The chain resumed it 16 s later. If it recurs, only
+  one spare job remains: queue another `afterany` follow-up.
+- Step-50 val800 is positive (own-critique fix 24.5%, final − draft +0.015; numbers in `runs.md`).
+- Remaining: ~205 steps × 5.1 min + 5 evals × 80 min ≈ 24 h, so 63858145 will be needed (~17:10 on 10-10).
+- Watcher (Monitor in session `2f24f487…`, re-armed every 30 min; script `watch_t7_fir.sh` in that session's
+  scratchpad, state in `watch_state/`) reports job state changes, log errors, KL > 0.5 or grad > 1 spikes,
+  val800 results, `Done.`, and copies checkpoint-100/200/300 to `~/scratch/tar_reason_kept/darshan_t7_fir/`.
+  It dies with the session; restart it after switching clients.
+- **Next:** step-100 val800 (~01:00 PDT 10-10); compare with Mila's step 100 and TamIA's 36/step run.
 - Logs: `~/scratch/git/tar_reason/output_dir/slurm_logs/darshan_t7_fir_<jobid>.{out,err}`; judge log
   `output_dir/darshan_t7_fir/reward_server_<jobid>_n0.log`.
 
@@ -45,6 +47,8 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-09 23:30: step-50 val800 positive; job 63858143 SIGBUS at step 41 (17:10), resumed by 63858144 from ckpt-40; watcher armed.
+- 2026-10-09 13:40: step-0 val800 matched Mila's within noise; steps 1–2 at ~4.7–5.0 min/step.
 - 2026-10-09: Inbox from TamIA handled: `darshan_t7_tamia` (2 nodes, 36/step) queued at the user's request alongside `darshan_t7_fir`.
 - 2026-10-09: moved notes into `tar_reason/handoff/`; old `FIR_HANDOFF.md` frozen in `archive/`.
 - 2026-10-09: first `darshan_t7_fir` chain (63847016–18) failed in minutes: `RUN_NAME` not exported into the
