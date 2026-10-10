@@ -11,7 +11,8 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   one spare job remains: queue another `afterany` follow-up.
 - Step-150 val800: draft and final AM keep rising (0.742 → 0.756); own-critique fix flat at ~24.4% since step 50
   while oracle-critique fix rose to 38.2% (critic now limits refinement; numbers in `runs.md`). KL drifted up to
-  0.2–0.4 in steps 145–149 (Mila late baseline 0.1–0.2); watch it. checkpoint-100 kept (verified identical).
+  0.2–0.4 in steps 145–149 (Mila late baseline 0.1–0.2), one-step spike to 1.37 at step 168 that recovered
+  next step; watch it. checkpoint-100 kept (verified identical).
 - Remaining: ~205 steps × 5.1 min + 5 evals × 80 min ≈ 24 h, so 63858145 will be needed (~17:10 on 10-10).
 - Watcher (Monitor in session `2f24f487…`, re-armed every 30 min; `watch_t7_fir_v3.sh` + `watch_parse.py` in that
   session's scratchpad, state in `watch_state/`) reports job state changes, log errors, KL > 0.5 or grad > 1 spikes,
@@ -50,6 +51,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-10 08:28: one-step KL spike at step 168 (kl 1.37, grad 1.21, clip_frac 0.17; image tokens only); recovered at 169 (kl 0.15) and 170 (0.19).
 - 2026-10-10 07:10: step-150 val800: own fix flat 24.4%, oracle fix 38.2%, final AM 0.756; KL 0.2–0.4 late.
 - 2026-10-10 01:30: step-100 val800 positive (+0.021, fix 24.5%, brk 7.2%). Watcher v1/v2 had a Python f-string syntax
   error, so val/spike/error events never fired (job states and checkpoint copies worked); fixed in v3 and tested.
