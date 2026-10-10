@@ -2,14 +2,15 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-10 04:15 EDT)
+## Now (2026-10-10 09:40 EDT)
 - **Running:** `darshan_t7_tamia`: t7 recipe on **2 nodes × 4 H100** (GPUs 0–2 train, GPU 3 judge per node),
   36 prompts/step (t7's batch), 300 steps, val800 every 50. Job 516259 started 04:13 on `tg[10906,10908]`
   (12 h, `gpubase_bynode_b2`); follow-ups 516260 → 516261 (`afterany`; each resumes from the latest checkpoint).
   Code at `b0c8c31`. Runs alongside the 1-node `darshan_t7_fir` (18/step): the pair tests batch size.
 - Startup passed: both judges ready after 30 s; `train prompts: 49000 (per rank/epoch 8167), val prompts per rank: 134`.
   Step-0 val800 (04:54): own final − draft +0.008, fix 14.9%, brk 7.0%; oracle +0.011, fix 14.9%, brk 7.7% (see `runs.md`).
-  Training steps started.
+  Step-50 val800 (09:36): own final − draft +0.001, fix 18.7%, brk 9.4%; oracle +0.017, fix 19.3% (see `runs.md`).
+  KL 0.09 at step 50, no spikes; ~4.9 min/step. Job 516259 ends ~16:13 (~step 125); 516260 continues.
 - **Next:** record step-0 val800 vs Mila/Fir and s/step; watch KL/grad spikes; copy checkpoint-100/200/300 before
   pruning (only 5 newest kept) to `$SCRATCH/tar_reason_kept/darshan_t7_tamia/`; `wandb sync` from a login node.
 - Queued jobs run whatever is checked out when they start: check `git log HEAD..origin/darshan-rl-test --stat`
