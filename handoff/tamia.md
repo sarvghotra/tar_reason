@@ -2,15 +2,15 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-10 02:30 EDT)
-- `darshan_t7_tamia` is **queued**: t7 recipe on **2 nodes × 4 H100**, 36 prompts/step (t7's batch), 300 steps,
-  val800 every 50. Jobs 516259 → 516260 → 516261 (12 h each, `gpubase_bynode_b2`, `afterany` chain), code at
-  `b0c8c31`. The user asked for it explicitly, in addition to the 1-node `darshan_t7_fir` (18/step): the pair tests
-  the batch-size question. Different `RUN_NAME`s, so no wandb collision.
-- Still pending at 02:26 on 2026-10-10; reason now `Resources` (top of queue, waiting for 2 free nodes), est. start 05:30 (estimates slipped 23:45 → 01:45 → 05:30; fair-share, see Setup). 300 steps at ~5 min/step + 7 val800 evals
-  ≈ 30 h, i.e. all three jobs.
-- First checks once it starts (`output_dir/slurm_logs/darshan_t7_tamia_516259.out`): `judge ready` from both nodes;
-  `train prompts: 49000 (per rank/epoch 8166 or 8167), val prompts per rank: 133 or 134`; `step=0`.
+## Now (2026-10-10 04:15 EDT)
+- **Running:** `darshan_t7_tamia`: t7 recipe on **2 nodes × 4 H100** (GPUs 0–2 train, GPU 3 judge per node),
+  36 prompts/step (t7's batch), 300 steps, val800 every 50. Job 516259 started 04:13 on `tg[10906,10908]`
+  (12 h, `gpubase_bynode_b2`); follow-ups 516260 → 516261 (`afterany`; each resumes from the latest checkpoint).
+  Code at `b0c8c31`. Runs alongside the 1-node `darshan_t7_fir` (18/step): the pair tests batch size.
+- Startup passed: both judges ready after 30 s; `train prompts: 49000 (per rank/epoch 8167), val prompts per rank: 134`.
+  Step-0 val800 eval in progress.
+- **Next:** record step-0 val800 vs Mila/Fir and s/step; watch KL/grad spikes; copy checkpoint-100/200/300 before
+  pruning (only 5 newest kept) to `$SCRATCH/tar_reason_kept/darshan_t7_tamia/`; `wandb sync` from a login node.
 - Queued jobs run whatever is checked out when they start: check `git log HEAD..origin/darshan-rl-test --stat`
   before pulling code changes (CLAUDE.md rule 4).
 
@@ -38,6 +38,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-10 04:13: job 516259 started (queued since 15:00; estimates had slipped 23:45 → 01:45 → 05:30).
 - 2026-10-09 15:30: pulled `839ccc2` (handoff-only); recorded login node and session id.
 - 2026-10-09: pulled `ba65f42` (handoff/ folder); `~/scratch/git/CLAUDE.md` is now a symlink to `handoff/CLAUDE.md`;
   local `TAMIA_HANDOFF.md` deleted (contents are here; original in `archive/`). Inbox from Fir handled: RUN_NAME fix
