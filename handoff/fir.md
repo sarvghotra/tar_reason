@@ -2,21 +2,23 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-10 01:35 PDT)
+## Now (2026-10-10 07:15 PDT)
 - **Running:** `darshan_t7_fir` (see `runs.md`), 1 node (GPUs 0–2 train, GPU 3 judge), 18 prompts/step, 300 steps,
   val800 every 50, `rrg-bengioy-ad_gpu`. Job **63858144** (started 17:11 PDT on `fc10109`, resumed from
-  checkpoint-40, 24 h limit → ends ~17:10 on 10-10) was at step ~102 at 01:30; spare **63858145** queued behind it.
+  checkpoint-40, 24 h limit → ends ~17:10 on 10-10) reached step 150 at 05:35; spare **63858145** queued behind it.
 - 63858143 died at step 41 (17:10:52) with SIGBUS (exit −7) on all 3 ranks at once, mid-step: likely a scratch
   (Lustre) hiccup under memory-mapped files, not a code bug. The chain resumed it 16 s later. If it recurs, only
   one spare job remains: queue another `afterany` follow-up.
-- Step-100 val800 is positive and slightly ahead of Mila at step 100 (own-critique final − draft +0.021, fix 24.5%,
-  brk 7.2%; numbers in `runs.md`). checkpoint-100 kept (verified identical).
+- Step-150 val800: draft and final AM keep rising (0.742 → 0.756); own-critique fix flat at ~24.4% since step 50
+  while oracle-critique fix rose to 38.2% (critic now limits refinement; numbers in `runs.md`). KL drifted up to
+  0.2–0.4 in steps 145–149 (Mila late baseline 0.1–0.2); watch it. checkpoint-100 kept (verified identical).
 - Remaining: ~205 steps × 5.1 min + 5 evals × 80 min ≈ 24 h, so 63858145 will be needed (~17:10 on 10-10).
 - Watcher (Monitor in session `2f24f487…`, re-armed every 30 min; `watch_t7_fir_v3.sh` + `watch_parse.py` in that
   session's scratchpad, state in `watch_state/`) reports job state changes, log errors, KL > 0.5 or grad > 1 spikes,
   val800 results, `Done.`, and copies checkpoint-100/200/300 to `~/scratch/tar_reason_kept/darshan_t7_fir/`.
   It dies with the session; restart it after switching clients.
-- **Next:** step-150 val800 (~07:00 PDT 10-10); job 63858144 hits its time limit ~17:10, then 63858145 resumes.
+- **Next:** checkpoint-200 copy + step-200 val800 (~11:30–13:00 PDT); job 63858144 hits its time limit ~17:10,
+  then 63858145 resumes for steps ~225–300.
 - Logs: `~/scratch/git/tar_reason/output_dir/slurm_logs/darshan_t7_fir_<jobid>.{out,err}`; judge log
   `output_dir/darshan_t7_fir/reward_server_<jobid>_n0.log`.
 
@@ -48,6 +50,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-10 07:10: step-150 val800: own fix flat 24.4%, oracle fix 38.2%, final AM 0.756; KL 0.2–0.4 late.
 - 2026-10-10 01:30: step-100 val800 positive (+0.021, fix 24.5%, brk 7.2%). Watcher v1/v2 had a Python f-string syntax
   error, so val/spike/error events never fired (job states and checkpoint copies worked); fixed in v3 and tested.
 - 2026-10-09 23:30: step-50 val800 positive; job 63858143 SIGBUS at step 41 (17:10), resumed by 63858144 from ckpt-40; watcher armed.
