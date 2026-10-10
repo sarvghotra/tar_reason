@@ -2,7 +2,7 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-10 07:15 PDT)
+## Now (2026-10-10 10:05 PDT)
 - **Running:** `darshan_t7_fir` (see `runs.md`), 1 node (GPUs 0–2 train, GPU 3 judge), 18 prompts/step, 300 steps,
   val800 every 50, `rrg-bengioy-ad_gpu`. Job **63858144** (started 17:11 PDT on `fc10109`, resumed from
   checkpoint-40, 24 h limit → ends ~17:10 on 10-10) reached step 150 at 05:35; spare **63858145** queued behind it.
@@ -18,6 +18,11 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   session's scratchpad, state in `watch_state/`) reports job state changes, log errors, KL > 0.5 or grad > 1 spikes,
   val800 results, `Done.`, and copies checkpoint-100/200/300 to `~/scratch/tar_reason_kept/darshan_t7_fir/`.
   It dies with the session; restart it after switching clients.
+- **Decision pending (user):** KL is rising, not just spiking: 20-step KL median 0.007 (steps 1–20) → 0.09 (81–100) →
+  0.24 (141–160) → **0.53 (181–188, 5 of 8 steps > 0.5, max 1.09)**, clip_frac median 0.054. Train rewards still
+  fine (reward_1 +0.073, fix_1 32%). Plan: let it reach step 200 (checkpoint-200 kept automatically); if step-200
+  val800 still improves and KL stays < ~1, continue to 300; if val drops or KL keeps climbing, stop at 200 (as
+  Mila did) or resume 200–300 as a new run with lower LR / higher KL. Watcher KL alert threshold raised to 0.8.
 - **Next:** checkpoint-200 copy + step-200 val800 (~11:30–13:00 PDT); job 63858144 hits its time limit ~17:10,
   then 63858145 resumes for steps ~225–300.
 - Logs: `~/scratch/git/tar_reason/output_dir/slurm_logs/darshan_t7_fir_<jobid>.{out,err}`; judge log
@@ -51,6 +56,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-10 10:00: KL trending up (median 0.53 over steps 181–188); decision deferred to the step-200 eval.
 - 2026-10-10 08:28: one-step KL spike at step 168 (kl 1.37, grad 1.21, clip_frac 0.17; image tokens only); recovered at 169 (kl 0.15) and 170 (0.19).
 - 2026-10-10 07:10: step-150 val800: own fix flat 24.4%, oracle fix 38.2%, final AM 0.756; KL 0.2–0.4 late.
 - 2026-10-10 01:30: step-100 val800 positive (+0.021, fix 24.5%, brk 7.2%). Watcher v1/v2 had a Python f-string syntax
