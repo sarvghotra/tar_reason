@@ -2,12 +2,12 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-09 15:30 EDT)
+## Now (2026-10-10 02:30 EDT)
 - `darshan_t7_tamia` is **queued**: t7 recipe on **2 nodes × 4 H100**, 36 prompts/step (t7's batch), 300 steps,
   val800 every 50. Jobs 516259 → 516260 → 516261 (12 h each, `gpubase_bynode_b2`, `afterany` chain), code at
   `b0c8c31`. The user asked for it explicitly, in addition to the 1-node `darshan_t7_fir` (18/step): the pair tests
   the batch-size question. Different `RUN_NAME`s, so no wandb collision.
-- Estimated start 2026-10-10 01:45 (was 23:45; slipping), held back by fair-share (see Setup). 300 steps at ~5 min/step + 7 val800 evals
+- Still pending at 02:26 on 2026-10-10; reason now `Resources` (top of queue, waiting for 2 free nodes), est. start 05:30 (estimates slipped 23:45 → 01:45 → 05:30; fair-share, see Setup). 300 steps at ~5 min/step + 7 val800 evals
   ≈ 30 h, i.e. all three jobs.
 - First checks once it starts (`output_dir/slurm_logs/darshan_t7_tamia_516259.out`): `judge ready` from both nodes;
   `train prompts: 49000 (per rank/epoch 8166 or 8167), val prompts per rank: 133 or 134`; `step=0`.
