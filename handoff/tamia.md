@@ -8,7 +8,8 @@ Owned by the TamIA session.
   (12 h, `gpubase_bynode_b2`); follow-ups 516260 → 516261 (`afterany`; each resumes from the latest checkpoint).
   Code at `b0c8c31`. Runs alongside the 1-node `darshan_t7_fir` (18/step): the pair tests batch size.
 - Startup passed: both judges ready after 30 s; `train prompts: 49000 (per rank/epoch 8167), val prompts per rank: 134`.
-  Step-0 val800 eval in progress.
+  Step-0 val800 (04:54): own final − draft +0.008, fix 14.9%, brk 7.0%; oracle +0.011, fix 14.9%, brk 7.7% (see `runs.md`).
+  Training steps started.
 - **Next:** record step-0 val800 vs Mila/Fir and s/step; watch KL/grad spikes; copy checkpoint-100/200/300 before
   pruning (only 5 newest kept) to `$SCRATCH/tar_reason_kept/darshan_t7_tamia/`; `wandb sync` from a login node.
 - Queued jobs run whatever is checked out when they start: check `git log HEAD..origin/darshan-rl-test --stat`
