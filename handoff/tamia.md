@@ -32,7 +32,7 @@ Owned by the TamIA session.
   is no faster. `--test-only` estimates were ~6 h more optimistic than `squeue --start` for the real job.
 - Launcher `scripts/rl_ft/bash_tamia_t7.sh`: copy of `bash_fir_t7.sh` with only account, job name and paths changed.
 - Session: login node `tamia1`, session id `a2cf8ab9-d921-49b4-af79-f29b7522648d`; resume with
-  `cd ~/scratch/git && claude --resume a2cf8ab9-d921-49b4-af79-f29b7522648d` (in tmux `claude` when away). No watchers yet.
+  `cd ~/scratch/git && claude --resume a2cf8ab9-d921-49b4-af79-f29b7522648d` (in tmux `claude` when away). Watcher: Monitor running `watch_t7_tamia.py` (in this session's scratchpad, `/tmp/claude-3165746/.../a2cf8ab9.../scratchpad/`; state in `watch_state.json` there), re-armed every 30 min; reports job starts, startup checks, every 10th step, KL > 0.5 / grad > 1 spikes, val results, ckpts at multiples of 50, errors, `Done.`. Dies with the session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
