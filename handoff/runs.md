@@ -17,6 +17,14 @@ One row per run. Each session edits only the rows for its own cluster. Longer no
 - `rl_ft_oracle_t7`: the recipe above at 36 prompts/step (2 nodes × 3 train ranks × 6, per its header;
   unconfirmed). The collaborator reports refined > draft. Their notes: oracle fix 15.3%, brk 7.0% at step 0;
   t5 (same idea, `ADV_NORM=mean`, KL 0.05, t20 policy) didn't learn (advantages ~0.02, KL penalty dominated).
+- The collaborator's plan after t7 (as relayed by the user, 2026-10-11):
+  - t8: t7 with different hyper-parameters (details unknown).
+  - t9: train critique **and** refiner together (own critiques), started from a t7 checkpoint. **Failed**: without
+    oracle critiques the refiner regressed. Reported "oracle critique +7.8 vs policy critique 3.8" (metric and step
+    unknown; to ask). Don't repeat t9 as is.
+  - t10: critique-only training (planned): refiner and draft not trained. On our branch: `--image_token_weight 0`
+    (critique text only), `--init_adapter <checkpoint>` to start from a t7 checkpoint. The shared LoRA can still shift
+    image generation indirectly, so t10 must watch `val_oracle/fix_1` (refiner) and `val/am_0` (draft) for regressions.
 - `xiaofeng` branch: a different final-image GRPO design with a pixel judge; no clear gain by step 200.
 
 ## Cross-run findings
