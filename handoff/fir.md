@@ -2,31 +2,19 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-10 10:05 PDT)
-- **Running:** `darshan_t7_fir` (see `runs.md`), 1 node (GPUs 0–2 train, GPU 3 judge), 18 prompts/step, 300 steps,
-  val800 every 50, `rrg-bengioy-ad_gpu`. Job **63858144** (started 17:11 PDT on `fc10109`, resumed from
-  checkpoint-40, 24 h limit → ends ~17:10 on 10-10) reached step 150 at 05:35; spare **63858145** queued behind it.
-- 63858143 died at step 41 (17:10:52) with SIGBUS (exit −7) on all 3 ranks at once, mid-step: likely a scratch
-  (Lustre) hiccup under memory-mapped files, not a code bug. The chain resumed it 16 s later. If it recurs, only
-  one spare job remains: queue another `afterany` follow-up.
-- Step-150 val800: draft and final AM keep rising (0.742 → 0.756); own-critique fix flat at ~24.4% since step 50
-  while oracle-critique fix rose to 38.2% (critic now limits refinement; numbers in `runs.md`). KL drifted up to
-  0.2–0.4 in steps 145–149 (Mila late baseline 0.1–0.2), one-step spike to 1.37 at step 168 that recovered
-  next step; watch it. checkpoint-100 kept (verified identical).
-- Remaining: ~205 steps × 5.1 min + 5 evals × 80 min ≈ 24 h, so 63858145 will be needed (~17:10 on 10-10).
-- Watcher (Monitor in session `2f24f487…`, re-armed every 30 min; `watch_t7_fir_v3.sh` + `watch_parse.py` in that
-  session's scratchpad, state in `watch_state/`) reports job state changes, log errors, KL > 0.5 or grad > 1 spikes,
-  val800 results, `Done.`, and copies checkpoint-100/200/300 to `~/scratch/tar_reason_kept/darshan_t7_fir/`.
-  It dies with the session; restart it after switching clients.
-- **Decision pending (user):** KL is rising, not just spiking: 20-step KL median 0.007 (steps 1–20) → 0.09 (81–100) →
-  0.24 (141–160) → **0.53 (181–188, 5 of 8 steps > 0.5, max 1.09)**, clip_frac median 0.054. Train rewards still
-  fine (reward_1 +0.073, fix_1 32%). Plan: let it reach step 200 (checkpoint-200 kept automatically); if step-200
-  val800 still improves and KL stays < ~1, continue to 300; if val drops or KL keeps climbing, stop at 200 (as
-  Mila did) or resume 200–300 as a new run with lower LR / higher KL. Watcher KL alert threshold raised to 0.8.
-- **Next:** checkpoint-200 copy + step-200 val800 (~11:30–13:00 PDT); job 63858144 hits its time limit ~17:10,
-  then 63858145 resumes for steps ~225–300.
-- Logs: `~/scratch/git/tar_reason/output_dir/slurm_logs/darshan_t7_fir_<jobid>.{out,err}`; judge log
-  `output_dir/darshan_t7_fir/reward_server_<jobid>_n0.log`.
+## Now (2026-10-11 15:50 PDT)
+- **Nothing running on Fir.** `darshan_t7_fir` finished 300 steps (`Done.` at 00:22 PDT 10-11; job 63858144 hit its
+  24 h limit at ~step 250 as planned, 63858145 resumed from checkpoint-250 and finished). Results in `runs.md`.
+- Kept (verified identical): `~/scratch/tar_reason_kept/darshan_t7_fir/checkpoint-{100,200,300}` (LoRA adapter +
+  optimizer, on top of `sft/slf_ref_edit_t21_ckpt17000`). The run folder also has checkpoint-280…300.
+  checkpoint-150 (highest draft AM, 0.742) was pruned.
+- Headline: at step 300 own-critique final − draft +0.064, fix 38%, final AM 0.762, oracle fix 51%. **But** the
+  draft got worse after step 150 (0.742 → 0.698), so final AM barely beat step 150 (0.756). Possible reward
+  hacking (weaker drafts leave more to fix) as KL rose to 0.4–0.7; not verified.
+- **Next (user to decide):** `wandb sync wandb/offline-run-*` from a login node (not done yet); evaluate
+  checkpoint-100/200/300 on official GenEval2/TIIF by *final* AM; if continuing RL, consider lower LR / higher KL
+  or a draft-quality term so the draft can't be sacrificed.
+- Logs: `~/scratch/git/tar_reason/output_dir/slurm_logs/darshan_t7_fir_6385814{3,4,5}.{out,err}`.
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
@@ -56,6 +44,9 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-11 15:50: run done (300 steps); copied checkpoint-300 to kept (watcher had died with the session before step 300).
+  Step 200/250/300 val800 recorded; draft AM dropped after step 150 (see Now).
+- 2026-10-10 17:10: job 63858144 hit the time limit (~step 250); 63858145 resumed from checkpoint-250.
 - 2026-10-10 10:00: KL trending up (median 0.53 over steps 181–188); decision deferred to the step-200 eval.
 - 2026-10-10 08:28: one-step KL spike at step 168 (kl 1.37, grad 1.21, clip_frac 0.17; image tokens only); recovered at 169 (kl 0.15) and 170 (0.19).
 - 2026-10-10 07:10: step-150 val800: own fix flat 24.4%, oracle fix 38.2%, final AM 0.756; KL 0.2–0.4 late.
