@@ -8,8 +8,8 @@ turn is ``<S0>`` + the image tokens (as LM-vocab ids) + ``\\n`` + question.
 
 Scoring mirrors ``GenEval2/evaluation_optz.py``: for every question the score
 is the summed next-token probability of the accepted answer variants
-(``Yes``/``yes``/`` Yes``/`` yes`` for yes-no questions; the number word,
-its capitalised and space-prefixed forms and the digit for "How many"
+(``Yes``/``yes``/`` Yes``/`` yes`` for yes-no questions, the ``No`` forms when
+the expected answer is no; the number word, its capitalised and space-prefixed forms and the digit for "How many"
 questions). AM = mean over questions, GM = geometric mean.
 """
 
@@ -45,6 +45,10 @@ def answer_variants(question: str, answer: str) -> List[str]:
         digit = NUMBER_WORDS.get(answer.lower(), "other")
         return [answer, answer.capitalize(), " " + answer,
                 " " + answer.capitalize(), digit, " " + digit]
+    # Negation atoms ("Are there any cups in the image?" -> "No") must score
+    # P(no): GenEval2 itself only has "Yes" answers, other prompt sets do not.
+    if answer.strip().lower() == "no":
+        return ["No", "no", " no", " No"]
     return ["Yes", "yes", " yes", " Yes"]
 
 
