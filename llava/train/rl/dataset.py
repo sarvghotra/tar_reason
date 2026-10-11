@@ -11,7 +11,9 @@ Reads the GenEval2-style JSONL files referenced by a data YAML
 Each JSONL row is ``{"prompt": str, "vqa_list": [[question, answer], ...],
 "skills": [...], "atom_count": int}``. Only ``prompt``, ``vqa_list`` and
 ``atom_count`` are used. The per-dataset ``ratio`` is ignored: every row of
-every listed file is pooled into one shuffled stream.
+every listed file is pooled into one shuffled stream. Each row is tagged with
+its dataset's ``logname`` (default: the first file's stem) so validation can
+report every listed set separately (``rank_groups``).
 """
 
 import json
@@ -44,17 +46,19 @@ class GenEval2PromptDataset:
     def _load_rows(yaml_path: str) -> List[Dict]:
         with open(yaml_path) as f:
             cfg = yaml.safe_load(f)
-        paths: List[str] = []
+        paths: List[tuple] = []   # (path, set name)
         for ds in cfg.get("datasets", []):
             jp = ds.get("json_path")
             if jp is None:
                 continue
-            paths.extend(jp if isinstance(jp, list) else [jp])
+            jp = jp if isinstance(jp, list) else [jp]
+            name = ds.get("logname") or os.path.splitext(os.path.basename(jp[0]))[0]
+            paths.extend((path, str(name)) for path in jp)
         if not paths:
             raise ValueError(f"No json_path entries in {yaml_path}")
 
         rows = []
-        for path in paths:
+        for path, name in paths:
             path = os.path.expanduser(path)
             if not path.endswith(".jsonl"):
                 raise ValueError(f"Expected a .jsonl prompt file, got {path}")
@@ -81,6 +85,7 @@ class GenEval2PromptDataset:
                         "vqa_list": vqa_list,
                         "skills": skills,
                         "atom_count": int(obj.get("atom_count", len(vqa_list))),
+                        "set": name,
                     })
         return rows
 
@@ -117,3 +122,17 @@ class GenEval2PromptDataset:
     def all_rows(self) -> List[Dict]:
         """This rank's rows in file order (used for validation)."""
         return self.rows[self.rank::self.world_size]
+
+    def rank_groups(self) -> Dict[str, List[Dict]]:
+        """This rank's rows per set, in file order (used for validation).
+
+        Each set is sharded on its own so every rank gets a share of every set
+        (the per-set stats are all-reduced, so no rank may be left out)."""
+        groups: Dict[str, List[Dict]] = {}
+        for row in self.rows:
+            groups.setdefault(row["set"], []).append(row)
+        for name, rows in groups.items():
+            if len(rows) < self.world_size:
+                raise ValueError(f"val set '{name}' has {len(rows)} prompts, fewer than "
+                                 f"world_size={self.world_size}")
+        return {name: rows[self.rank::self.world_size] for name, rows in groups.items()}

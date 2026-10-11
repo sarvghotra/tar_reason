@@ -56,7 +56,10 @@ from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQARew
 from llava.train.rl.rollout import Critique, LOOKS_GOOD_RE, Node, RolloutBatch, RolloutConfig, TreeRollout
 
 # Per-skill stats buckets; questions with any other skill tag land in "other".
-STAT_SKILLS = tuple(SKILL_ORDER) + ("other",)
+# The extra tags come from the GenEval2-style prompt-mix sets (GenEval2 itself
+# only uses SKILL_ORDER).
+STAT_SKILLS = tuple(SKILL_ORDER) + ("negation", "comparison", "differentiation",
+                                    "text", "style", "other")
 CRITIQUE_SOURCES = ("oracle", "policy")   # frozen-critique sources split in the stats
 
 
@@ -118,6 +121,24 @@ def parse_args():
                         "imperfect image costs something. 0 disables.")
     p.add_argument("--stop_threshold", type=float, default=1.0,
                    help="Parent score at or above which 'looks good' is free (see --stop_penalty).")
+    p.add_argument("--train_drafts", action=argparse.BooleanOptionalAction, default=True,
+                   help="--no-train_drafts drops the round-0 image tokens from the loss. "
+                        "With branch[0]=1 a draft's advantage is 0 anyway, but its tokens "
+                        "would still get the KL-to-reference term, pulling the drafts back "
+                        "toward the base model.")
+    p.add_argument("--train_images", action=argparse.BooleanOptionalAction, default=True,
+                   help="--no-train_images drops every image token from the loss: only the "
+                        "sampled critique tokens are trained (critic-only). The refiner "
+                        "still moves through the shared LoRA, but gets no gradient of "
+                        "its own. Leaves with nothing to train (critique followers) are "
+                        "skipped in the backward pass.")
+    p.add_argument("--images_per_critique", type=int, default=1,
+                   help="M: with --critique_source policy, every sampled critique (branch[k] "
+                        "= K per parent) gets M images. The critique's tokens are trained "
+                        "once, with the mean reward of its M images normalised across the "
+                        "parent's K critiques; each image is normalised against the other "
+                        "images of the same critique (rollout.py module docstring). 1 = each "
+                        "child samples its own critique and image (t4).")
     p.add_argument("--min_refines", type=int, default=0,
                    help="The first N children of every parent must refine: a 'looks good' "
                         "reflection is re-sampled (up to --refine_resample_tries times). "
@@ -187,6 +208,10 @@ def parse_args():
     p.add_argument("--report_to", default="none", choices=["none", "wandb"])
     p.add_argument("--run_name", default=None)
     p.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--init_adapter", default=None,
+                   help="LoRA checkpoint dir to start from (adapter weights only: fresh "
+                        "optimizer and scheduler, step 0). Ignored once --output_dir has a "
+                        "checkpoint to resume from.")
     p.add_argument("--seed", type=int, default=42)
     # Optional decoded-image logging (needs the visual de-tokenizer weights).
     p.add_argument("--log_images", type=int, default=0)
@@ -435,22 +460,49 @@ def score_tree(batch: RolloutBatch, reward, draft_reward: str = "own",
         raise ValueError(f"Unknown draft_reward {draft_reward}")
 
 
-def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig):
-    zero_var = 0
-    groups_total = 0
+def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig) -> Dict[str, int]:
+    """Fill ``node.adv`` (image tokens) and ``node.adv_txt`` (reflection tokens).
+
+    Drafts are normalised per prompt; refined nodes per parent (``--group``).
+    With ``--images_per_critique M > 1`` the two levels separate: an image is
+    normalised among the M images of its own critique, and a critique's
+    reflection gets the mean reward of its images normalised among the
+    parent's critiques (a "looks good" critique is its own single-image
+    critique, reward = the stop reward). Returns the zero-variance / total
+    group counts of both levels for logging.
+    """
+    c = dict(zero_var=0, groups=0, zero_var_crit=0, groups_crit=0)
+    M = args.images_per_critique
     for level in batch.nodes_by_round:
         if not level:
             continue
+        two_level = level[0].round > 0 and M > 1
         if level[0].round == 0 or args.group == "prompt":
             keys = [n.prompt_idx for n in level]
+        elif two_level:
+            keys = [(id(n.parent), n.critique_idx) for n in level]
         else:
             keys = [id(n.parent) for n in level]
         adv, zv = normalize_groups([n.reward for n in level], keys, gcfg)
         for n, a in zip(level, adv):
-            n.adv = a
-        zero_var += zv
-        groups_total += len(set(keys))
-    return zero_var, groups_total
+            n.adv = n.adv_txt = a
+        c["zero_var"] += zv
+        c["groups"] += len(set(keys))
+        if not two_level:
+            continue
+        by_crit: Dict[tuple, List[Node]] = {}
+        for n in level:
+            by_crit.setdefault((id(n.parent), n.critique_idx), []).append(n)
+        crit_keys = list(by_crit)
+        crit_reward = [sum(n.reward for n in by_crit[k]) / len(by_crit[k]) for k in crit_keys]
+        parent_keys = [by_crit[k][0].prompt_idx if args.group == "prompt" else k[0] for k in crit_keys]
+        adv_c, zvc = normalize_groups(crit_reward, parent_keys, gcfg)
+        for k, a in zip(crit_keys, adv_c):
+            for n in by_crit[k]:
+                n.adv_txt = a
+        c["zero_var_crit"] += zvc
+        c["groups_crit"] += len(set(parent_keys))
+    return c
 
 
 def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
@@ -496,6 +548,14 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
         pass_rates(str(r), level)
         if r > 0:
             s[f"{prefix}looks_good_{r}"] = sum(n.looks_good for n in level)
+            # Stop decision by whether the parent already passes everything:
+            # looks_good_pass should go up, looks_good_fail down.
+            rate(f"looks_good_pass_{r}", 0, 0)
+            rate(f"looks_good_fail_{r}", 0, 0)
+            for n in level:
+                if n.parent.per_question is not None:
+                    ok = all(q >= fail_threshold for q in n.parent.per_question)
+                    rate(f"looks_good_{'pass' if ok else 'fail'}_{r}", n.looks_good, 1)
             s[f"{prefix}forced_refine_{r}"] = sum(n.forced_refine for n in level)
             s[f"{prefix}reflect_len_{r}"] = sum(n.reflection_len for n in level)
             deltas = [n.am - n.parent.am for n in level]
@@ -523,6 +583,25 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
                     rate(f"{kind}_{skill_of(n, qi)}_{r}", hit, 1)
                     if src:
                         rate(f"{kind}_{src}_{r}", hit, 1)
+            # Critique-level variance split (K critiques x M images per parent):
+            # mean squares of child AM within a critique and between the
+            # critiques of a parent, over critiques with >= 2 images. The
+            # between term still contains within/M, so crit_icc is an upper
+            # bound on the share of a critique's advantage that is signal.
+            rate(f"crit_within_var_{r}", 0, 0)
+            rate(f"crit_between_var_{r}", 0, 0)
+            by_parent: Dict[int, Dict[int, List[float]]] = {}
+            for n in level:
+                if not n.looks_good and n.per_question is not None:
+                    by_parent.setdefault(id(n.parent), {}).setdefault(n.critique_idx, []).append(n.am)
+            for crits in by_parent.values():
+                groups = [v for v in crits.values() if len(v) >= 2]
+                means = [sum(v) / len(v) for v in groups]
+                for v, m in zip(groups, means):
+                    rate(f"crit_within_var_{r}", sum((x - m) ** 2 for x in v), len(v) - 1)
+                if len(means) >= 2:
+                    pm = sum(means) / len(means)
+                    rate(f"crit_between_var_{r}", sum((m - pm) ** 2 for m in means), len(means) - 1)
     # Final-image score per leaf (what the benchmark measures).
     s[f"{prefix}am_final"] = sum(n.am for n in batch.leaves)
     s[f"{prefix}n_final"] = len(batch.leaves)
@@ -556,6 +635,10 @@ def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
         if k.startswith(prefix) and k.endswith("_num"):
             key = k[len(prefix):-4]
             out[f"{prefix}{key}"] = s[k] / max(s[f"{prefix}{key}_den"], 1.0)
+    for r in rounds:
+        b, w = out.get(f"{prefix}crit_between_var_{r}"), out.get(f"{prefix}crit_within_var_{r}")
+        if b is not None and w is not None:
+            out[f"{prefix}crit_icc_{r}"] = b / (b + w) if b + w > 0 else 0.0
     return out
 
 
@@ -567,8 +650,13 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
                   optimizer, scheduler, device) -> Dict[str, float]:
     img_start, img_end = rollout.img_start, rollout.img_end
     leaves = sorted(batch.leaves, key=lambda n: len(n.seq))
+    if not args.train_images:
+        # Only critique tokens train, and a critique's followers carry it as
+        # KIND_NONE: their rows would run a full forward for an empty loss.
+        leaves = [n for n in leaves if n.critique_leader]
     micro = [leaves[i:i + args.train_micro_batch] for i in range(0, len(leaves), args.train_micro_batch)]
-    rows = [rollout.build_training_rows(m, args.reflect_token_weight) for m in micro]
+    rows = [rollout.build_training_rows(m, args.reflect_token_weight, args.train_drafts,
+                                        args.train_images) for m in micro]
     denom = max(float(sum(r["weight"].sum() for r in rows)), 1.0)
     n_tokens = int(sum(r["train_mask"].sum() for r in rows))
 
@@ -640,9 +728,10 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
     torch.manual_seed(args.seed * 7919 + 17)
     branch = args.eval_branch_list or [1] * len(rollout.cfg.branch)
     num_rounds = len(branch) - 1
-    saved = (rollout.cfg.reflect_sample, rollout.cfg.min_refines)
+    saved = (rollout.cfg.reflect_sample, rollout.cfg.min_refines, rollout.cfg.images_per_critique)
     rollout.cfg.reflect_sample = False   # greedy reflection, like the eval script
     rollout.cfg.min_refines = 0          # the policy decides when to stop, as in eval
+    rollout.cfg.images_per_critique = 1  # one image per critique: a chain, as in eval
     sums: Dict[str, float] = {}
     samples = []
     bs = max(args.gen_batch_size, 1)
@@ -655,7 +744,7 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
         if decoder is not None and is_main() and len(samples) < args.log_images:
             for leaf in batch.leaves[:args.log_images - len(samples)]:
                 samples.append((leaf, batch.prompts[leaf.prompt_idx]["prompt"]))
-    rollout.cfg.reflect_sample, rollout.cfg.min_refines = saved
+    rollout.cfg.reflect_sample, rollout.cfg.min_refines, rollout.cfg.images_per_critique = saved
     sums = reduce_sum(sums, device)
     out = finalize_stats(sums, prefix)
     if decoder is not None and is_main() and samples:
@@ -799,7 +888,9 @@ def main():
     rank0_print(f"image vocab: start={image_start_id} n={num_image_tokens}")
 
     resume_dir = latest_checkpoint(args.output_dir) if args.resume else None
-    model = load_policy(args, device, adapter_dir=resume_dir)
+    model = load_policy(args, device, adapter_dir=resume_dir or args.init_adapter)
+    if resume_dir is None and args.init_adapter:
+        rank0_print(f"Initialised adapter from {args.init_adapter} (fresh optimizer, step 0)")
 
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=args.learning_rate, weight_decay=args.weight_decay,
@@ -824,7 +915,11 @@ def main():
         reflect_tokens=args.reflect_tokens, reflect_sample=True,
         reflect_temperature=args.reflect_temperature, reflect_top_k=args.reflect_top_k,
         reflect_top_p=args.reflect_top_p, gen_batch_size=args.gen_batch_size,
-        min_refines=args.min_refines, refine_resample_tries=args.refine_resample_tries)
+        min_refines=args.min_refines, refine_resample_tries=args.refine_resample_tries,
+        images_per_critique=args.images_per_critique)
+    assert args.images_per_critique >= 1
+    assert args.images_per_critique == 1 or args.critique_source == "policy", \
+        "--images_per_critique > 1 needs sampled critiques (--critique_source policy)"
     rollout = TreeRollout(tokenizer, rcfg, image_start_id, num_image_tokens, device)
     if len(branch) > 1 and args.min_refines > branch[1]:
         rank0_print(f"WARNING: --min_refines {args.min_refines} > branch[1] {branch[1]}; "
@@ -832,6 +927,7 @@ def main():
     rank0_print(f"reward: draft_reward={args.draft_reward} stop_penalty={args.stop_penalty} "
                 f"stop_threshold={args.stop_threshold} min_refines={args.min_refines} "
                 f"critique_source={args.critique_source} "
+                f"images_per_critique={args.images_per_critique} "
                 f"hybrid_oracle_frac={args.hybrid_oracle_frac} break_weight={args.break_weight} "
                 f"fail_threshold={args.oracle_fail_threshold}")
 
@@ -867,14 +963,17 @@ def main():
 
     train_ds = GenEval2PromptDataset(args.data_path, seed=args.seed, rank=rank,
                                      world_size=world_size, max_atoms=args.max_atoms)
-    val_rows = []
+    # One entry per val set in the YAML, each logged under its own prefix
+    # (val_<logname>/). A single set, or the set with logname "val", keeps the
+    # plain val/ prefix so it stays comparable with earlier single-set runs.
+    val_sets: Dict[str, List[Dict]] = {}
     if args.eval_data_path:
         val_ds = GenEval2PromptDataset(args.eval_data_path, seed=args.seed, rank=rank, world_size=world_size)
-        val_rows = val_ds.all_rows()
-        if args.eval_max_prompts:
-            val_rows = val_rows[:max(1, args.eval_max_prompts // world_size)]
+        val_sets = val_ds.rank_groups()
+        if args.eval_max_prompts:   # per set
+            val_sets = {k: v[:max(1, args.eval_max_prompts // world_size)] for k, v in val_sets.items()}
     rank0_print(f"train prompts: {len(train_ds)} (per rank/epoch {train_ds.per_epoch()}), "
-                f"val prompts per rank: {len(val_rows)}")
+                f"val prompts per rank: {({k: len(v) for k, v in val_sets.items()})}")
 
     use_wandb = args.report_to == "wandb" and is_main()
     if use_wandb:
@@ -909,13 +1008,17 @@ def main():
     def validate(step):
         # Always the loop as deployed (policy critic, greedy); optionally the
         # refiner alone under oracle critiques.
-        out = run_validation(model, rollout, reward, val_rows, args, device, step, decoder)
-        if args.eval_oracle:
-            out.update(run_validation(model, rollout, reward, val_rows, args, device, step, None,
-                                      critique_fn=oracle_fn, prefix="val_oracle/"))
+        out = {}
+        for name, rows in val_sets.items():
+            tag = "" if len(val_sets) == 1 or name == "val" else f"_{name}"
+            out.update(run_validation(model, rollout, reward, rows, args, device, step, decoder,
+                                      prefix=f"val{tag}/"))
+            if args.eval_oracle:
+                out.update(run_validation(model, rollout, reward, rows, args, device, step, None,
+                                          critique_fn=oracle_fn, prefix=f"val_oracle{tag}/"))
         return out
 
-    if args.eval_on_start and start_step == 0 and val_rows:
+    if args.eval_on_start and start_step == 0 and val_sets:
         log(validate(0), 0)
 
     prompt_iter = train_ds.iterate(args.prompts_per_gpu, skip_batches=start_step)
@@ -930,18 +1033,21 @@ def main():
         model.eval()
         score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold,
                    args.oracle_fail_threshold, args.break_weight)
-        zero_var, n_groups = assign_advantages(batch, args, gcfg)
+        adv_counts = assign_advantages(batch, args, gcfg)
         t2 = time.time()
         train_metrics = train_on_tree(model, rollout, batch, args, gcfg, optimizer, scheduler, device)
         t3 = time.time()
 
         if step % args.logging_steps == 0:
             sums = tree_stats(batch, "train/", rollout.cfg.num_rounds, args.oracle_fail_threshold)
-            sums["train/zero_var_groups"] = zero_var
-            sums["train/groups"] = n_groups
+            for k, v in adv_counts.items():
+                sums[f"train/adv_{k}"] = v
             sums = reduce_sum(sums, device)
             metrics = finalize_stats(sums, "train/")
-            metrics["train/frac_zero_adv_groups"] = sums["train/zero_var_groups"] / max(sums["train/groups"], 1.0)
+            metrics["train/frac_zero_adv_groups"] = sums["train/adv_zero_var"] / max(sums["train/adv_groups"], 1.0)
+            if args.images_per_critique > 1:
+                metrics["train/frac_zero_adv_critique_groups"] = (
+                    sums["train/adv_zero_var_crit"] / max(sums["train/adv_groups_crit"], 1.0))
             metrics.update({f"train/{k}": v for k, v in reduce_mean(train_metrics, device).items()})
             metrics.update({"time/rollout": t1 - t0, "time/reward": t2 - t1, "time/train": t3 - t2,
                             "train/lr": scheduler.get_last_lr()[0], "train/epoch_frac":
@@ -950,7 +1056,7 @@ def main():
 
         if args.save_steps and step % args.save_steps == 0:
             save_checkpoint(model, optimizer, scheduler, step, args, device)
-        if args.eval_steps and val_rows and step % args.eval_steps == 0:
+        if args.eval_steps and val_sets and step % args.eval_steps == 0:
             log(validate(step), step)
 
     if args.max_steps % max(args.save_steps, 1) != 0:
