@@ -11,7 +11,9 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - Headline: at step 300 own-critique final − draft +0.064, fix 38%, final AM 0.762, oracle fix 51%. **But** the
   draft got worse after step 150 (0.742 → 0.698), so final AM barely beat step 150 (0.756). Possible reward
   hacking (weaker drafts leave more to fix) as KL rose to 0.4–0.7; not verified.
-- **Next (user to decide):** `wandb sync wandb/offline-run-*` from a login node (not done yet); evaluate
+- wandb synced: https://wandb.ai/darshan-singh/tar_reasoning/runs/darshan_t7_fir (steps 1–300 except 250, lost at
+  the time-limit kill; all 7 val800 evals, step-250's at 251). Smoke test `t7_smoke_fir` not synced.
+- **Next (user to decide):** evaluate
   checkpoint-100/200/300 on official GenEval2/TIIF by *final* AM; if continuing RL, consider lower LR / higher KL
   or a draft-quality term so the draft can't be sacrificed.
 - Logs: `~/scratch/git/tar_reason/output_dir/slurm_logs/darshan_t7_fir_6385814{3,4,5}.{out,err}`.
@@ -44,6 +46,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-11 15:55: synced the 3 offline pieces of `darshan_t7_fir` to wandb; the 3rd needed `--append` (history was dropped otherwise).
 - 2026-10-11 15:50: run done (300 steps); copied checkpoint-300 to kept (watcher had died with the session before step 300).
   Step 200/250/300 val800 recorded; draft AM dropped after step 150 (see Now).
 - 2026-10-10 17:10: job 63858144 hit the time limit (~step 250); 63858145 resumed from checkpoint-250.

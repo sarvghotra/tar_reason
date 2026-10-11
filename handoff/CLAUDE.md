@@ -105,7 +105,11 @@ from the repo and checks their line numbers); republish `tools/walkthrough/out/t
 ## Looking at RL results
 - Metrics: wandb, entity `darshan-singh`, project `tar_reasoning`, run name = wandb run id = `RUN_NAME`. Key
   panels: `val/am_0` vs `val/am_final`, `val/improved_1`, `val/degraded_1`, `val/fix_1`, `val/looks_good_1`.
-  Alliance clusters log offline: `wandb sync wandb/offline-run-*` from a login node, in the repo.
+  Alliance clusters log offline; sync from a login node, in the repo. A chained run leaves one
+  `wandb/offline-run-<date>-<RUN_NAME>` folder per job, all with the same run id: sync them oldest first, the first
+  plainly and every later one with `wandb sync --append`. Without `--append` a later piece's summary is uploaded
+  but its history is silently dropped (seen on Fir 2026-10-11). Check afterwards with
+  `wandb.Api().run("darshan-singh/tar_reasoning/<RUN_NAME>").lastHistoryStep`.
 - Trajectories: each validation logs the first `--log_images` (8) val prompts as draft|refined strips with the
   critique in the caption; the same prompts every time. Training rollouts are not saved.
 - Gallery of those strips (no GPU, seconds): from `tar_reason/`, run
