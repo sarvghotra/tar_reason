@@ -37,9 +37,12 @@ One row per run. Each session edits only the rows for its own cluster. Longer no
   the same gap (own 25.5% vs oracle 36.5%). The critique, not the refiner, now limits self-refinement.
 - Larger batch is not ahead at equal steps so far: `darshan_t7_tamia` (36/step) at step 50 has own fix 18.7%,
   final − draft +0.001 vs `darshan_t7_fir` (18/step) 24.5%, +0.015 (one run each; early).
-- Running t7 past ~150 steps at 18/step widens final − draft mostly by weakening the draft: `darshan_t7_fir` draft AM
-  0.742 (step 150) → 0.684 (200) → 0.698 (300) while final AM went 0.756 → 0.730 → 0.762, as KL rose from ~0.2 to
-  0.4–0.7. Possible reward hacking of the refine reward (child − parent rewards a worse parent) with
-  `draft_reward children`; not yet verified. Judge checkpoints by final AM, not by final − draft. Mila (stopped at
-  200) did not show the draft drop (draft AM 0.746 at 200).
+- Fir and Mila (same recipe, 18/step) track each other through step ~180 (wandb history: 20-step KL medians within
+  ~0.05, train fix_1 and draft AM alike). At steps 181–200 Fir alone went unstable: KL median 0.52 (Mila 0.12),
+  clip_frac 0.064 (0.002), train draft AM 0.690 (0.761), train reward_1 +0.086 (+0.040). Fir stayed in that regime
+  to step 300 (KL medians 0.4–0.7). Step-200 val800: Mila draft 0.746 / final 0.764 / fix 25.5% vs Fir 0.684 /
+  0.730 / 30.5%. So the draft drop is a run-specific instability, not a property of the recipe; in Fir's windows
+  the refine reward rises exactly when the draft falls (181–200, 241–260), consistent with the refine reward
+  (child − parent) rewarding weaker drafts. Best final AM so far: Mila checkpoint-200 (0.764), healthy draft;
+  Fir checkpoint-300 0.762 with a weaker draft. Judge checkpoints by final AM, not by final − draft.
 - H100 runs the t7 recipe at ~4.8 min/step (18 prompts/step) vs ~7.3–7.6 on A100.
