@@ -36,16 +36,22 @@ def singularize(noun):
     return " ".join(words[:-1] + [last])
 
 
+def is_no(answer):
+    return answer.strip().lower() == "no"
+
+
 def prompt_nouns(vqa_list):
     """Plural object nouns named by the count / object questions, and the
-    count each should have (None when the prompt has no count question)."""
+    count each should have (None when the prompt has no count question).
+    Negated objects ("Are there any cups in the image?" -> "No") are not
+    nouns the image should contain, so they are left out."""
     counts = {}
     for question, answer in vqa_list:
         m = COUNT_RE.match(question)
         if m:
             counts[m.group(1)] = answer
         m = OBJECT_RE.match(question)
-        if m:
+        if m and not is_no(answer):
             counts.setdefault(m.group(1), None)
     return counts
 
@@ -75,6 +81,10 @@ def atom_critique(question, answer, skill, nouns):
         return (f"the image does not show exactly {with_count(answer, plural)}",
                 f"make sure there {be} exactly {with_count(answer, plural)}")
     m = OBJECT_RE.match(question)
+    if m and is_no(answer):
+        plural = m.group(1)
+        return (f"the image shows {plural}, which the prompt excludes",
+                f"remove the {plural}")
     if m:
         plural = m.group(1)
         count = nouns.get(plural)
@@ -84,6 +94,9 @@ def atom_critique(question, answer, skill, nouns):
     if m:
         verb = m.group(1).lower()
         subject, predicate = split_subject(m.group(2), nouns)
+        if predicate and is_no(answer):
+            return (f"the {subject} {verb} {predicate}",
+                    f"make sure the {subject} {verb} not {predicate}")
         if predicate:
             issue = f"the {subject} {verb} not {predicate}"
             if skill == "position":
@@ -104,7 +117,8 @@ def oracle_critique(vqa_list, skills, per_question, threshold):
     if not failed:
         return NO_ISSUE_CRITIQUE
     # A missing object also fails its count question; say it once, as "add N".
-    missing = {OBJECT_RE.match(q).group(1) for q, _, _ in failed if OBJECT_RE.match(q)}
+    missing = {OBJECT_RE.match(q).group(1) for q, a, _ in failed
+               if OBJECT_RE.match(q) and not is_no(a)}
     failed = [f for f in failed
               if not (COUNT_RE.match(f[0]) and COUNT_RE.match(f[0]).group(1) in missing)]
     rank = {s: i for i, s in enumerate(SKILL_ORDER)}

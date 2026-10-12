@@ -24,6 +24,16 @@ oracle critique of the parent's failed VQA questions), its text is spliced in
 as ``KIND_NONE`` exactly as the eval script splices decoded text
 (``" " + text``), and every child of that parent shares it, so siblings differ
 only in their image. A parent whose critique is ``None`` becomes a leaf.
+
+With ``images_per_critique = M > 1`` (sampled critiques only) each parent gets
+``branch[k]`` sampled critiques and every critique that refines gets ``M``
+images: the first child of a critique (``critique_leader``) owns the sampled
+reflection tokens (``KIND_TXT``), its ``M - 1`` followers carry the same text
+as ``KIND_NONE`` and sample only an image. The critique is thus trained once,
+with an advantage computed from the mean score of its ``M`` images against the
+parent's other critiques (``Node.adv_txt``), while each image is trained
+against the other images of the *same* critique (``Node.adv``). A "looks good"
+critique is a single leaf (its followers would all be the parent's image).
 """
 
 import re
@@ -65,6 +75,10 @@ class RolloutConfig:
     # conditioned on "not looks good", which the training log-prob ignores.
     min_refines: int = 0
     refine_resample_tries: int = 3
+    # Images sampled under each sampled critique (see the module docstring).
+    # 1 = every child samples its own critique and image (t4). Ignored with a
+    # critique_fn, where the children of a parent already share one critique.
+    images_per_critique: int = 1
 
     @property
     def num_rounds(self) -> int:
@@ -123,6 +137,8 @@ class Node:
     teacher_forced: bool = False         # reflection supplied by critique_fn, not sampled
     critique_source: str = ""            # "sampled" | "oracle" | "policy" (frozen, via critique_fn)
     critique_fallback: bool = False      # hybrid: policy critique kept saying "looks good", used oracle
+    critique_idx: int = 0                # which of the parent's critiques this node refines under
+    critique_leader: bool = True         # owns the critique's sampled tokens (trains them)
     children: List["Node"] = field(default_factory=list)
     # Filled in by the trainer. per_question is set once the image is scored
     # (critique_fn scores parents mid-rollout; score_tree does the rest).
@@ -130,7 +146,8 @@ class Node:
     gm: float = 0.0
     per_question: Optional[List[float]] = None
     reward: float = 0.0
-    adv: float = 0.0
+    adv: float = 0.0                     # advantage of the image tokens
+    adv_txt: float = 0.0                 # advantage of the reflection tokens (== adv unless M > 1)
 
     def ancestors(self) -> List["Node"]:
         chain, n = [], self
@@ -348,7 +365,7 @@ class TreeRollout:
                     kinds = n.kinds + [KIND_NONE] * len(splice)
                     child = Node(prompt_idx=n.prompt_idx, round=k, parent=n, first_born=(g == 0),
                                  seq=seq, kinds=kinds, seg_start=len(seq), sibling_idx=g,
-                                 teacher_forced=crit is not None,
+                                 critique_idx=g, teacher_forced=crit is not None,
                                  reflection=crit.text if crit is not None else "",
                                  critique_source=crit.source if crit is not None else "",
                                  critique_fallback=crit.fallback if crit is not None else False)
@@ -378,6 +395,7 @@ class TreeRollout:
                         if not c.looks_good:
                             c.forced_refine = True
                     forced = [c for c in forced if c.looks_good]
+                children = self._add_critique_followers(children)
             pending = [c for c in children if not c.looks_good]
             for c in pending:
                 c.seq.extend(self.image_splice)
@@ -408,14 +426,54 @@ class TreeRollout:
         c.looks_good = LOOKS_GOOD_RE.search(c.reflection) is not None
         c.critique_source = "sampled"
 
+    def _add_critique_followers(self, leaders: List[Node]) -> List[Node]:
+        """``images_per_critique - 1`` followers after every refining leader.
+
+        A follower is the leader's sequence with the reflection re-marked as
+        ``KIND_NONE`` (same ``seg_start``, so its segment is reflection + image
+        like the leader's, but only the image is trained). The parents'
+        ``children`` lists are rebuilt in the returned order.
+        """
+        M = self.cfg.images_per_critique
+        if M <= 1 or not leaders:
+            return leaders
+        for lead in leaders:
+            lead.parent.children = []
+        out: List[Node] = []
+        for lead in leaders:
+            out.append(lead)
+            lead.parent.children.append(lead)
+            if lead.looks_good:
+                continue
+            for _ in range(M - 1):
+                f = Node(prompt_idx=lead.prompt_idx, round=lead.round, parent=lead.parent,
+                         first_born=False, seq=list(lead.seq),
+                         kinds=lead.kinds[:lead.seg_start] + [KIND_NONE] * (len(lead.seq) - lead.seg_start),
+                         seg_start=lead.seg_start, sibling_idx=lead.sibling_idx,
+                         reflection=lead.reflection, reflection_len=lead.reflection_len,
+                         forced_refine=lead.forced_refine, critique_source=lead.critique_source,
+                         critique_idx=lead.critique_idx, critique_leader=False)
+                out.append(f)
+                lead.parent.children.append(f)
+        return out
+
     # -- tensors for training ---------------------------------------------------
 
     def build_training_rows(self, leaves: List[Node], reflect_token_weight: float,
-                            image_token_weight: float = 1.0):
+                            train_drafts: bool = True, train_images: bool = True,
+                            image_adv_scale: float = 1.0):
         """Right-padded tensors for a list of leaves.
 
         Returns dict(input_ids, attention_mask, train_mask, pos_kind, adv, weight);
         adv / weight are per position (zero outside trained segments).
+        ``train_drafts=False`` leaves the round-0 image out of the train mask:
+        a draft with advantage 0 would otherwise still get the KL term, which
+        pulls it back toward the reference. ``train_images=False`` leaves every
+        image out (critic-only training: only ``KIND_TXT`` positions remain).
+        ``image_adv_scale`` multiplies the image tokens' advantages; at 0 the
+        images stay in the loss with the KL term only, i.e. they are anchored
+        to the reference instead of dropped (dropping them lets the shared
+        LoRA drift them freely: t10).
         """
         width = max(len(n.seq) for n in leaves)
         B = len(leaves)
@@ -433,17 +491,17 @@ class TreeRollout:
             trained = set(leaf.trained_rounds())
             chain = leaf.ancestors()
             for j, node in enumerate(chain):
-                if node.round not in trained:
+                if node.round not in trained or (node.round == 0 and not train_drafts):
                     continue
                 # A node's segment runs from its seg_start up to the child's
                 # seg_start (the forced splice in between is KIND_NONE).
                 end = chain[j + 1].seg_start if j + 1 < len(chain) else L
                 for pos in range(node.seg_start, end):
                     kind = leaf.kinds[pos]
-                    if kind == KIND_NONE:
+                    if kind == KIND_NONE or (kind == KIND_IMG and not train_images):
                         continue
                     train_mask[i, pos] = True
-                    adv[i, pos] = node.adv
-                    weight[i, pos] = reflect_token_weight if kind == KIND_TXT else image_token_weight
+                    adv[i, pos] = node.adv_txt if kind == KIND_TXT else node.adv * image_adv_scale
+                    weight[i, pos] = reflect_token_weight if kind == KIND_TXT else 1.0
         return dict(input_ids=input_ids, attention_mask=attention_mask,
                     train_mask=train_mask, pos_kind=pos_kind, adv=adv, weight=weight)

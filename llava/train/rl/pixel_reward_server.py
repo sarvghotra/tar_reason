@@ -4,7 +4,8 @@ Decoded PNGs in, per-question answer probabilities out. Scoring mirrors
 ``GenEval2/evaluation_optz.py``: one forward pass per (image, question) row
 with ``logits_to_keep=1``, softmax in fp32 at the last position, and the score
 is the summed probability of the accepted answer variants
-(``Yes``/``yes``/`` Yes``/`` yes`` for yes-no questions; the number word, its
+(``Yes``/``yes``/`` Yes``/`` yes`` for yes-no questions, the ``No`` forms when
+the expected answer is no; the number word, its
 capitalised form and the digit for "How many" questions). The image always
 comes before the text.
 
