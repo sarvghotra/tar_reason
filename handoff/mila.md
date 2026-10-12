@@ -4,15 +4,15 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
 ## Now (2026-10-12 05:30 EDT; the user is away until 2026-10-13, the Mila session runs unattended in tmux)
-- **Inbox item 1, critic diagnostic:** eval-only val800 jobs **11209613** `critic_diag_t7mila200` (running) →
-  **11209614** `critic_diag_sft` (queued, `afterany`). Then `critic_diagnostic.py` on each dump; results here + `runs.md`.
+- **Critic diagnostic done** (results in `runs.md`, row `critic_diag_*`, and the Log below).
 - **Inbox item 2, official benchmarks:** the user approved GenEval2 + TIIF (GenAI-bench later), official GenEval2
   `evaluation.py` scoring (+ re-score SFT ourselves), one seed (713). New launcher `scripts/eval/bench_mila.sh`
   (adhoc generators: draft → one greedy critique → one refinement; draft and final scored separately; resumable
   stage markers). Assets: `$SCRATCH/benchmarks/{GenEval2,TIIF-Bench}` (official repos), judges in
   `HF_HOME=$SCRATCH/hf_home` (Qwen3-VL-8B for GenEval2, Qwen2.5-VL-7B for TIIF). The official 800 GenEval2 prompts
-  share none with our train / val800 / val256. Smoke test **11209834** (`SMOKE=1`, 1 GPU on `main`) running; then
-  SFT t21, t7 Mila checkpoint-200, checkpoint-100 on `short-unkillable` 4× A100.
+  share none with our train / val800 / val256. Smoke test 11209834 passed. Queued on `short-unkillable` 4× A100, each model
+  with a spare resubmission: SFT t21 11209951/52 (running), t7 Mila ck-200 11209953/54, ck-100 11209955/56.
+  Results: `$SCRATCH/tar_reason/bench/<name>/seed_713/summary.json` (+ TIIF report `tiif/eval_results/`).
 - `darshan_t7_mila` is done (200 steps); checkpoints 100/200 in `$SCRATCH/tar_reason/kept/darshan_t7_mila/`.
 
 ## Setup
@@ -43,26 +43,14 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-12 01:45 PDT from Fir: **two jobs for Mila while t11 runs on Fir** (details: `runs.md`, collaborator t8–t11).
-  Code: pull `darshan-rl-test` (merge `a43f083` brings jeet's main: critique groups, `--train_images`,
-  `--image_adv_scale`, `--init_adapter`, merge_lora, negation-atom scoring; ours: `--val_dump_dir`,
-  `scripts/rl_ft/critic_diagnostic.py`). Nothing runs on Mila, so pulling is safe.
-  1. **Critic diagnostic** (baseline for t11): val800, eval only (`MAX_STEPS=0`), own critic, for
-     (a) `--init_adapter $SCRATCH/tar_reason/kept/darshan_t7_mila/checkpoint-200` and (b) the SFT model (no adapter),
-     each with `--val_dump_dir output_dir/<run>/val_dump` and a distinct `RUN_NAME`. `bash_mila_t7.sh` needs an
-     `EXTRA_ARGS` pass-through like `bash_fir_t7.sh`. `--eval_oracle` is optional (off halves the time). Then
-     `python scripts/rl_ft/critic_diagnostic.py output_dir/<run>/val_dump --step 0`; results to `mila.md`, headline
-     numbers (stop table, error recall, stop precision, mention rate, fix rate mentioned vs not) to `runs.md`.
-     First look on Fir (24 prompts, t7 ckpt-100): stop decisions fine; critiques usually name ONE problem while
-     drafts fail 2–5 questions — check that on 800.
-  2. **Official benchmarks** (GenEval2, TIIF short/long, GenAI-bench): none has been run on any RL checkpoint yet.
-     First find what in the repo can evaluate a LoRA checkpoint iteratively (`eval/`, `tts/eval/`,
-     `eval/iterative_generation_adhoc.py`, ...) and what each benchmark needs (data, judge, env; Mila compute nodes
-     have internet). **Propose a setup to the user before using GPUs.** Then: SFT t21, t7 Mila checkpoint-100/200,
-     later t11's; report draft and final scores separately (final is what matters; t7's draft dropped late on
-     Fir/TamIA).
+- 2026-10-12 01:45 PDT from Fir (item 2 of 2; item 1, the critic diagnostic, is done, see Log): **Official
+  benchmarks** (GenEval2, TIIF short/long, GenAI-bench) on SFT t21, t7 Mila checkpoint-100/200, later t11's; report
+  draft and final separately. In progress: the user approved GenEval2 + TIIF (GenAI later); runs queued (see Now).
 
 ## Log (newest first)
+- 2026-10-12 06:40: critic diagnostic done (Fir inbox item 1). Full reports: `output_dir/critic_diag_{t7mila200,sft}/critic_diagnostic.txt`.
+  Stop decision unchanged by t7; Corrections narrower than SFT's (name all of 2 failed objects 44% vs 55%); fix rate
+  when mentioned 12% → 26%. Extra breadth script: `tools/watch/critic_breadth.py` (outside the repo).
 - 2026-10-12 04:45: pulled the t8–t11 merge (`a43f083` … `f1e40b9`); started the critic diagnostic jobs.
 - 2026-10-10 05:02: `darshan_t7_mila` done (step-200 val800 in `runs.md`); `keep_t7_ckpts` done (100 + 200 kept).
 - 2026-10-10 03:17: checkpoint-200 saved and copied. A leftover watcher from the previous session ate one event:
