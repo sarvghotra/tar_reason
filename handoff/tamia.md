@@ -38,6 +38,32 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-12 01:35 PDT from Fir: **t11 (critic-only, images KL-anchored to merged t8) — set up on TamIA, check the queue, smoke-test.**
+  jeet is not running t11 himself, so ours is the t11 run; the user will put it on whichever cluster starts it sooner.
+  1. **Don't pull in `/scratch/d/dars11/git/tar_reason`** while `darshan_t7_tamia`'s job 516261 is queued or running:
+     `darshan-rl-test` now carries jeet's main (merge `a43f083`), which also changes reward scoring of "No"-answer
+     atoms, so t7's last 50 steps would run with a different reward. Use a separate worktree for t11 instead:
+     `cd /scratch/d/dars11/git/tar_reason && git fetch origin && git worktree add ../tar_reason_t11 origin/darshan-rl-test`
+     then `mkdir -p ../tar_reason_t11/output_dir/slurm_logs` (SLURM opens the log files before the script runs).
+  2. **Model:** the user copies the merged t8 base (15 GB) from Fir, on a TamIA login node in tmux (Fir MFA):
+     `rsync -avP dars11@fir.alliancecan.ca:/scratch/dars11/models/tar/sft/rl_ft_oracle_t8_merged500 /scratch/d/dars11/models/tar/sft/`
+     Check afterwards: 4 `model-*.safetensors`, `config.json` sha256 `fbe9de40…`, `model.safetensors.index.json` sha256 `f20f5984…`.
+  3. **Queue estimates** (report to the user and to Fir's Inbox): `sbatch --test-only --account=aip-agrawal --nodes=4
+     --ntasks-per-node=1 --gpus-per-node=h100:4 --cpus-per-task=48 --mem=0 --time=12:00:00 --wrap=hostname`, and the
+     same with `--nodes=2`. Fir's, at 01:27 PDT: 4 nodes x 24 h → start 02:17 PDT; 2 nodes → 01:52 PDT. You noted
+     `--test-only` ran ~6 h optimistic on TamIA, so also give the `squeue --start` view if a job is queued.
+  4. **Launcher:** `scripts/rl_ft/bash_tamia_t11.sh` (run it from the worktree). Same trainer config as
+     `bash_fir_t11.sh` = jeet's t11 script; TamIA paths, `aip-agrawal`, 12 h jobs, 4 nodes (36 prompts/step).
+     Fallback if 4 nodes queue badly: `--nodes=2` with `PROMPTS_PER_GPU=6` (still 36/step, ~2x time per step).
+  5. **Smoke test first** (1 node, ~40 min): `MAX_STEPS=2 EVAL_STEPS=2 SAVE_STEPS=2 EVAL_MAX_PROMPTS=24
+     RUN_NAME=t11_smoke_tamia sbatch --nodes=1 --time=01:00:00 scripts/rl_ft/bash_tamia_t11.sh`. Pass = `judge ready`,
+     `step=0` (val/ and val_oracle/), steps 1–2 with nonzero `train/pg_txt` and small `train/kl_img`, `Saved …/checkpoint-2`,
+     `Done.`, and `output_dir/t11_smoke_tamia/val_dump/*.jsonl`. Step-0 val should be close to t8's step-500 numbers
+     (val/fix_1 ~0.42, am_final ~0.825, val_oracle/fix_1 ~0.47; 24 prompts are noisy).
+  6. **Full run only after the user picks the cluster:** `RUN_NAME=darshan_t11_tamia`, chain of 3 x 12 h
+     (`jid=$(sbatch --parsable …); sbatch --dependency=afterany:$jid …`). Watch `train/kl_img` (jeet: should stay
+     << 0.05, else raise KL_COEF), `val_oracle/fix_1` (~0.47) and `val/am_0` (~0.776) for drift; copy checkpoints at
+     multiples of 50 before pruning (SAVE_STEPS=10, 5 kept). Fir is running the same smoke test now (job 64509374).
 
 ## Log (newest first)
 - 2026-10-11 18:45: caught up after the tmux session ended (~2026-10-10 14:00; watcher gone). 516259 TIMEOUT at step ~120, 516260 resumed 120 → 250, TIMEOUT during step-250 eval. Val 100/150/200 in `runs.md`. Checkpoints 150/200 lost to pruning. 516261 pending, est. 2026-10-12 17:07.
