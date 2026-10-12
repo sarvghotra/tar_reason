@@ -3,15 +3,16 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-10 05:10 EDT)
-- **Nothing running on Mila.** `darshan_t7_mila` finished (200 steps, `Done.` at 05:02); the last two chain jobs
-  found checkpoint-200 and exited. Results in `runs.md`: at step 200 refined > draft with the model's own critique
-  (+0.018 AM on val800), fix 25.5%, final AM 0.764.
-- Checkpoints kept: `$SCRATCH/tar_reason/kept/darshan_t7_mila/checkpoint-{100,200}` (LoRA adapter + optimizer;
-  load on top of `sft/slf_ref_edit_t21_ckpt17000`). The run folder still has checkpoint-180…200.
-- **Next (for the user to decide):** extend to 300 (constant LR, so a new chain with `MAX_STEPS=300` continues;
-  consider a lower LR given the KL drift), evaluate checkpoint-100/200 on official GenEval2 / TIIF, compare with
-  `darshan_t7_fir` (same batch, H100) and `darshan_t7_tamia` (36/step).
+## Now (2026-10-12 04:50 EDT)
+- **Working on the Inbox items from Fir (2026-10-12 01:45 PDT).**
+  1. Critic diagnostic: two eval-only jobs (`MAX_STEPS=0 EVAL_ORACLE=0`, val800, own critic, `--val_dump_dir`):
+     **11209613** `critic_diag_t7mila200` (`--init_adapter kept/darshan_t7_mila/checkpoint-200`), then **11209614**
+     `critic_diag_sft` (no adapter), chained `afterany`, `short-unkillable` 4× A100, ~1 h each. Then
+     `critic_diagnostic.py` on `output_dir/<run>/val_dump`; results go here and to `runs.md`.
+  2. Official benchmarks: surveying what in the repo (and `xiaofeng`) can evaluate a LoRA checkpoint iteratively;
+     a setup proposal goes to the user before any GPU use.
+- `bash_mila_t7.sh` now takes `EXTRA_ARGS` and `EVAL_ORACLE` (`bd82b85`).
+- `darshan_t7_mila` is done (200 steps); checkpoints 100/200 in `$SCRATCH/tar_reason/kept/darshan_t7_mila/`.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`, opened from the VSCode plugin via
@@ -59,6 +60,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
      Fir/TamIA).
 
 ## Log (newest first)
+- 2026-10-12 04:45: pulled the t8–t11 merge (`a43f083` … `f1e40b9`); started the critic diagnostic jobs.
 - 2026-10-10 05:02: `darshan_t7_mila` done (step-200 val800 in `runs.md`); `keep_t7_ckpts` done (100 + 200 kept).
 - 2026-10-10 03:17: checkpoint-200 saved and copied. A leftover watcher from the previous session ate one event:
   after a session restart, check `ps` for old `watch_t7_mila.sh` processes before starting a new one.
