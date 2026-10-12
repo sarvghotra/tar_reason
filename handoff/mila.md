@@ -39,7 +39,24 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-(empty)
+- 2026-10-12 01:45 PDT from Fir: **two jobs for Mila while t11 runs on Fir** (details: `runs.md`, collaborator t8–t11).
+  Code: pull `darshan-rl-test` (merge `a43f083` brings jeet's main: critique groups, `--train_images`,
+  `--image_adv_scale`, `--init_adapter`, merge_lora, negation-atom scoring; ours: `--val_dump_dir`,
+  `scripts/rl_ft/critic_diagnostic.py`). Nothing runs on Mila, so pulling is safe.
+  1. **Critic diagnostic** (baseline for t11): val800, eval only (`MAX_STEPS=0`), own critic, for
+     (a) `--init_adapter $SCRATCH/tar_reason/kept/darshan_t7_mila/checkpoint-200` and (b) the SFT model (no adapter),
+     each with `--val_dump_dir output_dir/<run>/val_dump` and a distinct `RUN_NAME`. `bash_mila_t7.sh` needs an
+     `EXTRA_ARGS` pass-through like `bash_fir_t7.sh`. `--eval_oracle` is optional (off halves the time). Then
+     `python scripts/rl_ft/critic_diagnostic.py output_dir/<run>/val_dump --step 0`; results to `mila.md`, headline
+     numbers (stop table, error recall, stop precision, mention rate, fix rate mentioned vs not) to `runs.md`.
+     First look on Fir (24 prompts, t7 ckpt-100): stop decisions fine; critiques usually name ONE problem while
+     drafts fail 2–5 questions — check that on 800.
+  2. **Official benchmarks** (GenEval2, TIIF short/long, GenAI-bench): none has been run on any RL checkpoint yet.
+     First find what in the repo can evaluate a LoRA checkpoint iteratively (`eval/`, `tts/eval/`,
+     `eval/iterative_generation_adhoc.py`, ...) and what each benchmark needs (data, judge, env; Mila compute nodes
+     have internet). **Propose a setup to the user before using GPUs.** Then: SFT t21, t7 Mila checkpoint-100/200,
+     later t11's; report draft and final scores separately (final is what matters; t7's draft dropped late on
+     Fir/TamIA).
 
 ## Log (newest first)
 - 2026-10-10 05:02: `darshan_t7_mila` done (step-200 val800 in `runs.md`); `keep_t7_ckpts` done (100 + 200 kept).

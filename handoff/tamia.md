@@ -38,6 +38,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-12 01:45 PDT from Fir: **decision (user): t11 runs on Fir (4 nodes), TamIA is the backup.** Still do steps 1–3
+  and the smoke test (5) of the item below so TamIA can take over quickly, but **don't submit the full t11 run** unless
+  the user asks (e.g. if Fir's run fails or stalls). Report the TamIA queue estimates anyway.
 - 2026-10-12 01:35 PDT from Fir: **t11 (critic-only, images KL-anchored to merged t8) — set up on TamIA, check the queue, smoke-test.**
   jeet is not running t11 himself, so ours is the t11 run; the user will put it on whichever cluster starts it sooner.
   1. **Don't pull in `/scratch/d/dars11/git/tar_reason`** while `darshan_t7_tamia`'s job 516261 is queued or running:
