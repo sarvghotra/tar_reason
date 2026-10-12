@@ -38,12 +38,13 @@ Owned by the TamIA session.
   is no faster. `--test-only` estimates were ~6 h more optimistic than `squeue --start` for the real job.
 - Launcher `scripts/rl_ft/bash_tamia_t7.sh`: copy of `bash_fir_t7.sh` with only account, job name and paths changed.
 - Session: login node `tamia1`, session id `a2cf8ab9-d921-49b4-af79-f29b7522648d`; resume with
-  `cd ~/scratch/git && claude --resume a2cf8ab9-d921-49b4-af79-f29b7522648d` (in tmux `claude` when away). Watcher: Monitor running `watch_t7_tamia.py` (in this session's scratchpad, `/tmp/claude-3165746/.../a2cf8ab9.../scratchpad/`; state in `watch_state.json` there), re-armed every 30 min (when a session is running it); reports job starts, startup checks, every 10th step, KL > 0.5 / grad > 1 spikes, val results, ckpts at multiples of 50, errors, `Done.`. Dies with the session.
+  `cd ~/scratch/git && claude --resume a2cf8ab9-d921-49b4-af79-f29b7522648d` (in tmux `claude` when away). Watcher: Monitor running `watch_job.py <name> <log_prefix> <jobids…>` (generic; in this session's scratchpad `/tmp/claude-3165746/.../a2cf8ab9.../scratchpad/`, state `watch_state_<name>.json` there), re-armed every 30 min; reports job state changes, startup lines, steps 1–2 and every 10th, spikes (KL > 0.5 / grad > 1), warnings (grad > 0.3, clip_frac > 0.1, kl_img > 0.05), val results, checkpoints, errors, `Done.`. Dies with the session. Currently watching `t11_smoke_tamia` (612737).
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-12 04:58: user switched to tmux; generic watcher `watch_job.py` started on the t11 smoke test.
 - 2026-10-12: t8 merged model verified; t11 smoke test submitted (job 612737).
 - 2026-10-12 04:45: user cancelled 516261; t7 stops at step 250. Main checkout pulled.
 - 2026-10-12 04:35: Fir Inbox items (t11 setup; t11 runs on Fir, TamIA backup) taken into Now: worktree `tar_reason_t11` at `0e32009`, queue estimates sent to Fir's Inbox; waiting for the t8 model copy. Main checkout not pulled (516261 queued).
