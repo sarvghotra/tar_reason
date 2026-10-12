@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-12 05:05 EDT)
+## Now (2026-10-12 05:50 EDT)
 - **Checkouts:** `tar_reason/` (main, now pulled to the latest branch; nothing queued uses it) and the worktree
   `/scratch/d/dars11/git/tar_reason_t11` for t11 (detached HEAD on `origin/darshan-rl-test`; push notes from either with
   `git pull --rebase` first). Before pulling with jobs queued, check rule 4.
@@ -20,8 +20,7 @@ Owned by the TamIA session.
   - `--test-only` estimates at 04:29 EDT for 12 h jobs: 4 nodes 2026-10-13 04:56, 2 nodes 2026-10-13 02:42,
     1 node 2026-10-12 23:21 (TamIA's `--test-only` has run ~6 h optimistic; 516261 also needs 2 nodes at ~21:15).
   - **Full run queued at the user's request (2026-10-12 05:00): `darshan_t11_tamia`, 4 nodes, 36/step, 300 steps,
-    val800 every 50, jobs 612742 → 612743 → 612744 (12 h each). 612742 depends `afterok:612737` (the smoke test);
-    if the smoke test fails, cancel the chain. Runs in parallel with `darshan_t11_fir` (distinct RUN_NAME).**
+    val800 every 50, jobs 612742 → 612743 → 612744 (12 h each). Smoke test passed, so 612742 is now pending on Priority. Runs in parallel with `darshan_t11_fir` (distinct RUN_NAME).**
     Watch `train/kl_img` (should stay << 0.05), `val_oracle/fix_1` (~0.47) and `val/am_0` (~0.776) for drift; copy
     checkpoints at multiples of 50 to `$SCRATCH/tar_reason_kept/darshan_t11_tamia/` (SAVE_STEPS=10, 5 kept).
     (Earlier decision via Fir 01:45 PDT was "TamIA backup only"; the user changed it.)
@@ -50,6 +49,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-12 05:47: t11 smoke test passed (612737); 612742 released from its dependency.
 - 2026-10-12 05:46: t11 smoke test passed (job 612737); details in Now and `runs.md`.
 - 2026-10-12 05:00: user asked to run t11 on TamIA too; submitted `darshan_t11_tamia` 612742 (afterok smoke) → 43 → 44.
 - 2026-10-12 04:58: user switched to tmux; generic watcher `watch_job.py` started on the t11 smoke test.
