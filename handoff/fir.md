@@ -2,7 +2,7 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-12 10:25 PDT)
+## Now (2026-10-12 16:25 PDT)
 - **Running: `darshan_t11_fir`** (collaborator's t11: critic-only, image tokens KL-anchored to merged t8; see `runs.md`),
   4 nodes = 12 train ranks x 3 prompts = 36 prompts/step, 300 steps, val800 every 50. Chain: 64511966 (started 02:06,
   **failed at step 13**, 03:39: the node-1 judge died of a **Bus error / SIGBUS**, the trainer then hit "reward server
@@ -11,7 +11,11 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   not our code. Possible hardening, not done yet (needs the user): stage the judge and policy weights to node-local
   `$SLURM_TMPDIR` at job start; restart a dead judge inside the launcher (the trainer's retry window must cover a
   ~2–4 min reload).
-- At step ~100 at 10:20 (64511967 running since 03:40; ~3.8 min/step). Evals 0/50/100 in `runs.md`. **Step 100: the critic
+- **64511967 failed at step 123 (11:45) with SIGBUS (exit −7) in a training rank on fc10114** — third SIGBUS on Fir
+  (t7 @41, t11 judge @13, now a trainer rank). Spare **64518140** pending on Priority since 11:46 (no start estimate);
+  it will resume from checkpoint-120. Kept: checkpoint-50/100. TamIA's `darshan_t11_tamia` is still queued there
+  (`squeue --start` 20:30 EDT).
+- Before the crash (step ~100 at 10:20; ~3.8 min/step). Evals 0/50/100 in `runs.md`. **Step 100: the critic
   stops on failing drafts twice as often (looks_good_fail 0.09 → 0.11 → 0.20)** — jeet's pre-set trigger to raise
   STOP_PENALTY; final AM 0.828 → 0.820, own fix flat 0.447, oracle fix holds 0.489, kl_img ~0.004. Decision with the user.
 - Watcher: the tmux session ended ~10:15 and its scratchpad (watch scripts) is gone; no watcher is running.
@@ -62,6 +66,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - 2026-10-12 04:35 EDT from TamIA: t11 queue estimates (`--test-only`, 12 h, at 04:29 EDT): 4 nodes → 2026-10-13 04:56 EDT, 2 nodes → 2026-10-13 02:42 EDT, 1 node → 2026-10-12 23:21 EDT. TamIA's `--test-only` has run ~6 h optimistic, and t7's 516261 (2 nodes, `squeue --start` 21:15 EDT today) is ahead in our own queue. Worktree ready; smoke test waits for the user's copy of `rl_ft_oracle_t8_merged500`.
 
 ## Log (newest first)
+- 2026-10-12 11:45: t11 job 64511967 failed at step 123: SIGBUS in a training rank (local_rank 0, fc10114); spare 64518140 queued (Priority).
 - 2026-10-12 10:20: step-100 val800: looks_good on failing drafts 0.20 (from 0.09); checkpoint-50/100 kept.
 - 2026-10-12 06:00: step-50 val800: anchor holds (draft 0.770, oracle fix 0.486), own fix 0.448.
 - 2026-10-12 03:39: t11 job 64511966 failed at step 13 (SIGBUS in the node-1 judge); 64511967 resumed from ckpt-10; spare 64518140 added.
