@@ -14,7 +14,9 @@ Owned by the TamIA session.
   - worktree created, `output_dir/slurm_logs` made; launcher checked (paths, account, RUN_NAME export).
   - t8 merged model copied by the user and verified (4 shards, tensor bytes = index `total_size`, `config.json`
     sha256 `fbe9de40…`, index `f20f5984…`; `merged_from.json`: t21 ckpt-17000 + t8 ckpt-500).
-  - **Smoke test `t11_smoke_tamia` submitted: job 612737** (1 node, 1 h), pending (Priority).
+  - **Smoke test `t11_smoke_tamia` passed** (job 612737, 1 node, 19 min): judge 30 s; step-0 val fix 0.41, am_final 0.824,
+    oracle fix 0.47 (≈ t8 step 500); steps 1–2 pg_txt −0.016 / +0.023, kl_img 0 / 0.0011, grad ~0.08; checkpoint-2, `Done.`,
+    val_dump jsonl written. ~3.4–3.5 min/step at 3 prompts/rank. TamIA is ready to take over t11 if the user asks.
   - `--test-only` estimates at 04:29 EDT for 12 h jobs: 4 nodes 2026-10-13 04:56, 2 nodes 2026-10-13 02:42,
     1 node 2026-10-12 23:21 (TamIA's `--test-only` has run ~6 h optimistic; 516261 also needs 2 nodes at ~21:15).
   - **Full run queued at the user's request (2026-10-12 05:00): `darshan_t11_tamia`, 4 nodes, 36/step, 300 steps,
@@ -48,6 +50,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-12 05:46: t11 smoke test passed (job 612737); details in Now and `runs.md`.
 - 2026-10-12 05:00: user asked to run t11 on TamIA too; submitted `darshan_t11_tamia` 612742 (afterok smoke) → 43 → 44.
 - 2026-10-12 04:58: user switched to tmux; generic watcher `watch_job.py` started on the t11 smoke test.
 - 2026-10-12: t8 merged model verified; t11 smoke test submitted (job 612737).
