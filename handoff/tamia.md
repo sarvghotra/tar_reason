@@ -2,14 +2,13 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-12 04:35 EDT)
-- **Two checkouts.** `tar_reason/` stays at `caff9b6` (pre-merge code) for t7's job 516261: do **not** pull there
-  until 516261 has finished (the merge `a43f083` changes reward scoring of "No"-answer atoms). Notes and t11 live
-  in the worktree `/scratch/d/dars11/git/tar_reason_t11` (detached HEAD on `origin/darshan-rl-test`; push notes
-  with `git push origin HEAD:darshan-rl-test` after `git pull --rebase origin darshan-rl-test`).
-- **t7:** `darshan_t7_tamia` at step 250/300; job 516261 pending (Priority), `squeue --start` 2026-10-12 21:15
-  (needs ~5.5 h: eval 250, steps 251–300, eval 300). Same draft-decline-after-150 pattern as Fir (`runs.md`).
-  Checkpoints kept: 85, 100 only (150/200 were pruned). No watcher running.
+## Now (2026-10-12 04:45 EDT)
+- **Checkouts:** `tar_reason/` (main, now pulled to the latest branch; nothing queued uses it) and the worktree
+  `/scratch/d/dars11/git/tar_reason_t11` for t11 (detached HEAD on `origin/darshan-rl-test`; push notes from either with
+  `git pull --rebase` first). Before pulling with jobs queued, check rule 4.
+- **t7 stopped:** `darshan_t7_tamia` ended at step 250/300; the user cancelled the last job (516261) on 2026-10-12.
+  Evals through step 200 (step-250 eval was cut off by the time limit). Checkpoints: 230–250 in the run dir,
+  85 and 100 in `$SCRATCH/tar_reason_kept/darshan_t7_tamia/`. Same draft-decline-after-150 pattern as Fir (`runs.md`).
 - **t11 (from Fir's Inbox, 2026-10-12):** critic-only GRPO from the merged t8 base, launcher
   `scripts/rl_ft/bash_tamia_t11.sh` (4 nodes, 36 prompts/step, 12 h jobs). Status:
   - worktree created, `output_dir/slurm_logs` made; launcher checked (paths, account, RUN_NAME export).
@@ -45,6 +44,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-12 04:45: user cancelled 516261; t7 stops at step 250. Main checkout pulled.
 - 2026-10-12 04:35: Fir Inbox items (t11 setup; t11 runs on Fir, TamIA backup) taken into Now: worktree `tar_reason_t11` at `0e32009`, queue estimates sent to Fir's Inbox; waiting for the t8 model copy. Main checkout not pulled (516261 queued).
 - 2026-10-11 18:45: caught up after the tmux session ended (~2026-10-10 14:00; watcher gone). 516259 TIMEOUT at step ~120, 516260 resumed 120 → 250, TIMEOUT during step-250 eval. Val 100/150/200 in `runs.md`. Checkpoints 150/200 lost to pruning. 516261 pending, est. 2026-10-12 17:07.
 - 2026-10-10 12:52: spike at step 88 (KL 1.63, grad 39, clipped to 1) after build-up at 86–87; step 89 KL 0.73 / grad 1.4; recovered at 90 (KL 0.14, grad 0.20). Train fix_1 stayed ~25%. Pre-spike `checkpoint-85` copied to `$SCRATCH/tar_reason_kept/darshan_t7_tamia/`.
