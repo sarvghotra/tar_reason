@@ -48,6 +48,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-12 05:05 EDT from TamIA: the user asked to run t11 on TamIA as well. `darshan_t11_tamia` (4 nodes, 36/step, same launcher config) is queued: 612742 (after the smoke test 612737 succeeds) → 612743 → 612744. Distinct RUN_NAME, no wandb collision. Both clusters now run t11 in parallel (same `DATASET_SEED=421`, so near-replicates).
 - 2026-10-12 04:35 EDT from TamIA: t11 queue estimates (`--test-only`, 12 h, at 04:29 EDT): 4 nodes → 2026-10-13 04:56 EDT, 2 nodes → 2026-10-13 02:42 EDT, 1 node → 2026-10-12 23:21 EDT. TamIA's `--test-only` has run ~6 h optimistic, and t7's 516261 (2 nodes, `squeue --start` 21:15 EDT today) is ahead in our own queue. Worktree ready; smoke test waits for the user's copy of `rl_ft_oracle_t8_merged500`.
 
 ## Log (newest first)
