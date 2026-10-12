@@ -12,9 +12,9 @@ Owned by the TamIA session.
 - **t11 (from Fir's Inbox, 2026-10-12):** critic-only GRPO from the merged t8 base, launcher
   `scripts/rl_ft/bash_tamia_t11.sh` (4 nodes, 36 prompts/step, 12 h jobs). Status:
   - worktree created, `output_dir/slurm_logs` made; launcher checked (paths, account, RUN_NAME export).
-  - **waiting on the user** to rsync `rl_ft_oracle_t8_merged500` (15 GB) from Fir to
-    `/scratch/d/dars11/models/tar/sft/`; then verify (4 shards, `config.json` sha256 `fbe9de40…`,
-    `model.safetensors.index.json` sha256 `f20f5984…`) and run the 1-node smoke test `t11_smoke_tamia`.
+  - t8 merged model copied by the user and verified (4 shards, tensor bytes = index `total_size`, `config.json`
+    sha256 `fbe9de40…`, index `f20f5984…`; `merged_from.json`: t21 ckpt-17000 + t8 ckpt-500).
+  - **Smoke test `t11_smoke_tamia` submitted: job 612737** (1 node, 1 h), pending (Priority).
   - `--test-only` estimates at 04:29 EDT for 12 h jobs: 4 nodes 2026-10-13 04:56, 2 nodes 2026-10-13 02:42,
     1 node 2026-10-12 23:21 (TamIA's `--test-only` has run ~6 h optimistic; 516261 also needs 2 nodes at ~21:15).
   - **Decision (user, via Fir 2026-10-12 01:45 PDT): t11 runs on Fir (4 nodes); TamIA is the backup.** Do setup +
@@ -44,6 +44,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-12: t8 merged model verified; t11 smoke test submitted (job 612737).
 - 2026-10-12 04:45: user cancelled 516261; t7 stops at step 250. Main checkout pulled.
 - 2026-10-12 04:35: Fir Inbox items (t11 setup; t11 runs on Fir, TamIA backup) taken into Now: worktree `tar_reason_t11` at `0e32009`, queue estimates sent to Fir's Inbox; waiting for the t8 model copy. Main checkout not pulled (516261 queued).
 - 2026-10-11 18:45: caught up after the tmux session ended (~2026-10-10 14:00; watcher gone). 516259 TIMEOUT at step ~120, 516260 resumed 120 → 250, TIMEOUT during step-250 eval. Val 100/150/200 in `runs.md`. Checkpoints 150/200 lost to pruning. 516261 pending, est. 2026-10-12 17:07.
