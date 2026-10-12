@@ -3,19 +3,22 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-12 04:50 EDT)
-- **Working on the Inbox items from Fir (2026-10-12 01:45 PDT).**
-  1. Critic diagnostic: two eval-only jobs (`MAX_STEPS=0 EVAL_ORACLE=0`, val800, own critic, `--val_dump_dir`):
-     **11209613** `critic_diag_t7mila200` (`--init_adapter kept/darshan_t7_mila/checkpoint-200`), then **11209614**
-     `critic_diag_sft` (no adapter), chained `afterany`, `short-unkillable` 4× A100, ~1 h each. Then
-     `critic_diagnostic.py` on `output_dir/<run>/val_dump`; results go here and to `runs.md`.
-  2. Official benchmarks: surveying what in the repo (and `xiaofeng`) can evaluate a LoRA checkpoint iteratively;
-     a setup proposal goes to the user before any GPU use.
-- `bash_mila_t7.sh` now takes `EXTRA_ARGS` and `EVAL_ORACLE` (`bd82b85`).
+## Now (2026-10-12 05:30 EDT; the user is away until 2026-10-13, the Mila session runs unattended in tmux)
+- **Inbox item 1, critic diagnostic:** eval-only val800 jobs **11209613** `critic_diag_t7mila200` (running) →
+  **11209614** `critic_diag_sft` (queued, `afterany`). Then `critic_diagnostic.py` on each dump; results here + `runs.md`.
+- **Inbox item 2, official benchmarks:** the user approved GenEval2 + TIIF (GenAI-bench later), official GenEval2
+  `evaluation.py` scoring (+ re-score SFT ourselves), one seed (713). New launcher `scripts/eval/bench_mila.sh`
+  (adhoc generators: draft → one greedy critique → one refinement; draft and final scored separately; resumable
+  stage markers). Assets: `$SCRATCH/benchmarks/{GenEval2,TIIF-Bench}` (official repos), judges in
+  `HF_HOME=$SCRATCH/hf_home` (Qwen3-VL-8B for GenEval2, Qwen2.5-VL-7B for TIIF). The official 800 GenEval2 prompts
+  share none with our train / val800 / val256. Smoke test **11209834** (`SMOKE=1`, 1 GPU on `main`) running; then
+  SFT t21, t7 Mila checkpoint-200, checkpoint-100 on `short-unkillable` 4× A100.
 - `darshan_t7_mila` is done (200 steps); checkpoints 100/200 in `$SCRATCH/tar_reason/kept/darshan_t7_mila/`.
 
 ## Setup
-- Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`, opened from the VSCode plugin via
+- Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
+  session `claude` on **`login-4`** (`ssh login-4`, `tmux attach -t claude`).
+- Earlier note on the same session, opened from the VSCode plugin via
   `mila code CODE/LatentDCR --alloc …` (runs on a compute node, not a login node). Resume:
   `cd ~/CODE/LatentDCR && claude --resume 830290ea-cb02-4188-9cf2-1c5fb3768fa2`. No tmux login node chosen yet
   (Mila's `login.server.mila.quebec` round-robins over several login nodes; pick one with `ssh login-N`).
