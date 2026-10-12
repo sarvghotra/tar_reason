@@ -410,7 +410,8 @@ class TreeRollout:
 
     # -- tensors for training ---------------------------------------------------
 
-    def build_training_rows(self, leaves: List[Node], reflect_token_weight: float):
+    def build_training_rows(self, leaves: List[Node], reflect_token_weight: float,
+                            image_token_weight: float = 1.0):
         """Right-padded tensors for a list of leaves.
 
         Returns dict(input_ids, attention_mask, train_mask, pos_kind, adv, weight);
@@ -443,6 +444,6 @@ class TreeRollout:
                         continue
                     train_mask[i, pos] = True
                     adv[i, pos] = node.adv
-                    weight[i, pos] = reflect_token_weight if kind == KIND_TXT else 1.0
+                    weight[i, pos] = reflect_token_weight if kind == KIND_TXT else image_token_weight
         return dict(input_ids=input_ids, attention_mask=attention_mask,
                     train_mask=train_mask, pos_kind=pos_kind, adv=adv, weight=weight)

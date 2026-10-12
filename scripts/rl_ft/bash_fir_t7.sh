@@ -114,7 +114,7 @@ MASTER_PORT=29507
 REWARD_PORT=$((8000 + ${SLURM_JOB_ID:-0} % 1000))
 REWARD_URL="http://127.0.0.1:${REWARD_PORT}"
 
-echo "RUN_NAME=${RUN_NAME} job=${SLURM_JOB_ID} nodes=${N_NODES} resume_from=${LAST:-none} DATASET_SEED=${DATASET_SEED}"
+echo "RUN_NAME=${RUN_NAME} job=${SLURM_JOB_ID} nodes=${N_NODES} resume_from=${LAST:-none} DATASET_SEED=${DATASET_SEED} EXTRA_ARGS=${EXTRA_ARGS}"
 echo "train ranks ${WORLD_SIZE_GPUS} (${N_TRAIN_GPUS}/node), judge GPU ${JUDGE_GPU} per node; prompts/step $((WORLD_SIZE_GPUS * PROMPTS_PER_GPU)); master ${MASTER_ADDR}:${MASTER_PORT}"
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -129,7 +129,9 @@ export PROMPTS_PER_GPU BRANCH EVAL_BRANCH GEN_BATCH_SIZE TRAIN_MICRO_BATCH
 export LR LORA_R LORA_ALPHA KL_COEF CLIP_EPS ALPHA NUM_PPO_EPOCHS REFLECT_TOKEN_WEIGHT GROUP ADV_NORM
 export CRITIQUE_SOURCE HYBRID_ORACLE_FRAC ORACLE_FAIL_THRESHOLD BREAK_WEIGHT DRAFT_REWARD
 export STOP_PENALTY STOP_THRESHOLD MIN_REFINES REFINE_RESAMPLE_TRIES REFLECT_TOKENS REFLECT_TEMPERATURE
-export ANSWER_SUFFIX MAX_STEPS EVAL_STEPS SAVE_STEPS EVAL_MAX_PROMPTS WARMUP_RATIO LOG_IMAGES SEED DATASET_SEED
+# Extra train_grpo.py flags, e.g. EXTRA_ARGS="--init_adapter <ckpt> --image_token_weight 0 --val_dump_dir <dir>".
+EXTRA_ARGS=${EXTRA_ARGS:-}
+export ANSWER_SUFFIX MAX_STEPS EVAL_STEPS SAVE_STEPS EVAL_MAX_PROMPTS WARMUP_RATIO LOG_IMAGES SEED DATASET_SEED EXTRA_ARGS
 unset SLURM_MEM_PER_NODE SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU
 
 # One task per node: each copies the tokenizer locally, starts its own judge on GPU 3
@@ -204,5 +206,5 @@ torchrun --nproc_per_node=${N_TRAIN_GPUS} --nnodes=${N_NODES} --node_rank=${SLUR
     --seed ${SEED} --dataset_seed ${DATASET_SEED} \
     --log_images ${LOG_IMAGES} \
     --ar_path ${MODELS}/ar_dtok_lp_512px.pth --encoder_path ${TMP_DIR}/ta_tok.pth \
-    --decoder_path ${MODELS}/vq_ds16_t2i.pt --cfg_scale 4.0
+    --decoder_path ${MODELS}/vq_ds16_t2i.pt --cfg_scale 4.0 ${EXTRA_ARGS}
 '

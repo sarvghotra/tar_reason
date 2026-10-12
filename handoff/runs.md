@@ -22,9 +22,16 @@ One row per run. Each session edits only the rows for its own cluster. Longer no
   - t9: train critique **and** refiner together (own critiques), started from a t7 checkpoint. **Failed**: without
     oracle critiques the refiner regressed. Reported "oracle critique +7.8 vs policy critique 3.8" (metric and step
     unknown; to ask). Don't repeat t9 as is.
-  - t10: critique-only training (planned): refiner and draft not trained. On our branch: `--image_token_weight 0`
-    (critique text only), `--init_adapter <checkpoint>` to start from a t7 checkpoint. The shared LoRA can still shift
-    image generation indirectly, so t10 must watch `val_oracle/fix_1` (refiner) and `val/am_0` (draft) for regressions.
+  - t10: critique-only training (image tokens not trained). **Failed** (collaborator, 2026-10-11): training the critic
+    drifted the refiner through the shared LoRA, and with image tokens out of the loss they were also out of the KL
+    term, so nothing held them. (Also: the KL reference is the adapters-off model, i.e. SFT, not the t7 start.)
+  - t11 (collaborator implementing; will push code + a launcher): merge the t8 LoRA into the SFT weights (so the
+    adapters-off KL reference = t8), add a fresh LoRA, train critique tokens, and keep image tokens in the KL term.
+    Things to check: separate pg / KL weights per token kind; normalize the critique pg loss over critique tokens so
+    ~729 image KL tokens per refinement don't dilute it; an image-KL coefficient possibly > 0.05; watch
+    `val_oracle/fix_1` and `val/am_0` for drift. Note `--image_token_weight 0` with `--critique_source hybrid` trains
+    nothing (critiques are teacher-forced), as the Fir smoke test 64442582 confirmed: critique training needs
+    `--critique_source policy`.
 - `xiaofeng` branch: a different final-image GRPO design with a pixel judge; no clear gain by step 200.
 
 ## Cross-run findings

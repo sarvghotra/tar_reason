@@ -162,6 +162,10 @@ def parse_args():
     p.add_argument("--clip_eps", type=float, default=0.2)
     p.add_argument("--kl_coef", type=float, default=0.01)
     p.add_argument("--reflect_token_weight", type=float, default=1.0)
+    p.add_argument("--image_token_weight", type=float, default=1.0,
+                   help="Loss/KL weight of sampled image tokens (drafts and refinements). 0 trains "
+                        "the critique text only; the shared LoRA still shifts image generation "
+                        "indirectly, so watch val_oracle/fix_1 and val/am_0.")
     p.add_argument("--num_ppo_epochs", type=int, default=1)
     p.add_argument("--train_micro_batch", type=int, default=2)
     # Optim
@@ -187,6 +191,12 @@ def parse_args():
     p.add_argument("--report_to", default="none", choices=["none", "wandb"])
     p.add_argument("--run_name", default=None)
     p.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--init_adapter", default=None,
+                   help="LoRA adapter dir (a checkpoint-N of an earlier run) to start from at step 0 "
+                        "with a fresh optimizer. Ignored when output_dir has a checkpoint to resume.")
+    p.add_argument("--val_dump_dir", default=None,
+                   help="Write one JSON line per validation node (critique text, per-question "
+                        "scores of draft and refinement) to <dir>/<prefix>_step<N>_rank<R>.jsonl.")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--dataset_seed", type=int, default=None,
                    help="Seed of the training-prompt shuffle only (default: --seed). Resumed jobs "
@@ -571,7 +581,8 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
     img_start, img_end = rollout.img_start, rollout.img_end
     leaves = sorted(batch.leaves, key=lambda n: len(n.seq))
     micro = [leaves[i:i + args.train_micro_batch] for i in range(0, len(leaves), args.train_micro_batch)]
-    rows = [rollout.build_training_rows(m, args.reflect_token_weight) for m in micro]
+    rows = [rollout.build_training_rows(m, args.reflect_token_weight, args.image_token_weight)
+            for m in micro]
     denom = max(float(sum(r["weight"].sum() for r in rows)), 1.0)
     n_tokens = int(sum(r["train_mask"].sum() for r in rows))
 
@@ -633,6 +644,28 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
 # Validation
 # ---------------------------------------------------------------------------
 
+def dump_validation_nodes(batch: RolloutBatch, out_dir: str, prefix: str, step: int):
+    """Append one JSON line per refinement node (round >= 1) of a validation batch:
+    the prompt, its questions/skills, the critique text and the per-question scores of
+    the parent and of this node. Read by scripts/rl_ft/critic_diagnostic.py."""
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"{prefix.strip('/')}_step{step}_rank{rank}.jsonl")
+    with open(path, "a") as f:
+        for level in batch.nodes_by_round[1:]:
+            for n in level:
+                p = batch.prompts[n.prompt_idx]
+                f.write(json.dumps({
+                    "step": step, "prefix": prefix, "round": n.round, "prompt": p["prompt"],
+                    "questions": [q for q, _ in p["vqa_list"]], "answers": [a for _, a in p["vqa_list"]],
+                    "skills": p["skills"], "critique": n.reflection,
+                    "critique_source": n.critique_source, "looks_good": n.looks_good,
+                    "forced_refine": n.forced_refine,
+                    "parent_am": n.parent.am, "parent_per_question": n.parent.per_question,
+                    "am": n.am, "per_question": n.per_question,
+                }) + "\n")
+
+
 @torch.no_grad()
 def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, step, decoder=None,
                    critique_fn=None, prefix: str = "val/"):
@@ -653,6 +686,8 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
         batch = rollout.run(model, val_rows[start:start + bs], branch=branch, critique_fn=critique_fn)
         score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold,
                    args.oracle_fail_threshold, args.break_weight)
+        if args.val_dump_dir:
+            dump_validation_nodes(batch, args.val_dump_dir, prefix, step)
         for k, v in tree_stats(batch, prefix, num_rounds, args.oracle_fail_threshold).items():
             sums[k] = sums.get(k, 0.0) + v
         if decoder is not None and is_main() and len(samples) < args.log_images:
@@ -802,7 +837,11 @@ def main():
     rank0_print(f"image vocab: start={image_start_id} n={num_image_tokens}")
 
     resume_dir = latest_checkpoint(args.output_dir) if args.resume else None
-    model = load_policy(args, device, adapter_dir=resume_dir)
+    init_dir = resume_dir
+    if resume_dir is None and args.init_adapter:
+        init_dir = args.init_adapter
+        rank0_print(f"Starting from adapter {args.init_adapter} (fresh optimizer, step 0)")
+    model = load_policy(args, device, adapter_dir=init_dir)
 
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=args.learning_rate, weight_decay=args.weight_decay,
