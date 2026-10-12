@@ -132,6 +132,11 @@ def parse_args():
                         "still moves through the shared LoRA, but gets no gradient of "
                         "its own. Leaves with nothing to train (critique followers) are "
                         "skipped in the backward pass.")
+    p.add_argument("--image_adv_scale", type=float, default=1.0,
+                   help="Multiplies the image tokens' advantages (drafts and refines). 0 keeps "
+                        "them in the loss with the KL term only: an anchor to the reference "
+                        "for critic-only training. --no-train_images instead drops them, "
+                        "which leaves the shared LoRA free to drift them (t10).")
     p.add_argument("--images_per_critique", type=int, default=1,
                    help="M: with --critique_source policy, every sampled critique (branch[k] "
                         "= K per parent) gets M images. The critique's tokens are trained "
@@ -656,7 +661,7 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
         leaves = [n for n in leaves if n.critique_leader]
     micro = [leaves[i:i + args.train_micro_batch] for i in range(0, len(leaves), args.train_micro_batch)]
     rows = [rollout.build_training_rows(m, args.reflect_token_weight, args.train_drafts,
-                                        args.train_images) for m in micro]
+                                        args.train_images, args.image_adv_scale) for m in micro]
     denom = max(float(sum(r["weight"].sum() for r in rows)), 1.0)
     n_tokens = int(sum(r["train_mask"].sum() for r in rows))
 

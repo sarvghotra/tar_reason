@@ -460,7 +460,8 @@ class TreeRollout:
     # -- tensors for training ---------------------------------------------------
 
     def build_training_rows(self, leaves: List[Node], reflect_token_weight: float,
-                            train_drafts: bool = True, train_images: bool = True):
+                            train_drafts: bool = True, train_images: bool = True,
+                            image_adv_scale: float = 1.0):
         """Right-padded tensors for a list of leaves.
 
         Returns dict(input_ids, attention_mask, train_mask, pos_kind, adv, weight);
@@ -469,6 +470,10 @@ class TreeRollout:
         a draft with advantage 0 would otherwise still get the KL term, which
         pulls it back toward the reference. ``train_images=False`` leaves every
         image out (critic-only training: only ``KIND_TXT`` positions remain).
+        ``image_adv_scale`` multiplies the image tokens' advantages; at 0 the
+        images stay in the loss with the KL term only, i.e. they are anchored
+        to the reference instead of dropped (dropping them lets the shared
+        LoRA drift them freely: t10).
         """
         width = max(len(n.seq) for n in leaves)
         B = len(leaves)
@@ -496,7 +501,7 @@ class TreeRollout:
                     if kind == KIND_NONE or (kind == KIND_IMG and not train_images):
                         continue
                     train_mask[i, pos] = True
-                    adv[i, pos] = node.adv_txt if kind == KIND_TXT else node.adv
+                    adv[i, pos] = node.adv_txt if kind == KIND_TXT else node.adv * image_adv_scale
                     weight[i, pos] = reflect_token_weight if kind == KIND_TXT else 1.0
         return dict(input_ids=input_ids, attention_mask=attention_mask,
                     train_mask=train_mask, pos_kind=pos_kind, adv=adv, weight=weight)
