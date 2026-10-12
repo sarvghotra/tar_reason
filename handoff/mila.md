@@ -3,17 +3,14 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-12 05:30 EDT; the user is away until 2026-10-13, the Mila session runs unattended in tmux)
-- **Critic diagnostic done** (results in `runs.md`, row `critic_diag_*`, and the Log below).
-- **Inbox item 2, official benchmarks:** the user approved GenEval2 + TIIF (GenAI-bench later), official GenEval2
-  `evaluation.py` scoring (+ re-score SFT ourselves), one seed (713). New launcher `scripts/eval/bench_mila.sh`
-  (adhoc generators: draft → one greedy critique → one refinement; draft and final scored separately; resumable
-  stage markers). Assets: `$SCRATCH/benchmarks/{GenEval2,TIIF-Bench}` (official repos), judges in
-  `HF_HOME=$SCRATCH/hf_home` (Qwen3-VL-8B for GenEval2, Qwen2.5-VL-7B for TIIF). The official 800 GenEval2 prompts
-  share none with our train / val800 / val256. Smoke test 11209834 passed. Queued on `short-unkillable` 4× A100, each model
-  with a spare resubmission: SFT t21 11209951/52 (running), t7 Mila ck-200 11209953/54, ck-100 11209955/56.
-  Results: `$SCRATCH/tar_reason/bench/<name>/seed_713/summary.json` (+ TIIF report `tiif/eval_results/`).
-- `darshan_t7_mila` is done (200 steps); checkpoints 100/200 in `$SCRATCH/tar_reason/kept/darshan_t7_mila/`.
+## Now (2026-10-12 10:00 EDT; the user is away until 2026-10-13)
+- **Nothing running on Mila.** Both Fir inbox items were worked on today:
+  1. Critic diagnostic (SFT vs t7 ck-200, val800): done; results in `runs.md` (`critic_diag_*`).
+  2. Official benchmarks: GenEval2 + TIIF done for SFT t21, t7 Mila ck-100 and ck-200 (`runs.md`, `bench_mila`).
+     GenEval2 final AM 61.8 → 65.7 → 71.7. Open: GenAI-bench (needs a third env with transformers ≥ 5 and the 54 GB
+     Qwen3.5-27B judge), more seeds, and t11 checkpoints once they exist.
+- To benchmark another checkpoint: `MODEL_NAME=<label> LORA_PATH=<ckpt dir> sbatch scripts/eval/bench_mila.sh`
+  (~66 min on 4× A100; resubmit if cut off, stages are resumable). SFT is the default `BASE_MODEL`.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -43,11 +40,11 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-12 01:45 PDT from Fir (item 2 of 2; item 1, the critic diagnostic, is done, see Log): **Official
-  benchmarks** (GenEval2, TIIF short/long, GenAI-bench) on SFT t21, t7 Mila checkpoint-100/200, later t11's; report
-  draft and final separately. In progress: the user approved GenEval2 + TIIF (GenAI later); runs queued (see Now).
+- 2026-10-12 01:45 PDT from Fir, item 2 (remaining part): GenAI-bench, and t11's checkpoints on all benchmarks.
+  GenEval2 + TIIF for SFT / t7 ck-100 / ck-200 are done (Log 2026-10-12 10:00).
 
 ## Log (newest first)
+- 2026-10-12 10:00: t7 Mila ck-100 benchmarks done: GenEval2 64.7 → 65.7, TIIF short 63.7 → 64.8, long 59.5 → 59.7.
 - 2026-10-12 08:50: official benchmarks for SFT t21 and t7 Mila ck-200 done (numbers in `runs.md`, row `bench_mila`):
   GenEval2 final AM 61.8 → 71.7; TIIF short final 63.6 → 71.5, long 60.3 → 61.7 (refine hurts on long).
 - 2026-10-12 06:40: critic diagnostic done (Fir inbox item 1). Full reports: `output_dir/critic_diag_{t7mila200,sft}/critic_diagnostic.txt`.
