@@ -98,6 +98,9 @@ MAX_STEPS=${MAX_STEPS:-300}
 EVAL_STEPS=${EVAL_STEPS:-50}
 SAVE_STEPS=${SAVE_STEPS:-5}
 EVAL_MAX_PROMPTS=${EVAL_MAX_PROMPTS:-}     # empty = full val set
+EVAL_ORACLE=${EVAL_ORACLE:-1}             # 0 = skip the val_oracle/* pass (halves validation time)
+# Extra train_grpo.py flags, e.g. EXTRA_ARGS="--init_adapter <ckpt> --val_dump_dir output_dir/<run>/val_dump".
+EXTRA_ARGS=${EXTRA_ARGS:-}
 WARMUP_RATIO=0.05
 LOG_IMAGES=8
 SEED=421
@@ -140,7 +143,7 @@ AR_MODEL=${MODELS}/ar_dtok_lp_512px.pth
 DECODER=${MODELS}/vq_ds16_t2i.pt
 ENCODER=${TMP_DIR}/ta_tok.pth
 
-echo "RUN_NAME=${RUN_NAME} job=${SLURM_JOB_ID} host=$(hostname) resume_from=${LAST:-none}"
+echo "RUN_NAME=${RUN_NAME} job=${SLURM_JOB_ID} host=$(hostname) resume_from=${LAST:-none} EVAL_ORACLE=${EVAL_ORACLE} EXTRA_ARGS=${EXTRA_ARGS}"
 echo "train GPUs ${TRAIN_GPUS}, judge GPU ${JUDGE_GPU}; prompts/gpu ${PROMPTS_PER_GPU}, branch ${BRANCH}, prompts/step $((N_TRAIN_GPUS * PROMPTS_PER_GPU))"
 
 # ---------------- Pixel judge (its own env, started before the CUDA module) ----------------
@@ -176,6 +179,7 @@ module load cuda/12.2.2
 
 EVAL_ARGS=()
 [ -n "${EVAL_MAX_PROMPTS}" ] && EVAL_ARGS+=(--eval_max_prompts "${EVAL_MAX_PROMPTS}")
+[ "${EVAL_ORACLE}" = "1" ] && EVAL_ARGS+=(--eval_oracle)
 
 CUDA_VISIBLE_DEVICES=${TRAIN_GPUS} \
 torchrun --standalone --nproc_per_node=${N_TRAIN_GPUS} \
@@ -215,7 +219,6 @@ torchrun --standalone --nproc_per_node=${N_TRAIN_GPUS} \
     --hybrid_oracle_frac ${HYBRID_ORACLE_FRAC} \
     --oracle_fail_threshold ${ORACLE_FAIL_THRESHOLD} \
     --break_weight ${BREAK_WEIGHT} \
-    --eval_oracle \
     --group ${GROUP} \
     --adv_norm ${ADV_NORM} \
     --clip_eps ${CLIP_EPS} \
@@ -242,4 +245,4 @@ torchrun --standalone --nproc_per_node=${N_TRAIN_GPUS} \
     --ar_path ${AR_MODEL} \
     --encoder_path ${ENCODER} \
     --decoder_path ${DECODER} \
-    --cfg_scale 4.0
+    --cfg_scale 4.0 ${EXTRA_ARGS}
