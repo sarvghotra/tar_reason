@@ -2,21 +2,25 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-11 15:50 PDT)
-- **Nothing running on Fir.** `darshan_t7_fir` finished 300 steps (`Done.` at 00:22 PDT 10-11; job 63858144 hit its
-  24 h limit at ~step 250 as planned, 63858145 resumed from checkpoint-250 and finished). Results in `runs.md`.
-- Kept (verified identical): `~/scratch/tar_reason_kept/darshan_t7_fir/checkpoint-{100,200,300}` (LoRA adapter +
-  optimizer, on top of `sft/slf_ref_edit_t21_ckpt17000`). The run folder also has checkpoint-280…300.
-  checkpoint-150 (highest draft AM, 0.742) was pruned.
-- Headline: at step 300 own-critique final − draft +0.064, fix 38%, final AM 0.762, oracle fix 51%. **But** the
-  draft got worse after step 150 (0.742 → 0.698), so final AM barely beat step 150 (0.756). Possible reward
-  hacking (weaker drafts leave more to fix) as KL rose to 0.4–0.7; not verified.
-- wandb synced: https://wandb.ai/darshan-singh/tar_reasoning/runs/darshan_t7_fir (steps 1–300 except 250, lost at
-  the time-limit kill; all 7 val800 evals, step-250's at 251). Smoke test `t7_smoke_fir` not synced.
-- **Next (user to decide):** evaluate
-  checkpoint-100/200/300 on official GenEval2/TIIF by *final* AM; if continuing RL, consider lower LR / higher KL
-  or a draft-quality term so the draft can't be sacrificed.
-- Logs: `~/scratch/git/tar_reason/output_dir/slurm_logs/darshan_t7_fir_6385814{3,4,5}.{out,err}`.
+## Now (2026-10-12 02:05 PDT)
+- **Queued: `darshan_t11_fir`** (collaborator's t11: critic-only, image tokens KL-anchored to merged t8; see `runs.md`),
+  4 nodes = 12 train ranks x 3 prompts = 36 prompts/step, 300 steps, val800 every 50. Job **64511966** (24 h,
+  `rrg-bengioy-ad_gpu`), spare **64511967** (`afterany`). `--test-only` at 01:27 estimated a 02:17 start. The user
+  chose Fir for t11; TamIA is the backup (its smoke test 612737 was submitted by the TamIA session).
+- Launcher `scripts/rl_ft/bash_fir_t11.sh` (`66a0fcd`; code = merge `a43f083` of jeet's main). Base + KL reference:
+  `~/scratch/models/tar/sft/rl_ft_oracle_t8_merged500` (copy of jeet's merged t8 checkpoint-500, verified).
+- Smoke test 64509374 (1 node, 2 steps, 24-prompt evals) reproduced t8's baseline at step 0 (own fix 0.41,
+  final AM 0.824, oracle fix 0.465 vs t8 0.42 / 0.825 / 0.47); steps 1–2: pg_txt nonzero, pg_img 0, kl_img 0.001,
+  crit_icc ~0.3; checkpoint-2 saved; val dumps written. ~3.5 min/step at 9 prompts/rank... (1 node).
+- Success (jeet): val/fix_1 and val/delta_am_1 rise toward val_oracle/ while val_oracle/fix_1 holds ~0.47 and
+  val/am_0 ~0.776; train/kl_img stays << 0.05 (if it climbs past ~0.05, raise KL_COEF); watch crit_icc_1 (should
+  rise from ~0.25), looks_good_pass_1 up / looks_good_fail_1 down, kl_txt and reflect_len_1 (critic collapse).
+- Watcher (Monitor in session `2f24f487…`, re-armed every 30 min; `scratchpad/t11/watch.sh` + `parse.py`, state in
+  `scratchpad/t11/state/`): job states, errors, alerts (kl_img > 0.05, KL > 0.5, grad > 1), a train summary every
+  10 steps, every val800, `Done.`, and copies checkpoint-50/100/…/300 to `~/scratch/tar_reason_kept/darshan_t11_fir/`
+  (SAVE_STEPS=10, 5 kept). Dies with the session.
+- Logs: `output_dir/slurm_logs/darshan_t11_fir_<jobid>.{out,err}`; run dir `output_dir/darshan_t11_fir/` (val dumps
+  in `val_dump/`). t7 results and kept t7 checkpoints: see Log and `runs.md`.
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
@@ -37,6 +41,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `output_dir/slurm_logs/` must exist before `sbatch` (SLURM opens `-o/-e` before the script runs).
   - Scratch reads are slow: policy shards load in ~5.5 min, judge in ~2.5–4 min.
   - Queue: whole 4×H100 nodes waited ~75 min (1 h limit) on 2026-10-09.
+  - Launchers also: `bash_fir_t11.sh` (t11, 4 nodes default).
   - Claude: tmux session `claude` on `login2` (when away); conversation `2f24f487-5bff-422b-bf9d-8947af5a8a9f`,
     resumed from `/scratch/dars11/git`.
   - tmux sessions are per login node; Ctrl-C in a pane where `salloc` waits cancels the request.
@@ -46,6 +51,11 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - 2026-10-12 04:35 EDT from TamIA: t11 queue estimates (`--test-only`, 12 h, at 04:29 EDT): 4 nodes → 2026-10-13 04:56 EDT, 2 nodes → 2026-10-13 02:42 EDT, 1 node → 2026-10-12 23:21 EDT. TamIA's `--test-only` has run ~6 h optimistic, and t7's 516261 (2 nodes, `squeue --start` 21:15 EDT today) is ahead in our own queue. Worktree ready; smoke test waits for the user's copy of `rl_ft_oracle_t8_merged500`.
 
 ## Log (newest first)
+- 2026-10-12 02:00: submitted `darshan_t11_fir` (64511966 + spare 64511967) after smoke test 64509374 passed.
+- 2026-10-12 01:30: merged jeet's main into `darshan-rl-test` (`a43f083`), copied merged t8 (15 GB), wrote
+  `bash_fir_t11.sh` and `bash_tamia_t11.sh`; TamIA = backup (Inbox); Mila = critic diagnostic + official benchmarks (Inbox).
+- 2026-10-11 15:50 (t7 done): `darshan_t7_fir` 300 steps; kept checkpoint-100/200/300 in `~/scratch/tar_reason_kept/darshan_t7_fir/`;
+  wandb synced (https://wandb.ai/darshan-singh/tar_reasoning/runs/darshan_t7_fir).
 - 2026-10-11 17:10: smoke test 64442582 (1 node, 32 min) passed for `--init_adapter` (from kept ckpt-100: val final AM 0.755 on
   24 prompts, i.e. not SFT), `--val_dump_dir` (val/ + val_oracle/ jsonl per rank) and `--image_token_weight 0` (with hybrid
   critiques: loss/grad exactly 0, weights unchanged). `critic_diagnostic.py` runs on the dump.
