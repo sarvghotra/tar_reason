@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-12 05:50 EDT)
+## Now (2026-10-12 13:20 EDT)
 - **Checkouts:** `tar_reason/` (main, now pulled to the latest branch; nothing queued uses it) and the worktree
   `/scratch/d/dars11/git/tar_reason_t11` for t11 (detached HEAD on `origin/darshan-rl-test`; push notes from either with
   `git pull --rebase` first). Before pulling with jobs queued, check rule 4.
@@ -20,7 +20,7 @@ Owned by the TamIA session.
   - `--test-only` estimates at 04:29 EDT for 12 h jobs: 4 nodes 2026-10-13 04:56, 2 nodes 2026-10-13 02:42,
     1 node 2026-10-12 23:21 (TamIA's `--test-only` has run ~6 h optimistic; 516261 also needs 2 nodes at ~21:15).
   - **Full run queued at the user's request (2026-10-12 05:00): `darshan_t11_tamia`, 4 nodes, 36/step, 300 steps,
-    val800 every 50, jobs 612742 → 612743 → 612744 (12 h each). Smoke test passed, so 612742 is now pending on Priority. Runs in parallel with `darshan_t11_fir` (distinct RUN_NAME).**
+    val800 every 50, jobs 612742 → 612743 → 612744 (12 h each). Smoke test passed; 612742 pending on Priority, `squeue --start` 20:30 EDT (was 17:15 at 06:28). Runs in parallel with `darshan_t11_fir` (distinct RUN_NAME).**
     Watch `train/kl_img` (should stay << 0.05), `val_oracle/fix_1` (~0.47) and `val/am_0` (~0.776) for drift; copy
     checkpoints at multiples of 50 to `$SCRATCH/tar_reason_kept/darshan_t11_tamia/` (SAVE_STEPS=10, 5 kept).
     (Earlier decision via Fir 01:45 PDT was "TamIA backup only"; the user changed it.)
@@ -43,12 +43,13 @@ Owned by the TamIA session.
   is no faster. `--test-only` estimates were ~6 h more optimistic than `squeue --start` for the real job.
 - Launcher `scripts/rl_ft/bash_tamia_t7.sh`: copy of `bash_fir_t7.sh` with only account, job name and paths changed.
 - Session: login node `tamia1`, session id `a2cf8ab9-d921-49b4-af79-f29b7522648d`; resume with
-  `cd ~/scratch/git && claude --resume a2cf8ab9-d921-49b4-af79-f29b7522648d` (in tmux `claude` when away). Watcher: Monitor running `watch_job.py <name> <log_prefix> <jobids…>` (generic; in this session's scratchpad `/tmp/claude-3165746/.../a2cf8ab9.../scratchpad/`, state `watch_state_<name>.json` there), re-armed every 30 min; reports job state changes, startup lines, steps 1–2 and every 10th, spikes (KL > 0.5 / grad > 1), warnings (grad > 0.3, clip_frac > 0.1, kl_img > 0.05), val results, checkpoints, errors, `Done.`. Dies with the session. Currently watching the t11 smoke test and full run (612737, 612742–44).
+  `cd ~/scratch/git && claude --resume a2cf8ab9-d921-49b4-af79-f29b7522648d` (in tmux `claude` when away). Watcher: Monitor running `watch_job.py <name> <log_prefix> <jobids…>` (generic; in this session's scratchpad `/tmp/claude-3165746/.../a2cf8ab9.../scratchpad/`, state `watch_state_<name>.json` there), re-armed every 30 min; reports job state changes, startup lines, steps 1–2 and every 10th, spikes (KL > 0.5 / grad > 1), warnings (grad > 0.3, clip_frac > 0.1, kl_img > 0.05), val results, checkpoints, errors, `Done.`. Dies with the session. No watcher running now (the tmux session that ran it ended); restart it when 612742 starts.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-12 13:20: user back in VSCode; tmux session's watchers gone. 612742 still pending, est. 20:30.
 - 2026-10-12 05:47: t11 smoke test passed (612737); 612742 released from its dependency.
 - 2026-10-12 05:46: t11 smoke test passed (job 612737); details in Now and `runs.md`.
 - 2026-10-12 05:00: user asked to run t11 on TamIA too; submitted `darshan_t11_tamia` 612742 (afterok smoke) → 43 → 44.
