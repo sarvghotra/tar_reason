@@ -125,8 +125,11 @@ if [[ " $BENCHES " == *" tiif "* ]]; then
   if ! done_ tiif_summary; then
     (cd ${BENCH}/TIIF-Bench && $JUDGE_PY eval/summary_results.py --input_dir "$T/eval_results" \
         && $JUDGE_PY eval/summary_dimension_results.py --input_excel "$T/eval_results/result_summary.xlsx" \
-             --output_txt "$T/eval_results/result_summary_dimension.txt") > "$T/summary_log.txt" 2>&1 \
-      && mark tiif_summary || { echo "TIIF summary failed; see $T/summary_log.txt"; tail -5 "$T/summary_log.txt"; }
+             --output_txt "$T/eval_results/result_summary_dimension.txt") > "$T/summary_log.txt" 2>&1
+    # summary_dimension_results.py writes its report, then raises at exit (its Tee flushes a closed
+    # file), so success = the report exists, not the exit code.
+    [ -s "$T/eval_results/result_summary_dimension.txt" ] && mark tiif_summary \
+      || { echo "TIIF summary failed; see $T/summary_log.txt"; tail -5 "$T/summary_log.txt"; }
   fi
 fi
 
