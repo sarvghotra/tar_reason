@@ -2,11 +2,16 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-12 02:05 PDT)
-- **Queued: `darshan_t11_fir`** (collaborator's t11: critic-only, image tokens KL-anchored to merged t8; see `runs.md`),
-  4 nodes = 12 train ranks x 3 prompts = 36 prompts/step, 300 steps, val800 every 50. Job **64511966** (24 h,
-  `rrg-bengioy-ad_gpu`), spare **64511967** (`afterany`). `--test-only` at 01:27 estimated a 02:17 start. The user
-  chose Fir for t11; TamIA is the backup (its smoke test 612737 was submitted by the TamIA session).
+## Now (2026-10-12 03:50 PDT)
+- **Running: `darshan_t11_fir`** (collaborator's t11: critic-only, image tokens KL-anchored to merged t8; see `runs.md`),
+  4 nodes = 12 train ranks x 3 prompts = 36 prompts/step, 300 steps, val800 every 50. Chain: 64511966 (started 02:06,
+  **failed at step 13**, 03:39: the node-1 judge died of a **Bus error / SIGBUS**, the trainer then hit "reward server
+  unreachable") → **64511967 running** (resumes from checkpoint-10) → spare **64518140** (`afterany`). Second SIGBUS
+  on Fir in 3 days (t7 died the same way at step 41): likely Fir scratch/home (Lustre) dropping a memory-mapped page,
+  not our code. Possible hardening, not done yet (needs the user): stage the judge and policy weights to node-local
+  `$SLURM_TMPDIR` at job start; restart a dead judge inside the launcher (the trainer's retry window must cover a
+  ~2–4 min reload).
+- Step-0 val800 reproduces t8 (`runs.md`). Step 10: kl_img 0.001, kl_txt 0.0006, ~3.8 min/step (227 s).
 - Launcher `scripts/rl_ft/bash_fir_t11.sh` (`66a0fcd`; code = merge `a43f083` of jeet's main). Base + KL reference:
   `~/scratch/models/tar/sft/rl_ft_oracle_t8_merged500` (copy of jeet's merged t8 checkpoint-500, verified).
 - Smoke test 64509374 (1 node, 2 steps, 24-prompt evals) reproduced t8's baseline at step 0 (own fix 0.41,
@@ -54,6 +59,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - 2026-10-12 04:35 EDT from TamIA: t11 queue estimates (`--test-only`, 12 h, at 04:29 EDT): 4 nodes → 2026-10-13 04:56 EDT, 2 nodes → 2026-10-13 02:42 EDT, 1 node → 2026-10-12 23:21 EDT. TamIA's `--test-only` has run ~6 h optimistic, and t7's 516261 (2 nodes, `squeue --start` 21:15 EDT today) is ahead in our own queue. Worktree ready; smoke test waits for the user's copy of `rl_ft_oracle_t8_merged500`.
 
 ## Log (newest first)
+- 2026-10-12 03:39: t11 job 64511966 failed at step 13 (SIGBUS in the node-1 judge); 64511967 resumed from ckpt-10; spare 64518140 added.
 - 2026-10-12 02:00: submitted `darshan_t11_fir` (64511966 + spare 64511967) after smoke test 64509374 passed.
 - 2026-10-12 01:30: merged jeet's main into `darshan-rl-test` (`a43f083`), copied merged t8 (15 GB), wrote
   `bash_fir_t11.sh` and `bash_tamia_t11.sh`; TamIA = backup (Inbox); Mila = critic diagnostic + official benchmarks (Inbox).
