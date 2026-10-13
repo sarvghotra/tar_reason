@@ -52,6 +52,7 @@ REWARD_LOAD_TIMEOUT=1800
 PROMPTS_PER_GPU=${PROMPTS_PER_GPU:-3}
 BRANCH=${BRANCH:-2,1,1,1,1}      # 2 drafts per prompt, up to 4 refinement rounds (chain mode uses only these two facts)
 CHAIN_SIBLINGS=${CHAIN_SIBLINGS:-4}   # siblings at each draft's random branch round
+CONTEXT_MODE=${CONTEXT_MODE:-mdp}     # mdp: each round sees prompt + latest image only (tasks B/C: full history degrades t8 after round 1)
 IMAGES_PER_CRITIQUE=1
 TRAIN_DRAFTS=1
 TRAIN_IMAGES=1
@@ -117,7 +118,7 @@ REWARD_PORT=$((8000 + ${SLURM_JOB_ID:-0} % 1000))
 REWARD_URL="http://127.0.0.1:${REWARD_PORT}"
 
 echo "RUN_NAME=${RUN_NAME} job=${SLURM_JOB_ID} nodes=${N_NODES} resume_from=${LAST:-none} DATASET_SEED=${DATASET_SEED} EXTRA_ARGS=${EXTRA_ARGS}"
-echo "multi-round: critique_source=${CRITIQUE_SOURCE} branch=${BRANCH} chain_siblings=${CHAIN_SIBLINGS} draft_reward=${DRAFT_REWARD} lr=${LR} eval_branch=${EVAL_BRANCH} base=${PREV_STAGE_CHECKPOINT}"
+echo "multi-round: critique_source=${CRITIQUE_SOURCE} branch=${BRANCH} chain_siblings=${CHAIN_SIBLINGS} context=${CONTEXT_MODE} draft_reward=${DRAFT_REWARD} lr=${LR} eval_branch=${EVAL_BRANCH} base=${PREV_STAGE_CHECKPOINT}"
 echo "train ranks ${WORLD_SIZE_GPUS} (${N_TRAIN_GPUS}/node), judge GPU ${JUDGE_GPU} per node; prompts/step $((WORLD_SIZE_GPUS * PROMPTS_PER_GPU)); master ${MASTER_ADDR}:${MASTER_PORT}"
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -128,7 +129,7 @@ export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
 export RUN_NAME REPO MODELS LOCAL_DIR DATA_PATH VAL_DATA_PATH PREV_STAGE_CHECKPOINT JUDGE_MODEL JUDGE_PY
 export N_NODES N_TRAIN_GPUS TRAIN_GPUS JUDGE_GPU MASTER_ADDR MASTER_PORT REWARD_PORT REWARD_URL
 export REWARD_QUESTION_BATCH REWARD_IMAGES_PER_REQ REWARD_DECODE_BATCH REWARD_LOAD_TIMEOUT
-export PROMPTS_PER_GPU BRANCH CHAIN_SIBLINGS IMAGES_PER_CRITIQUE TRAIN_DRAFTS TRAIN_IMAGES IMAGE_ADV_SCALE EVAL_BRANCH GEN_BATCH_SIZE TRAIN_MICRO_BATCH
+export PROMPTS_PER_GPU BRANCH CHAIN_SIBLINGS CONTEXT_MODE IMAGES_PER_CRITIQUE TRAIN_DRAFTS TRAIN_IMAGES IMAGE_ADV_SCALE EVAL_BRANCH GEN_BATCH_SIZE TRAIN_MICRO_BATCH
 export LR LORA_R LORA_ALPHA KL_COEF CLIP_EPS ALPHA NUM_PPO_EPOCHS REFLECT_TOKEN_WEIGHT GROUP ADV_NORM ADV_STD_FLOOR
 export CRITIQUE_SOURCE HYBRID_ORACLE_FRAC ORACLE_FAIL_THRESHOLD BREAK_WEIGHT DRAFT_REWARD
 export STOP_PENALTY STOP_THRESHOLD MIN_REFINES REFINE_RESAMPLE_TRIES REFLECT_TOKENS REFLECT_TEMPERATURE
@@ -186,7 +187,7 @@ torchrun --nproc_per_node=${N_TRAIN_GPUS} --nnodes=${N_NODES} --node_rank=${SLUR
     --data_path ${DATA_PATH} --eval_data_path ${VAL_DATA_PATH} \
     --prompts_per_gpu ${PROMPTS_PER_GPU} --branch ${BRANCH} --eval_branch ${EVAL_BRANCH} \
     --images_per_critique ${IMAGES_PER_CRITIQUE} --image_adv_scale ${IMAGE_ADV_SCALE} \
-    --chain_siblings ${CHAIN_SIBLINGS} \
+    --chain_siblings ${CHAIN_SIBLINGS} --context_mode ${CONTEXT_MODE} \
     $([ "${TRAIN_DRAFTS}" = "0" ] && echo "--no-train_drafts") $([ "${TRAIN_IMAGES}" = "0" ] && echo "--no-train_images") \
     --scale 0 --gen_seq_len 729 \
     --img_temperature 1.0 --img_top_k 1200 --img_top_p 0.95 \
