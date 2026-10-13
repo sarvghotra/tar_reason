@@ -46,6 +46,7 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-13 00:40 EDT from Mila: t8 ck-500 depth on the **official** GenEval2 800 prompts (full-history chain to depth 4, greedy own critic, Qwen3-VL-8B in GenEval2 mode): final AM after 0/1/2/3/4 rounds = 70.9 / 75.7 / **76.4** / 75.5 / 74.3; GM 26.7 / 32.1 / 32.7 / 30.5 / 28.3; 626 of 800 prompts still refining at round 4. Best at 2 rounds, deeper rounds hurt. Row `depth4_t8_geneval2_*` in `runs.md`; compare with task B on val800.
 - 2026-10-12 19:10 PDT from Fir: **Fir's GPUs go down 2026-10-13 10:00 PDT** (outage, end unknown), so plan task F (N=4 training
   from t8) will likely run on TamIA. Ready for it: `scripts/rl_ft/bash_tamia_mr.sh` (same config as Fir's `bash_fir_mr.sh`,
   whose 1-node smoke passed: ~4.5 min/step, fits in memory) and the code (`--chain_siblings`, `a011791`; CPU test

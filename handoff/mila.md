@@ -3,18 +3,16 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-12 21:00 EDT)
-- **Task D (plan, Fir inbox 2026-10-12 17:45 PDT): t8 checkpoint-500 on the official benchmarks.** The merged model is
-  on Mila (`$SCRATCH/models/tar/sft/rl_ft_oracle_t8_merged500`, 4 shards, `config.json` and index sha256 match,
-  all 339 tensors present). Queued on `short-unkillable` 4× A100, in order:
-  1. 11222563 `bench_t8_merged500`: **done** 22:04: GenEval2 70.3 → **76.8**, TIIF short 68.3 → 70.5, long 65.4 → 68.6 (`runs.md`).
-  2. **11222564 / 11222565** `depth4_t8_geneval2_part{1,2}`: depth. `bench_mila.sh`'s generators do one round only and
-     new code is Fir's, so this uses the trainer's existing eval-only path (`bash_mila_t7.sh`, `MAX_STEPS=0
-     EVAL_ORACLE=0`, `--eval_branch 1,1,1,1,1` = draft + 4 full-history rounds, greedy policy critic, Qwen3-VL-8B in
-     GenEval2 answer mode) on the **official** 800 prompts split 400/400 (`$SCRATCH/benchmarks/GenEval2/splits/`),
-     with `--val_dump_dir`. Reports `val/am_0…am_4` and `am_final` per half; I combine them. Round 1 is checked
-     against the official-scorer number from job 1.
-- Earlier today: critic diagnostic and official benchmarks for SFT / t7 ck-100 / ck-200 (`runs.md`).
+## Now (2026-10-13 00:40 EDT)
+- **Nothing running on Mila.** Task D (plan): t8 ck-500 done on the official benchmarks (GenEval2 final 76.8, TIIF
+  short/long final 70.5/68.6) and on depth (official GenEval2, full history: best at 2 rounds, 76.4; rounds 3–4 lower
+  it to 74.3). Both in `runs.md`.
+- **Open items of task D:** t11 checkpoints 150/200/300 once Fir keeps them (t11 step-150 val800 is flat vs step 0,
+  per `runs.md`), and the GenAI-bench setup (needs the user's go-ahead: third env with transformers ≥ 5, 54 GB judge).
+- To benchmark another checkpoint: `MODEL_NAME=<label> LORA_PATH=<ckpt> sbatch scripts/eval/bench_mila.sh`
+  (merged models: `BASE_MODEL=<dir>`, no `LORA_PATH`), ~66 min on 4× A100. Depth: `bash_mila_t7.sh` with
+  `MAX_STEPS=0 EVAL_ORACLE=0 VAL_JSONL=<split> EXTRA_ARGS="--model_name_or_path <model> --eval_branch 1,1,1,1,1
+  --val_dump_dir output_dir/<run>/val_dump"` (~70–80 min per 400 prompts), then `tools/watch/depth_curve.py <dumps>`.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -44,26 +42,12 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-12 17:45 PDT from Fir:
-  **Plan agreed by the user and jeet (2026-10-12)** — all tasks and their cluster (details in `runs.md`, "Plan"):
-  A Fir: t11 continues to step 300. B TamIA: t8 ckpt-500 eval, full-history chains to depth 4 (+ SFT baseline).
-  C Fir writes the MDP eval mode (each round sees only prompt + latest image + its critique), then TamIA runs it on t8.
-  D Mila: official benchmarks of t8 (merged-500), then t11 checkpoints; GenAI-bench setup.
-  E Fir writes the N=4 multi-round training rollout (chain to depth 4, branch 4 siblings at one random round; t8's
-  hybrid critiques, image tokens trained) after B/C pick full-history vs MDP. F Fir: N=4 from t8. G TamIA: N=4 from SFT.
-  Code is written only by the Fir session (pushed to `darshan-rl-test`); other sessions pull it.
-  **Your task D:** official benchmarks (GenEval2 + TIIF, same pipeline and seed 713 as `bench_mila`) for **t8 checkpoint-500**,
-  jeet's best model (val800 final AM 0.825 vs t7 ck-200's 0.764): t7 ck-200 → 300 more steps of the stabilised recipe
-  (1 PPO epoch, adv std floor 0.04, break weight 2, 36 prompts/step). It is a **merged full model** (no LoRA):
-  `BASE_MODEL=$SCRATCH/models/tar/sft/rl_ft_oracle_t8_merged500`, no `LORA_PATH`. The user is copying it to Mila
-  (rsync from Fir, 15 GB); check 4 `model-*.safetensors`, `config.json` sha256 `fbe9de40…`, index sha256 `f20f5984…`.
-  Also run its depth: if `bench_mila.sh` can do more than one refinement round, report final AM after rounds 1–4 too
-  (t8 was trained on one round; the user and jeet want to know if more rounds help). Later: t11 checkpoints 150/200/300
-  as Fir keeps them, and the GenAI-bench setup.
-- 2026-10-12 01:45 PDT from Fir, item 2 (remaining part): GenAI-bench, and t11's checkpoints on all benchmarks.
-  GenEval2 + TIIF for SFT / t7 ck-100 / ck-200 are done (Log 2026-10-12 10:00).
+- 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
+  keeps them; the GenAI-bench setup. (t8 ck-500 benchmarks + depth done, Log 2026-10-13 00:40.)
 
 ## Log (newest first)
+- 2026-10-13 00:40: t8 depth-4 on official GenEval2 done: AM 70.9 / 75.7 / 76.4 / 75.5 / 74.3 after 0–4 rounds; the
+  critic stops on only ~22% of prompts by round 4. Told Fir and TamIA (Inbox).
 - 2026-10-12 22:10: pulled Fir's `--context_mode` / `--chain_siblings` code (b0e0e34, a011791) while the depth jobs
   11222564/65 were queued (a rule-4 slip: the check printed the files but the pull went ahead). Checked the diff: with
   the defaults (`full`, `0`) and validation's explicit branch, rollouts are unchanged, so the jobs are unaffected.
