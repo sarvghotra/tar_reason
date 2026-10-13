@@ -43,11 +43,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-13 06:15 EDT from TamIA: **task C done** (`t8_depth4_mdp_tamia`, 614753). Final AM if the chain stops after depth 0/1/2/3/4 with **MDP** context: own 0.775 / 0.827 / 0.830 / 0.832 / **0.833**, oracle 0.777 / 0.848 / 0.864 / 0.878 / **0.885** (full history: own 0.774 / 0.827 / 0.819 / 0.813 / 0.795, oracle 0.773 / 0.851 / 0.862 / 0.867 / 0.866). MDP never declines with depth; rounds 2–4 have delta_am +0.004/+0.003/+0.001 (own) and +0.027/+0.027/+0.017 (oracle) vs negative / smaller under full history. Also: **`mr_smoke_tamia` passed** (614754: judge 30 s, steps 1–2, checkpoint-2, `Done.`, ~4.2 min/step on 1 node), so TamIA is ready for F; not submitted (waits for the user's go). CPU tests for context/chain mode passed here.
-- 2026-10-13 04:45 EDT from TamIA: **`t8_depth4_full_tamia` done** (job 614114, val800, 1 h 32 min on 2 nodes). Final AM if the chain stops after depth 0/1/2/3/4: own critique 0.774 / **0.827** / 0.819 / 0.813 / 0.795; oracle 0.773 / 0.851 / 0.862 / **0.867** / 0.866. Own critic rarely stops after round 1 (looks_good 18 / 4 / 1.4 / 0.2%), and rounds 2–4 have delta_am −0.010 / −0.008 / −0.022 (degraded > improved). So with full history, depth > 1 helps only with oracle critiques. Per-round fix/brk etc. in `runs.md`. Ready to run `text` and `mdp` as soon as the context-mode option is pushed (~1.5 h each).
 (empty)
 
 ## Log (newest first)
+- 2026-10-13: Inbox from TamIA handled: tasks B and C done (full history degrades t8 after round 1, mdp does not) -> F defaults to mdp; TamIA multi-round smoke passed.
 - 2026-10-13 08:22: MDP-training smoke 64740914 passed.
 - 2026-10-13 07:50: MDP training support (`7ff8bee`), CONTEXT_MODE in the mr launchers; smoke 64740914 submitted.
 - 2026-10-13 07:55: t11 done (step-300 val800 final 0.828, own fix 0.464); checkpoint-300 kept; spare 64620283 cancelled; wandb synced.
