@@ -137,6 +137,10 @@ def parse_args():
                         "them in the loss with the KL term only: an anchor to the reference "
                         "for critic-only training. --no-train_images instead drops them, "
                         "which leaves the shared LoRA free to drift them (t10).")
+    p.add_argument("--context_mode", default="full", choices=["full", "mdp"],
+                   help="What a refinement conditions on: 'full' = the whole chain so far; 'mdp' = the "
+                        "prompt + the latest image only (every round looks like round 1). 'mdp' is "
+                        "evaluation-only for now (MAX_STEPS = 0): training rows assume full chains.")
     p.add_argument("--images_per_critique", type=int, default=1,
                    help="M: with --critique_source policy, every sampled critique (branch[k] "
                         "= K per parent) gets M images. The critique's tokens are trained "
@@ -944,6 +948,9 @@ def main():
             start_step = int(json.load(f)["step"])
         rank0_print(f"Resumed from {resume_dir} at step {start_step}")
 
+    if args.context_mode != "full" and args.max_steps > start_step:
+        raise SystemExit(f"--context_mode {args.context_mode} is evaluation-only for now: run with "
+                         f"--max_steps {start_step} (training rows assume full chains).")
     rcfg = RolloutConfig(
         branch=branch, scale=args.scale, gen_seq_len=args.gen_seq_len,
         img_temperature=args.img_temperature, img_top_k=args.img_top_k, img_top_p=args.img_top_p,
@@ -951,7 +958,7 @@ def main():
         reflect_temperature=args.reflect_temperature, reflect_top_k=args.reflect_top_k,
         reflect_top_p=args.reflect_top_p, gen_batch_size=args.gen_batch_size,
         min_refines=args.min_refines, refine_resample_tries=args.refine_resample_tries,
-        images_per_critique=args.images_per_critique)
+        images_per_critique=args.images_per_critique, context_mode=args.context_mode)
     assert args.images_per_critique >= 1
     assert args.images_per_critique == 1 or args.critique_source == "policy", \
         "--images_per_critique > 1 needs sampled critiques (--critique_source policy)"

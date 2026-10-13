@@ -34,6 +34,16 @@ with an advantage computed from the mean score of its ``M`` images against the
 parent's other critiques (``Node.adv_txt``), while each image is trained
 against the other images of the *same* critique (``Node.adv``). A "looks good"
 critique is a single leaf (its followers would all be the parent's image).
+
+``context_mode`` decides what a refinement round conditions on. ``"full"`` (the
+default, as above) keeps the whole chain: prompt, draft, every critique and
+every image so far. ``"mdp"`` rebuilds the context each round from the prompt
+and the *latest* image only (``<prefix><latest image><im_end>\nSelf-reflect:``),
+i.e. every round has exactly round 1's format, with the latest image standing in
+for the draft; the critique of round k is also generated from that compact
+context. Round 1 is identical in both modes. Training rows assume full chains
+(a leaf's sequence holds its ancestors' segments), so ``"mdp"`` is for rollouts
+whose trees are not trained (validation); train_grpo refuses to train with it.
 """
 
 import re
@@ -79,6 +89,9 @@ class RolloutConfig:
     # 1 = every child samples its own critique and image (t4). Ignored with a
     # critique_fn, where the children of a parent already share one critique.
     images_per_critique: int = 1
+    # "full": refine on the whole chain so far; "mdp": prompt + latest image only
+    # (see the module docstring).
+    context_mode: str = "full"
 
     @property
     def num_rounds(self) -> int:
@@ -200,11 +213,23 @@ class TreeRollout:
         self.image_splice = self._encode(f"\n<im_start><S{cfg.scale}>")
         self.image_proc = LogitsProcessorList([ImageVocabOnly(self.img_start, self.img_end)])
         self.text_proc = LogitsProcessorList([NoImageVocab(self.img_start, self.img_end)])
+        if cfg.context_mode not in ("full", "mdp"):
+            raise ValueError(f"context_mode must be 'full' or 'mdp', got {cfg.context_mode!r}")
         if SCALE_SEQ_LEN[cfg.scale] != cfg.gen_seq_len:
             raise ValueError(f"scale {cfg.scale} implies {SCALE_SEQ_LEN[cfg.scale]} "
                              f"image tokens, got gen_seq_len={cfg.gen_seq_len}")
 
     # -- helpers -------------------------------------------------------------
+
+    def _state(self, n: Node):
+        """(tokens, kinds) a refinement of ``n`` (or ``n``'s critique) conditions on.
+        "full": ``n``'s whole sequence. "mdp": the prompt prefix + ``n``'s image as
+        an untrained draft, the same layout as a round-0 node."""
+        if self.cfg.context_mode == "full" or n.round == 0:
+            return n.seq, n.kinds
+        p = n.ancestors()[0].seg_start              # every sequence starts with the prompt prefix
+        img = [self.img_start + c for c in n.codes]
+        return n.seq[:p] + img, [KIND_NONE] * (p + len(img))
 
     def _encode(self, text: str) -> List[int]:
         return self.tok(text, add_special_tokens=False).input_ids
@@ -299,7 +324,7 @@ class TreeRollout:
             warnings.warn("sample_critiques called with reflect_sample=False: critiques are "
                           "greedy, so re-sampling a 'looks good' critique cannot change it.")
             self._warned_greedy_critiques = True
-        rows = [n.seq + self.reflect_splice for n in parents]
+        rows = [self._state(n)[0] + self.reflect_splice for n in parents]
         refl = self._sample_reflections(model, rows)
         return [self.tok.decode(r, skip_special_tokens=True).strip() for r in refl]
 
@@ -360,9 +385,10 @@ class TreeRollout:
                     # Spliced like the eval script splices decoded reflection
                     # text; untrained, so the child's segment is just its image.
                     splice = splice + self._encode(" " + crit.text)
+                base_seq, base_kinds = self._state(n)
                 for g in range(branch[k]):
-                    seq = n.seq + splice
-                    kinds = n.kinds + [KIND_NONE] * len(splice)
+                    seq = base_seq + splice
+                    kinds = base_kinds + [KIND_NONE] * len(splice)
                     child = Node(prompt_idx=n.prompt_idx, round=k, parent=n, first_born=(g == 0),
                                  seq=seq, kinds=kinds, seg_start=len(seq), sibling_idx=g,
                                  critique_idx=g, teacher_forced=crit is not None,
