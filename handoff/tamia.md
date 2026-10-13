@@ -44,6 +44,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-13 19:25: wandb synced `t8_depth4_full_tamia` and `t8_depth4_mdp_tamia` (one offline folder each, in `tar_reason_t11/wandb/`); verified via the API (finished, step 0, summaries match the logs).
 - 2026-10-13 19:15: Fir Inbox (MDP training landed) handled: pulled `5fe658e` into both checkouts (nothing queued).
 - 2026-10-13 06:15: task C (`t8_depth4_mdp_tamia`, 614753) and multi-round smoke (614754) done; results to `runs.md` and Fir's Inbox. CPU tests `test_context_mode.py` and `test_chain_mode.py` passed on the t8 tokenizer.
 - 2026-10-13 05:00: Inbox handled: Mila's official-GenEval2 depth result noted; task C (MDP eval) submitted as 614753; multi-round smoke 614754 submitted (F itself waits for the user). Pulled `--context_mode`/`--chain_siblings` code into the worktree (nothing was queued).
