@@ -109,10 +109,6 @@ def main():
         assert len(c) < DEPTH + 1, (mode, len(c))
     print("looks good stops the chain in both modes")
 
-    # --- training refuses mdp --------------------------------------------------
-    from llava.train.rl import train_grpo as tg
-    src = open(tg.__file__).read()
-    assert "evaluation-only for now" in src
     print("OK")
 
 

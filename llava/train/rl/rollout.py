@@ -41,9 +41,10 @@ every image so far. ``"mdp"`` rebuilds the context each round from the prompt
 and the *latest* image only (``<prefix><latest image><im_end>\nSelf-reflect:``),
 i.e. every round has exactly round 1's format, with the latest image standing in
 for the draft; the critique of round k is also generated from that compact
-context. Round 1 is identical in both modes. Training rows assume full chains
-(a leaf's sequence holds its ancestors' segments), so ``"mdp"`` is for rollouts
-whose trees are not trained (validation); train_grpo refuses to train with it.
+context. Round 1 is identical in both modes. Training: with "full" a leaf's row
+holds its ancestors' segments (trained along the first-born line); with "mdp"
+every node's sequence is its own compact context, so each node gets its own row
+training only its own segment (``build_training_rows(..., own_segment_only=True)``).
 
 Chain mode (``chain_siblings = B > 0``, training rollouts only, i.e. ``run``
 without an explicit ``branch``): instead of fanning out at every round, each
@@ -515,7 +516,7 @@ class TreeRollout:
 
     def build_training_rows(self, leaves: List[Node], reflect_token_weight: float,
                             train_drafts: bool = True, train_images: bool = True,
-                            image_adv_scale: float = 1.0):
+                            image_adv_scale: float = 1.0, own_segment_only: bool = False):
         """Right-padded tensors for a list of leaves.
 
         Returns dict(input_ids, attention_mask, train_mask, pos_kind, adv, weight);
@@ -528,6 +529,9 @@ class TreeRollout:
         images stay in the loss with the KL term only, i.e. they are anchored
         to the reference instead of dropped (dropping them lets the shared
         LoRA drift them freely: t10).
+        ``own_segment_only=True`` (``context_mode="mdp"``): each element is a
+        node, not a leaf; its sequence already holds the whole context it was
+        generated from, so the row trains only the node's own segment.
         """
         width = max(len(n.seq) for n in leaves)
         B = len(leaves)
@@ -544,6 +548,8 @@ class TreeRollout:
             pos_kind[i, :L] = torch.tensor(leaf.kinds, dtype=torch.long)
             trained = set(leaf.trained_rounds())
             chain = leaf.ancestors()
+            if own_segment_only:
+                trained, chain = {leaf.round}, [leaf]
             for j, node in enumerate(chain):
                 if node.round not in trained or (node.round == 0 and not train_drafts):
                     continue

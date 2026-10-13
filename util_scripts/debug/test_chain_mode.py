@@ -100,6 +100,26 @@ def main():
     assert trained_img == n_images * 729, (trained_img, n_images * 729)
     print(f"trained image tokens {trained_img} = {n_images} images x 729 (each once)")
 
+    # MDP training: chain mode with context_mode="mdp", one row per node, own segment only.
+    random.seed(9)
+    torch.manual_seed(9)
+    ro_m = make_rollout(tok)
+    ro_m.cfg.context_mode = "mdp"
+    bm = ro_m.run(model, prompts, critique_fn=crit_fn)
+    tg.score_tree(bm, rw, "children", 0.5, 0.8, 0.5, 2.0)
+    tg.assign_advantages(bm, args, GRPOConfig(adv_norm="std", adv_std_floor=0.04))
+    nodes = [n for n in bm.all_nodes() if any(k != 0 for k in n.kinds[n.seg_start:])]
+    n_img_m = sum(len(lv) for lv in bm.nodes_by_round)
+    assert len(nodes) == n_img_m, (len(nodes), n_img_m)
+    rows_m = ro_m.build_training_rows(nodes, 1.0, True, True, 1.0, own_segment_only=True)
+    trained_m = int(((rows_m["pos_kind"] == KIND_IMG) & rows_m["train_mask"]).sum())
+    assert trained_m == n_img_m * 729, (trained_m, n_img_m * 729)
+    max_len = int(rows_m["attention_mask"].sum(1).max())
+    assert max_len <= len(bm.roots[0].seq) + 800, max_len   # prefix + 2 images + critique, never a full chain
+    per_row = (rows_m["train_mask"] & (rows_m["pos_kind"] == KIND_IMG)).sum(1).tolist()
+    assert all(c == 729 for c in per_row), set(per_row)
+    print(f"mdp training rows: {len(nodes)} rows, each trains exactly one image (729 tokens), max row {max_len} tokens")
+
     # Evaluation passes an explicit branch: chain mode must not apply.
     e = ro.run(model, prompts[:2], branch=[1] * (D + 1))
     assert all(r.branch_round == 0 for r in e.roots)

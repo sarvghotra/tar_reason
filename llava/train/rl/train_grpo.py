@@ -49,7 +49,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from llava.train.rl.dataset import GenEval2PromptDataset
-from llava.train.rl.grpo import GRPOConfig, grpo_loss, masked_token_logprobs, normalize_groups
+from llava.train.rl.grpo import KIND_NONE, GRPOConfig, grpo_loss, masked_token_logprobs, normalize_groups
 from llava.train.rl.oracle_critique import SKILL_ORDER, oracle_critique
 from llava.train.rl.pixel_reward import PixelVQAReward
 from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQAReward
@@ -144,8 +144,8 @@ def parse_args():
                         "--branch describes. Only branch[0] (drafts per prompt) and len(branch) matter in chain mode.")
     p.add_argument("--context_mode", default="full", choices=["full", "mdp"],
                    help="What a refinement conditions on: 'full' = the whole chain so far; 'mdp' = the "
-                        "prompt + the latest image only (every round looks like round 1). 'mdp' is "
-                        "evaluation-only for now (MAX_STEPS = 0): training rows assume full chains.")
+                        "prompt + the latest image only (every round looks like round 1). Applies to "
+                        "training rollouts (one short training row per node) and to validation.")
     p.add_argument("--images_per_critique", type=int, default=1,
                    help="M: with --critique_source policy, every sampled critique (branch[k] "
                         "= K per parent) gets M images. The critique's tokens are trained "
@@ -682,14 +682,22 @@ def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
 def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: GRPOConfig,
                   optimizer, scheduler, device) -> Dict[str, float]:
     img_start, img_end = rollout.img_start, rollout.img_end
-    leaves = sorted(batch.leaves, key=lambda n: len(n.seq))
+    mdp = rollout.cfg.context_mode == "mdp"
+    if mdp:
+        # Each node's sequence is its own (compact) context: one row per node that
+        # owns sampled tokens (a "looks good" node under a frozen critique owns none).
+        leaves = sorted((n for n in batch.all_nodes()
+                         if any(k != KIND_NONE for k in n.kinds[n.seg_start:])), key=lambda n: len(n.seq))
+    else:
+        leaves = sorted(batch.leaves, key=lambda n: len(n.seq))
     if not args.train_images:
         # Only critique tokens train, and a critique's followers carry it as
         # KIND_NONE: their rows would run a full forward for an empty loss.
         leaves = [n for n in leaves if n.critique_leader]
     micro = [leaves[i:i + args.train_micro_batch] for i in range(0, len(leaves), args.train_micro_batch)]
     rows = [rollout.build_training_rows(m, args.reflect_token_weight, args.train_drafts,
-                                        args.train_images, args.image_adv_scale) for m in micro]
+                                        args.train_images, args.image_adv_scale, own_segment_only=mdp)
+            for m in micro]
     denom = max(float(sum(r["weight"].sum() for r in rows)), 1.0)
     n_tokens = int(sum(r["train_mask"].sum() for r in rows))
 
@@ -966,9 +974,6 @@ def main():
             start_step = int(json.load(f)["step"])
         rank0_print(f"Resumed from {resume_dir} at step {start_step}")
 
-    if args.context_mode != "full" and args.max_steps > start_step:
-        raise SystemExit(f"--context_mode {args.context_mode} is evaluation-only for now: run with "
-                         f"--max_steps {start_step} (training rows assume full chains).")
     rcfg = RolloutConfig(
         branch=branch, scale=args.scale, gen_seq_len=args.gen_seq_len,
         img_temperature=args.img_temperature, img_top_k=args.img_top_k, img_top_p=args.img_top_p,
