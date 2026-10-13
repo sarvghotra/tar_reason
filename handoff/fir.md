@@ -12,7 +12,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   Task F (N=4 from t8) waits for the user + jeet; with Fir down it would run on TamIA (`bash_tamia_mr.sh`).
 - **MDP training now supported** (`7ff8bee`: one row per node, own segment only; CPU tests pass); launchers default
   `CONTEXT_MODE=mdp` because TamIA's B/C showed full history degrades t8 after round 1 and mdp does not.
-  GPU smoke of MDP training (64740914, 1 node) submitted 07:51 to finish before the 10:00 outage.
+  GPU smoke of MDP training (64740914, 1 node) **passed** (30 min, no errors, checkpoint-2, `Done.`).
 - Hardened launcher (node-local staging of envs + weights, `STAGE_LOCAL=1`) in `bash_fir_t11.sh` and `bash_fir_mr.sh`;
   the env archive `~/scratch/stage/envs_tar_qwenjudge.tar.zst` must be rebuilt after any env change (command in the launcher).
 - Watcher: none needed (nothing running).
@@ -48,6 +48,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-13 08:22: MDP-training smoke 64740914 passed.
 - 2026-10-13 07:50: MDP training support (`7ff8bee`), CONTEXT_MODE in the mr launchers; smoke 64740914 submitted.
 - 2026-10-13 07:55: t11 done (step-300 val800 final 0.828, own fix 0.464); checkpoint-300 kept; spare 64620283 cancelled; wandb synced.
 - 2026-10-13 04:25: t11 step-250 val800: own fix 0.477, final 0.824, looks_good pass/fail 0.71/0.22; checkpoint-250 kept.
