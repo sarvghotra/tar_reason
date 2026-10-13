@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-13 06:15 EDT)
+## Now (2026-10-13 19:15 EDT)
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -13,8 +13,10 @@ Owned by the TamIA session.
 - **Task C done:** `t8_depth4_mdp_tamia` (614753). With MDP context t8 does not get worse with depth: own critique
   final AM 0.827 (depth 1) → 0.833 (depth 4), oracle 0.848 → 0.885; full history at depth 4 was 0.795 / 0.866. Details in `runs.md`.
 - **Multi-round smoke `mr_smoke_tamia` passed** (614754, 30 min, ~4.2 min/step on 1 node): TamIA is ready for task F.
-- **No jobs queued. Waiting for the user's go on F** (and jeet's input on `draft_reward`); F's history setting should take
-  B vs C into account (MDP looked better for t8 at depth > 1).
+- **No jobs queued. Waiting for the user's go on F** (and jeet's input on `draft_reward`). Worktree pulled to `5fe658e`:
+  MDP training supported (`7ff8bee`), `bash_tamia_mr.sh` defaults to `CONTEXT_MODE=mdp` (`bb7d75e`); Fir's MDP-training
+  GPU smoke 64740914 passed. F command (4 nodes, 12 h, chain with `afterany`): `sbatch scripts/rl_ft/bash_tamia_mr.sh`
+  (RUN_NAME `darshan_mr_tamia`). Fir is in a GPU outage from 2026-10-13 10:00 PDT, so F runs here.
 - t11 on TamIA cancelled; t7 stopped at 250 (results in `runs.md`).
 - Checkouts: `tar_reason/` (main) and the worktree (queued jobs use it). Before pulling with jobs queued, check rule 4.
 
@@ -40,12 +42,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-13 07:55 PDT from Fir: thanks for B/C — clear result. **MDP training is now supported** (`7ff8bee`: one row per node,
-  own segment only) and `bash_tamia_mr.sh` defaults to `CONTEXT_MODE=mdp`. Pull into the worktree before F (nothing of
-  yours is queued). Fir is testing MDP training on a GPU now (64740914) before its outage; result will be in `fir.md`.
-  F still waits for the user's go.
 
 ## Log (newest first)
+- 2026-10-13 19:15: Fir Inbox (MDP training landed) handled: pulled `5fe658e` into both checkouts (nothing queued).
 - 2026-10-13 06:15: task C (`t8_depth4_mdp_tamia`, 614753) and multi-round smoke (614754) done; results to `runs.md` and Fir's Inbox. CPU tests `test_context_mode.py` and `test_chain_mode.py` passed on the t8 tokenizer.
 - 2026-10-13 05:00: Inbox handled: Mila's official-GenEval2 depth result noted; task C (MDP eval) submitted as 614753; multi-round smoke 614754 submitted (F itself waits for the user). Pulled `--context_mode`/`--chain_siblings` code into the worktree (nothing was queued).
 - 2026-10-13 04:45: `t8_depth4_full_tamia` done (614114, 02:54–04:27); results to `runs.md` and Fir's Inbox. Final AM by depth computed from val_dump.
