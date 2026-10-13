@@ -38,6 +38,15 @@ TRAIN_JSONL=${TRAIN_JSONL:-${DATA}/evaluation_metadata_shuf_train.jsonl}
 VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val800.jsonl}
 JUDGE_MODEL=/home/dars11/scratch/models/vlm/Qwen3-VL-8B-Instruct
 JUDGE_PY=/home/dars11/envs/qwen_judge/bin/python
+# Node-local staging (default on): Fir's Lustre /home and /scratch have killed jobs with SIGBUS (memory-mapped
+# pages that became unreadable: t7 step 41, t11 judge step 13, t11 trainer step 123). With STAGE_LOCAL=1 every
+# node unpacks both Python envs (+ uv's base Python) from one archive and copies the policy, judge and
+# (de-)tokenizer weights to $SLURM_TMPDIR, then runs everything from there. Rebuild the archive after any env change:
+#   cd /home/dars11 && tar -cf - --transform 's,^\.local/share/uv/python/,uvpy/,' envs/tar envs/qwen_judge \
+#     .local/share/uv/python/cpython-3.10.22-linux-x86_64-gnu | zstd -T16 -3 -o ~/scratch/stage/envs_tar_qwenjudge.tar.zst
+STAGE_LOCAL=${STAGE_LOCAL:-1}
+ENV_ARCHIVE=/home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst
+UV_PY_DIR=cpython-3.10.22-linux-x86_64-gnu
 
 RUN_NAME=${RUN_NAME:-darshan_t11_fir}
 LOCAL_DIR="output_dir/${RUN_NAME}"
@@ -134,7 +143,7 @@ export WANDB_NAME=$RUN_NAME WANDB_RUN_ID=${WANDB_RUN_ID:-$RUN_NAME}
 export WANDB_PROJECT="tar_reasoning" WANDB_ENTITY="darshan-singh"
 export WANDB_MODE="${WANDB_MODE:-offline}"
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
-export RUN_NAME REPO MODELS LOCAL_DIR DATA_PATH VAL_DATA_PATH PREV_STAGE_CHECKPOINT JUDGE_MODEL JUDGE_PY
+export STAGE_LOCAL ENV_ARCHIVE UV_PY_DIR RUN_NAME REPO MODELS LOCAL_DIR DATA_PATH VAL_DATA_PATH PREV_STAGE_CHECKPOINT JUDGE_MODEL JUDGE_PY
 export N_NODES N_TRAIN_GPUS TRAIN_GPUS JUDGE_GPU MASTER_ADDR MASTER_PORT REWARD_PORT REWARD_URL
 export REWARD_QUESTION_BATCH REWARD_IMAGES_PER_REQ REWARD_DECODE_BATCH REWARD_LOAD_TIMEOUT
 export PROMPTS_PER_GPU BRANCH IMAGES_PER_CRITIQUE TRAIN_DRAFTS TRAIN_IMAGES IMAGE_ADV_SCALE EVAL_BRANCH GEN_BATCH_SIZE TRAIN_MICRO_BATCH
@@ -153,7 +162,29 @@ set -e
 cd ${REPO}
 export PYTHONPATH=$PYTHONPATH:${REPO}/
 TMP_DIR=${SLURM_TMPDIR:-/tmp}
-[ -f ${TMP_DIR}/ta_tok.pth ] || cp ${MODELS}/ta_tok.pth ${TMP_DIR}/
+TRAIN_PY=$HOME/envs/tar/bin/python
+POLICY=${PREV_STAGE_CHECKPOINT}; AR_PATH=${MODELS}/ar_dtok_lp_512px.pth; DEC_PATH=${MODELS}/vq_ds16_t2i.pt
+if [ "${STAGE_LOCAL}" = "1" ]; then
+    S=${TMP_DIR}/stage; mkdir -p $S/models
+    t0=$(date +%s)
+    zstd -dc ${ENV_ARCHIVE} | tar -xf - -C $S &
+    cp -r ${PREV_STAGE_CHECKPOINT} $S/models/policy &
+    cp -r ${JUDGE_MODEL} $S/models/judge &
+    cp ${MODELS}/ar_dtok_lp_512px.pth ${MODELS}/vq_ds16_t2i.pt ${MODELS}/ta_tok.pth $S/models/ &
+    wait
+    for e in tar qwen_judge; do
+        ln -sfn $S/uvpy/${UV_PY_DIR}/bin/python3.10 $S/envs/$e/bin/python
+        sed -i "s,^home = .*,home = $S/uvpy/${UV_PY_DIR}/bin," $S/envs/$e/pyvenv.cfg
+    done
+    TRAIN_PY=$S/envs/tar/bin/python; JUDGE_PY=$S/envs/qwen_judge/bin/python; JUDGE_MODEL=$S/models/judge
+    POLICY=$S/models/policy; AR_PATH=$S/models/ar_dtok_lp_512px.pth; DEC_PATH=$S/models/vq_ds16_t2i.pt
+    cp $S/models/ta_tok.pth ${TMP_DIR}/ta_tok.pth
+    ${TRAIN_PY} -c "import sys, torch; assert sys.prefix.startswith(\"$S\"), sys.prefix" \
+        || { echo "[node ${SLURM_NODEID}] staged training env broken" >&2; exit 1; }
+    echo "[node ${SLURM_NODEID}] $(hostname) staged envs + weights to $S in $(( $(date +%s) - t0 ))s"
+else
+    [ -f ${TMP_DIR}/ta_tok.pth ] || cp ${MODELS}/ta_tok.pth ${TMP_DIR}/
+fi
 
 # Judge first, before any CUDA module is loaded, so its own CUDA 12.4 libraries win.
 REWARD_LOG="${LOCAL_DIR}/reward_server_${SLURM_JOB_ID}_n${SLURM_NODEID}.log"
@@ -178,7 +209,7 @@ until [ -f "${READY_FILE}" ]; do
 done
 echo "[node ${SLURM_NODEID}] $(hostname) judge ready after ${waited}s"
 
-source ~/envs/tar/bin/activate
+export VIRTUAL_ENV=$(dirname $(dirname ${TRAIN_PY})); export PATH=${VIRTUAL_ENV}/bin:$PATH
 module load cuda/12.2
 
 EVAL_ARGS=""
@@ -186,10 +217,10 @@ EVAL_ARGS=""
 
 # No --standalone: that would confine the job to one node.
 CUDA_VISIBLE_DEVICES=${TRAIN_GPUS} \
-torchrun --nproc_per_node=${N_TRAIN_GPUS} --nnodes=${N_NODES} --node_rank=${SLURM_NODEID} \
+${TRAIN_PY} -m torch.distributed.run --nproc_per_node=${N_TRAIN_GPUS} --nnodes=${N_NODES} --node_rank=${SLURM_NODEID} \
     --master_addr=${MASTER_ADDR} --master_port=${MASTER_PORT} \
     llava/train/rl/train_grpo.py \
-    --model_name_or_path ${PREV_STAGE_CHECKPOINT} \
+    --model_name_or_path ${POLICY} \
     --attn_implementation flash_attention_2 \
     --lora_r ${LORA_R} --lora_alpha ${LORA_ALPHA} \
     --data_path ${DATA_PATH} --eval_data_path ${VAL_DATA_PATH} \
@@ -220,6 +251,6 @@ torchrun --nproc_per_node=${N_TRAIN_GPUS} --nnodes=${N_NODES} --node_rank=${SLUR
     --report_to wandb --run_name ${RUN_NAME} \
     --seed ${SEED} --dataset_seed ${DATASET_SEED} \
     --log_images ${LOG_IMAGES} \
-    --ar_path ${MODELS}/ar_dtok_lp_512px.pth --encoder_path ${TMP_DIR}/ta_tok.pth \
-    --decoder_path ${MODELS}/vq_ds16_t2i.pt --cfg_scale 4.0 ${EXTRA_ARGS}
+    --ar_path ${AR_PATH} --encoder_path ${TMP_DIR}/ta_tok.pth \
+    --decoder_path ${DEC_PATH} --cfg_scale 4.0 ${EXTRA_ARGS}
 '
