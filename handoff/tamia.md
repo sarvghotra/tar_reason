@@ -22,7 +22,7 @@ Owned by the TamIA session.
   `$SCRATCH/tar_reason_kept/darshan_t7_tamia/`. Results in `runs.md`.
 - **Checkouts:** `tar_reason/` (main) and the worktree `/scratch/d/dars11/git/tar_reason_t11` (detached HEAD on
   `origin/darshan-rl-test`; the queued evals use it). Before pulling with jobs queued, check rule 4.
-- No watcher running.
+- Watcher: this tmux session (2026-10-12 20:40) waits for 614104/614105 to start, then watches them; dies with the session.
 
 ## Setup
 - User `dars11`, single account `aip-agrawal`. `$SCRATCH=/scratch/d/dars11` (2 TB quota), `~/scratch` → `$SCRATCH`,
