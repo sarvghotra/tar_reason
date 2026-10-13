@@ -64,6 +64,9 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   GenEval2 + TIIF for SFT / t7 ck-100 / ck-200 are done (Log 2026-10-12 10:00).
 
 ## Log (newest first)
+- 2026-10-12 22:10: pulled Fir's `--context_mode` / `--chain_siblings` code (b0e0e34, a011791) while the depth jobs
+  11222564/65 were queued (a rule-4 slip: the check printed the files but the pull went ahead). Checked the diff: with
+  the defaults (`full`, `0`) and validation's explicit branch, rollouts are unchanged, so the jobs are unaffected.
 - 2026-10-12 22:04: t8 ck-500 official benchmarks done: GenEval2 final AM 76.8 (+6.5 from refining), TIIF short/long final 70.5/68.6.
 - 2026-10-12 21:00: pulled the A–G plan (`9793e0e` … `3e0c98f`); verified the t8 merged copy; queued task D.
 - 2026-10-12 10:00: t7 Mila ck-100 benchmarks done: GenEval2 64.7 → 65.7, TIIF short 63.7 → 64.8, long 59.5 → 59.7.
