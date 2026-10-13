@@ -137,6 +137,11 @@ def parse_args():
                         "them in the loss with the KL term only: an anchor to the reference "
                         "for critic-only training. --no-train_images instead drops them, "
                         "which leaves the shared LoRA free to drift them (t10).")
+    p.add_argument("--chain_siblings", type=int, default=0,
+                   help="Chain mode for training rollouts (multi-round training at about t8's cost): every draft "
+                        "grows one chain of single refinements up to a random round k* in 1..len(branch)-1 and gets "
+                        "this many siblings at k* (a clean group: same history and critique). 0 = the full tree "
+                        "--branch describes. Only branch[0] (drafts per prompt) and len(branch) matter in chain mode.")
     p.add_argument("--context_mode", default="full", choices=["full", "mdp"],
                    help="What a refinement conditions on: 'full' = the whole chain so far; 'mdp' = the "
                         "prompt + the latest image only (every round looks like round 1). 'mdp' is "
@@ -518,6 +523,19 @@ def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig) -> Dict[str, 
         c["zero_var_crit"] += zvc
         c["groups_crit"] += len(set(parent_keys))
     return c
+
+
+def chain_stats(batch: RolloutBatch, num_rounds: int) -> Dict[str, float]:
+    """Chain mode: per branch round k, how many sibling groups were formed and how
+    many of them had zero reward spread (no gradient). Same key set on every rank."""
+    s: Dict[str, float] = {}
+    for k in range(1, num_rounds + 1):
+        s[f"train/chain_target_{k}"] = float(sum(r.branch_round == k for r in batch.roots))
+        groups = [n for n in batch.nodes_by_round[k - 1] if len(n.children) > 1] if k - 1 < len(batch.nodes_by_round) else []
+        s[f"train/chain_groups_{k}"] = float(len(groups))
+        s[f"train/chain_flat_groups_{k}"] = float(sum(
+            1 for n in groups if max(c.reward for c in n.children) - min(c.reward for c in n.children) < 1e-8))
+    return s
 
 
 def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
@@ -958,7 +976,10 @@ def main():
         reflect_temperature=args.reflect_temperature, reflect_top_k=args.reflect_top_k,
         reflect_top_p=args.reflect_top_p, gen_batch_size=args.gen_batch_size,
         min_refines=args.min_refines, refine_resample_tries=args.refine_resample_tries,
-        images_per_critique=args.images_per_critique, context_mode=args.context_mode)
+        images_per_critique=args.images_per_critique, context_mode=args.context_mode,
+        chain_siblings=args.chain_siblings)
+    assert args.chain_siblings == 0 or (len(branch) >= 2 and args.images_per_critique == 1), \
+        "--chain_siblings needs len(--branch) >= 2 and --images_per_critique 1"
     assert args.images_per_critique >= 1
     assert args.images_per_critique == 1 or args.critique_source == "policy", \
         "--images_per_critique > 1 needs sampled critiques (--critique_source policy)"
@@ -1103,6 +1124,9 @@ def main():
             sums = reduce_sum(sums, device)
             metrics = finalize_stats(sums, "train/")
             metrics["train/frac_zero_adv_groups"] = sums["train/adv_zero_var"] / max(sums["train/adv_groups"], 1.0)
+            if args.chain_siblings > 0:
+                for kk, v in reduce_sum(chain_stats(batch, rollout.cfg.num_rounds), device).items():
+                    metrics[kk] = v
             if args.images_per_critique > 1:
                 metrics["train/frac_zero_adv_critique_groups"] = (
                     sums["train/adv_zero_var_crit"] / max(sums["train/adv_groups_crit"], 1.0))

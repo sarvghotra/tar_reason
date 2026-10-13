@@ -44,6 +44,18 @@ for the draft; the critique of round k is also generated from that compact
 context. Round 1 is identical in both modes. Training rows assume full chains
 (a leaf's sequence holds its ancestors' segments), so ``"mdp"`` is for rollouts
 whose trees are not trained (validation); train_grpo refuses to train with it.
+
+Chain mode (``chain_siblings = B > 0``, training rollouts only, i.e. ``run``
+without an explicit ``branch``): instead of fanning out at every round, each
+draft grows a single chain (one child per round, each under its own frozen
+critique) up to a target round ``k*`` drawn uniformly from 1..D per draft
+(D = ``len(branch) - 1``), and only at ``k*`` gets ``B`` siblings sharing the
+chain's history and that round's critique; the siblings are leaves. Cost per
+draft is (k* - 1) + B images instead of a full tree, and over many steps every
+depth gets a clean sibling group. A chain that stops earlier (its image passes
+every question, or a "looks good" critique) simply has nothing to fix there.
+Chain nodes before ``k*`` are alone in their group, so their advantage is 0
+(they keep the KL term, like a lone draft).
 """
 
 import re
@@ -92,6 +104,9 @@ class RolloutConfig:
     # "full": refine on the whole chain so far; "mdp": prompt + latest image only
     # (see the module docstring).
     context_mode: str = "full"
+    # Chain mode for training rollouts: >0 = B siblings at one random round per
+    # draft, single children before it (see the module docstring); 0 = full tree.
+    chain_siblings: int = 0
 
     @property
     def num_rounds(self) -> int:
@@ -152,6 +167,7 @@ class Node:
     critique_fallback: bool = False      # hybrid: policy critique kept saying "looks good", used oracle
     critique_idx: int = 0                # which of the parent's critiques this node refines under
     critique_leader: bool = True         # owns the critique's sampled tokens (trains them)
+    branch_round: int = 0                # chain mode: the round where this draft's chain branches
     children: List["Node"] = field(default_factory=list)
     # Filled in by the trainer. per_question is set once the image is scored
     # (critique_fn scores parents mid-rollout; score_tree does the rest).
@@ -338,16 +354,17 @@ class TreeRollout:
         module docstring). ``sample_fn(nodes) -> [text]`` draws one policy
         reflection per node, for critique sources that want the frozen
         policy's own text."""
+        chain = branch is None and self.cfg.chain_siblings > 0
         branch = list(branch or self.cfg.branch)
         was_training = model.training
         model.eval()
         try:
-            return self._run(model, prompts, branch, critique_fn)
+            return self._run(model, prompts, branch, critique_fn, chain)
         finally:
             if was_training:
                 model.train()
 
-    def _run(self, model, prompts, branch, critique_fn=None) -> RolloutBatch:
+    def _run(self, model, prompts, branch, critique_fn=None, chain=False) -> RolloutBatch:
         # Round 0: drafts.
         roots: List[Node] = []
         for p_idx, p in enumerate(prompts):
@@ -361,6 +378,11 @@ class TreeRollout:
             n.seq.extend(img)
             n.kinds.extend([KIND_IMG] * len(img))
             n.codes = [t - self.img_start for t in img]
+        depth = len(branch) - 1
+        if chain and depth >= 1:
+            # One target round per draft; the trainer seeds torch per (step, rank).
+            for n, k in zip(roots, torch.randint(1, depth + 1, (len(roots),)).tolist()):
+                n.branch_round = k
 
         nodes_by_round = [roots]
         leaves: List[Node] = []
@@ -368,6 +390,10 @@ class TreeRollout:
         for k in range(1, len(branch)):
             live = [n for n in level if not n.looks_good]
             leaves.extend(n for n in level if n.looks_good)
+            if chain:
+                # Past its branch round a chain is finished: its nodes are leaves.
+                leaves.extend(n for n in live if k > n.branch_round)
+                live = [n for n in live if k <= n.branch_round]
             crits: List[Optional[Critique]] = [None] * len(live)
             if critique_fn is not None and live:
                 crits = list(critique_fn(live, prompts, lambda nodes: self.sample_critiques(model, nodes)))
@@ -386,7 +412,8 @@ class TreeRollout:
                     # text; untrained, so the child's segment is just its image.
                     splice = splice + self._encode(" " + crit.text)
                 base_seq, base_kinds = self._state(n)
-                for g in range(branch[k]):
+                n_kids = branch[k] if not chain else (self.cfg.chain_siblings if k == n.branch_round else 1)
+                for g in range(n_kids):
                     seq = base_seq + splice
                     kinds = base_kinds + [KIND_NONE] * len(splice)
                     child = Node(prompt_idx=n.prompt_idx, round=k, parent=n, first_born=(g == 0),
@@ -394,7 +421,8 @@ class TreeRollout:
                                  critique_idx=g, teacher_forced=crit is not None,
                                  reflection=crit.text if crit is not None else "",
                                  critique_source=crit.source if crit is not None else "",
-                                 critique_fallback=crit.fallback if crit is not None else False)
+                                 critique_fallback=crit.fallback if crit is not None else False,
+                                 branch_round=n.branch_round)
                     n.children.append(child)
                     children.append(child)
             if not children:
