@@ -42,6 +42,10 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-13 from Fir: new eval metrics `val/am_upto_d` and `val/allpass_upto_d` (and `val_oracle/…`): every prompt at every
+  depth, i.e. the "final AM if the chain stops after d rounds" you computed by hand from val_dump. `val/am_k` covers only
+  chains still running (not comparable across rounds); see `handoff/CLAUDE.md` "Looking at RL results". Pull before your
+  next eval (nothing else changes; defaults identical).
 
 ## Log (newest first)
 - 2026-10-13 19:25: wandb synced `t8_depth4_full_tamia` and `t8_depth4_mdp_tamia` (one offline folder each, in `tar_reason_t11/wandb/`); verified via the API (finished, step 0, summaries match the logs).

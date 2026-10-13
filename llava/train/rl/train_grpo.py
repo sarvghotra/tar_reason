@@ -639,6 +639,21 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
     s[f"{prefix}am_final"] = sum(n.am for n in batch.leaves)
     s[f"{prefix}n_final"] = len(batch.leaves)
     pass_rates("final", batch.leaves)
+    # Fair depth curve: every leaf (= every prompt in a greedy eval chain) counts at
+    # every depth d, with its image after d rounds, or its last image if the chain
+    # ended earlier ("looks good", or nothing left to fix under the oracle).
+    # am_k above averages only the nodes present at round k, i.e. the chains still
+    # running, which is not comparable across rounds.
+    for d in range(num_rounds + 1):
+        tot, allpass = 0.0, 0
+        for leaf in batch.leaves:
+            chain = leaf.ancestors()
+            n = chain[min(d, len(chain) - 1)]
+            tot += n.am
+            allpass += int(n.per_question is not None
+                           and all(p >= fail_threshold for p in n.per_question))
+        s[f"{prefix}am_upto_{d}"] = tot
+        s[f"{prefix}allpass_upto_{d}"] = float(allpass)
     return s
 
 
@@ -662,6 +677,9 @@ def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
                 out[f"{prefix}critique_{src}_{r}"] = s[f"{prefix}critique_{src}_{r}"] / n
             out[f"{prefix}critique_fallback_{r}"] = s[f"{prefix}critique_fallback_{r}"] / n
     out[f"{prefix}am_final"] = s[f"{prefix}am_final"] / max(s[f"{prefix}n_final"], 1.0)
+    for k in s:
+        if k.startswith((f"{prefix}am_upto_", f"{prefix}allpass_upto_")):
+            out[k] = s[k] / max(s[f"{prefix}n_final"], 1.0)
     # Ratio stats (fix_*, brk_*, pass_*): "<key>_num" / "<key>_den". A bucket
     # with no questions is logged as 0, so the wandb key set stays fixed.
     for k in s:

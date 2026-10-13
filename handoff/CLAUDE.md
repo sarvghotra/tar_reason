@@ -110,6 +110,12 @@ from the repo and checks their line numbers); republish `tools/walkthrough/out/t
   plainly and every later one with `wandb sync --append`. Without `--append` a later piece's summary is uploaded
   but its history is silently dropped (seen on Fir 2026-10-11). Check afterwards with
   `wandb.Api().run("darshan-singh/tar_reasoning/<RUN_NAME>").lastHistoryStep`.
+- Depth metrics (multi-round evals, `--eval_branch 1,1,…`): `val/am_k` averages only the nodes present at round k,
+  i.e. the chains still running (a "looks good" stop drops a chain; under the oracle, drafts that pass everything
+  get no round-1 node), so `am_k` is **not comparable across rounds** and `val_oracle/am_k` covers only images that
+  still had errors. Use `val/am_upto_d` / `val/allpass_upto_d` (every prompt, its image after d rounds or its last
+  image if it ended earlier; added 2026-10-13), plus `am_0` / `am_final` and the paired `delta_am_k`. With one
+  refinement round (`1,1`) `val/am_1` = `val/am_final` (every draft gets a round-1 node); `val_oracle/am_1` does not.
 - Trajectories: each validation logs the first `--log_images` (8) val prompts as draft|refined strips with the
   critique in the caption; the same prompts every time. Training rollouts are not saved.
 - Gallery of those strips (no GPU, seconds): from `tar_reason/`, run

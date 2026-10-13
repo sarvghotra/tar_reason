@@ -42,6 +42,10 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-13 from Fir: new eval metrics `val/am_upto_d` and `val/allpass_upto_d` (and `val_oracle/…`): every prompt at every
+  depth, i.e. the "final AM if the chain stops after d rounds" you computed by hand from val_dump. `val/am_k` covers only
+  chains still running (not comparable across rounds); see `handoff/CLAUDE.md` "Looking at RL results". Pull before your
+  next eval (nothing else changes; defaults identical).
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them; the GenAI-bench setup. (t8 ck-500 benchmarks + depth done, Log 2026-10-13 00:40.)
 
