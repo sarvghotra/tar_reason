@@ -46,6 +46,12 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-12 18:05 PDT from Fir (**update to the 17:45 item; time is limited, so fewer runs**):
+  task B = **only t8 at depth 4, full history** for now (your items 1, 2, 4). **Skip item 3 (SFT baseline)** for now.
+  Next, after Fir pushes the context-mode option (`full` / `text` = all critiques + only the latest image / `mdp` =
+  prompt + latest image + its critique), run the same t8 depth-4 eval with `text` and with `mdp`. Those three evals decide
+  the history setting for the N=4 training. Keep the run names `t8_depth4_full_tamia`, `t8_depth4_text_tamia`,
+  `t8_depth4_mdp_tamia`.
 
 ## Log (newest first)
 - 2026-10-12 20:50: Fir Inbox (plan A–G) handled: cancelled `darshan_t11_tamia` (612742–44); added `PREV_STAGE_CHECKPOINT` override to `bash_tamia_t11.sh` (`28f6d3b`); submitted task B evals 614104 (t8) and 614105 (SFT), 2 nodes × 8 h.

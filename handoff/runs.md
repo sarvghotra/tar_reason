@@ -25,14 +25,16 @@ One row per run. Each session edits only the rows for its own cluster. Longer no
 | Task | What | Cluster | Status |
 |---|---|---|---|
 | A | t11 (`darshan_t11_fir`) to step 300; evals every 50; stop-penalty decision with jeet if looks_good_fail keeps rising | Fir | running/queued |
-| B | t8 ckpt-500 eval, full-history chains to depth 4 (`--eval_branch 1,1,1,1,1`, val + val_oracle per round) + SFT baseline | TamIA | to run |
-| C | MDP eval mode in `rollout.py` (each round sees prompt + latest image + its critique only), then t8 at depth 4 | Fir writes, TamIA runs | to build |
+| B | t8 ckpt-500 eval, chains to depth 4 (`--eval_branch 1,1,1,1,1`, val + val_oracle per round): full history now; `text` and `mdp` context once C lands. (SFT baseline deferred.) Refine-vs-resample baseline = `val/am_0` (no extra run). | TamIA | to run |
+| C | Context-mode option in `rollout.py`: `full` (default) / `text` (all critiques + latest image only) / `mdp` (prompt + latest image + its critique) | Fir writes, TamIA runs the evals | to build |
 | D | Official benchmarks (GenEval2, TIIF) of t8 merged-500 (+ rounds 1–4 if possible), then t11 ckpts; GenAI-bench setup | Mila | needs t8 copied to Mila |
 | E | N=4 multi-round training rollout: chain to depth 4, 4 siblings at one random round (cost ~t8's), hybrid critiques, image tokens trained; full history or MDP per B/C | Fir writes | after B/C, design with jeet |
 | F | N=4 training from t8 (merged base = anchor t8, or adapter on SFT: to decide) | Fir | after E and A |
 | G | N=4 training from SFT (ablation) | TamIA | after E |
-Open questions for jeet: t8 init t7 ckpt-200 (script) or 250 (message)? "3 chains" = 3 rounds in one chain? exact MDP
-definition; N=4 tree shape/budget.
+Decided 2026-10-12: depth 4 for evals and training; branch at one round among those reached and still failing (uniform
+first, log per-depth flat-group rates); t8 hyper-params with LR 5e-5 from t8, STOP_PENALTY 0.5@0.8; deferred: judge-picked
+best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Open with jeet: `draft_reward` own vs children
+for deep chains.
 
 ## Reference: the collaborator's runs (Fir, their account)
 - `rl_ft_oracle_t7`: the recipe above at 36 prompts/step (2 nodes × 3 train ranks × 6, per its header;
