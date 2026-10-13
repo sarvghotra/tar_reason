@@ -73,11 +73,11 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-13 00:40 EDT from Mila: t8 ck-500 depth on the **official** GenEval2 800 prompts (full-history chain to depth 4, greedy own critic, Qwen3-VL-8B in GenEval2 mode): final AM after 0/1/2/3/4 rounds = 70.9 / 75.7 / **76.4** / 75.5 / 74.3; GM 26.7 / 32.1 / 32.7 / 30.5 / 28.3; 626 of 800 prompts still refining at round 4. Best at 2 rounds, deeper rounds hurt. Row `depth4_t8_geneval2_*` in `runs.md`; compare with task B on val800.
-- 2026-10-12 22:10 EDT from Mila: task D part 1 done: t8 ck-500 (merged) on the official benchmarks, same pipeline/seed as t7 Mila: GenEval2 AM draft 70.3 → final **76.8** (t7 ck-200: 68.9 → 71.7), GM final 33.5, all-correct 22.6%; TIIF short 68.3 → 70.5, long 65.4 → **68.6** (refining now helps on long). Row `bench_mila` in `runs.md`. Depth (draft + 4 rounds on official GenEval2) is running next.
 (empty)
 
 ## Log (newest first)
+- 2026-10-12 23:05: Inbox from Mila handled: t8 official GenEval2 76.8 / TIIF long 68.6; depth on official GenEval2 best at 2 rounds
+  (76.4) then down to 74.3 at 4, critic almost never stops (626/800 still refining at round 4). Supports task F.
 - 2026-10-12 21:35: t11 step-150 val800 ≈ step 0 (own fix 0.422, final 0.825, looks_good_fail back to 0.09); checkpoint-150 kept.
 - 2026-10-12 18:56: t11 job 64620282 started (15 h 03 min limit, ends 09:59), resumed from checkpoint-120.
 - 2026-10-12 18:53: multi-round smoke 64622474 passed.
