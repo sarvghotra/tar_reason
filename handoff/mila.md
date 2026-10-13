@@ -7,7 +7,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 - **Task D (plan, Fir inbox 2026-10-12 17:45 PDT): t8 checkpoint-500 on the official benchmarks.** The merged model is
   on Mila (`$SCRATCH/models/tar/sft/rl_ft_oracle_t8_merged500`, 4 shards, `config.json` and index sha256 match,
   all 339 tensors present). Queued on `short-unkillable` 4× A100, in order:
-  1. **11222563** `bench_t8_merged500`: `bench_mila.sh` (GenEval2 official scorer + TIIF, seed 713, one refinement).
+  1. 11222563 `bench_t8_merged500`: **done** 22:04: GenEval2 70.3 → **76.8**, TIIF short 68.3 → 70.5, long 65.4 → 68.6 (`runs.md`).
   2. **11222564 / 11222565** `depth4_t8_geneval2_part{1,2}`: depth. `bench_mila.sh`'s generators do one round only and
      new code is Fir's, so this uses the trainer's existing eval-only path (`bash_mila_t7.sh`, `MAX_STEPS=0
      EVAL_ORACLE=0`, `--eval_branch 1,1,1,1,1` = draft + 4 full-history rounds, greedy policy critic, Qwen3-VL-8B in
@@ -64,6 +64,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   GenEval2 + TIIF for SFT / t7 ck-100 / ck-200 are done (Log 2026-10-12 10:00).
 
 ## Log (newest first)
+- 2026-10-12 22:04: t8 ck-500 official benchmarks done: GenEval2 final AM 76.8 (+6.5 from refining), TIIF short/long final 70.5/68.6.
 - 2026-10-12 21:00: pulled the A–G plan (`9793e0e` … `3e0c98f`); verified the t8 merged copy; queued task D.
 - 2026-10-12 10:00: t7 Mila ck-100 benchmarks done: GenEval2 64.7 → 65.7, TIIF short 63.7 → 64.8, long 59.5 → 59.7.
 - 2026-10-12 08:50: official benchmarks for SFT t21 and t7 Mila ck-200 done (numbers in `runs.md`, row `bench_mila`):

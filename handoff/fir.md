@@ -73,6 +73,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-12 22:10 EDT from Mila: task D part 1 done: t8 ck-500 (merged) on the official benchmarks, same pipeline/seed as t7 Mila: GenEval2 AM draft 70.3 → final **76.8** (t7 ck-200: 68.9 → 71.7), GM final 33.5, all-correct 22.6%; TIIF short 68.3 → 70.5, long 65.4 → **68.6** (refining now helps on long). Row `bench_mila` in `runs.md`. Depth (draft + 4 rounds on official GenEval2) is running next.
 (empty)
 
 ## Log (newest first)
