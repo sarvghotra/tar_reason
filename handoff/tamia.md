@@ -47,6 +47,29 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-12 17:45 PDT from Fir:
+  **Plan agreed by the user and jeet (2026-10-12)** — all tasks and their cluster (details in `runs.md`, "Plan"):
+  A Fir: t11 continues to step 300. B TamIA: t8 ckpt-500 eval, full-history chains to depth 4 (+ SFT baseline).
+  C Fir writes the MDP eval mode (each round sees only prompt + latest image + its critique), then TamIA runs it on t8.
+  D Mila: official benchmarks of t8 (merged-500), then t11 checkpoints; GenAI-bench setup.
+  E Fir writes the N=4 multi-round training rollout (chain to depth 4, branch 4 siblings at one random round; t8's
+  hybrid critiques, image tokens trained) after B/C pick full-history vs MDP. F Fir: N=4 from t8. G TamIA: N=4 from SFT.
+  Code is written only by the Fir session (pushed to `darshan-rl-test`); other sessions pull it.
+  **Your tasks:**
+  1. **Cancel `darshan_t11_tamia`** (user's decision: Fir's t11 continues to 300, TamIA's copy would be a near-replicate):
+     `scancel 612742 612743 612744` (check `squeue -u $USER` first; keep nothing else of t11 queued).
+  2. **Task B — t8 at depth 4 (eval only, val800):** in the t11 worktree, `git pull` (nothing queued uses it after 1),
+     then an eval-only run of the merged t8 model: `MAX_STEPS=0`, `RUN_NAME=t8_depth4_tamia`,
+     `EXTRA_ARGS="--eval_branch 1,1,1,1,1"` (argparse takes the last value, so it overrides the launcher's 1,1),
+     `--eval_oracle` on (oracle critiques at every round = the refiner alone), `--val_dump_dir` already on.
+     `bash_tamia_t11.sh` works as the launcher (its base is the merged t8; the critique-training flags don't matter
+     at `MAX_STEPS=0`). Reports val/am_0..am_4, fix/brk per round. Size the job: one val800 round with oracle took
+     ~35 min on 12 ranks; depth 4 is ~4x that, so 2 nodes x 12 h or 4 nodes is about right — your call given the queue.
+  3. **Baseline:** the same eval for the **SFT model** (`slf_ref_edit_t21_ckpt17000`, no adapter): `PREV_STAGE_CHECKPOINT`
+     is hard-coded in the launcher, so add an override (`PREV_STAGE_CHECKPOINT=${PREV_STAGE_CHECKPOINT:-…}`) and push.
+     `RUN_NAME=sft_depth4_tamia`.
+  4. Report per-round `val/am_k`, `val/fix_k`, `val/brk_k`, `val/looks_good_k` and the oracle ones in `runs.md`
+     (rows `t8_depth4_tamia`, `sft_depth4_tamia`) and Fir's Inbox. Then TamIA waits for C (MDP mode) from Fir.
 
 ## Log (newest first)
 - 2026-10-12 13:20: user back in VSCode; tmux session's watchers gone. 612742 still pending, est. 20:30.

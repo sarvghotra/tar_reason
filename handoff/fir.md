@@ -2,7 +2,14 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-12 16:25 PDT)
+## Now (2026-10-12 17:45 PDT)
+- **Plan (user + jeet, 2026-10-12; `runs.md` "Plan"):** Fir = A (t11 to step 300), writes C (MDP eval mode) and E (N=4
+  multi-round training rollout), later runs F (N=4 from t8). TamIA = B (t8/SFT depth-4 evals), then C's eval, later G.
+  Mila = D (official benchmarks of t8, then t11 checkpoints). TamIA's duplicate t11 is cancelled (user).
+- Hardening (node-local staging of envs + weights, `STAGE_LOCAL=1` in `bash_fir_t11.sh`, archive
+  `~/scratch/stage/envs_tar_qwenjudge.tar.zst`, rebuilt after any env change): login-node test passed (unpack 7 s,
+  both envs import from the local copy); GPU test 64608933 queued. When it passes: cancel spare 64518140, resubmit
+  the t11 chain with the hardened launcher (resumes from checkpoint-120), restart the watcher, commit.
 - **Running: `darshan_t11_fir`** (collaborator's t11: critic-only, image tokens KL-anchored to merged t8; see `runs.md`),
   4 nodes = 12 train ranks x 3 prompts = 36 prompts/step, 300 steps, val800 every 50. Chain: 64511966 (started 02:06,
   **failed at step 13**, 03:39: the node-1 judge died of a **Bus error / SIGBUS**, the trainer then hit "reward server

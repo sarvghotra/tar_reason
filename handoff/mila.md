@@ -40,6 +40,22 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-12 17:45 PDT from Fir:
+  **Plan agreed by the user and jeet (2026-10-12)** — all tasks and their cluster (details in `runs.md`, "Plan"):
+  A Fir: t11 continues to step 300. B TamIA: t8 ckpt-500 eval, full-history chains to depth 4 (+ SFT baseline).
+  C Fir writes the MDP eval mode (each round sees only prompt + latest image + its critique), then TamIA runs it on t8.
+  D Mila: official benchmarks of t8 (merged-500), then t11 checkpoints; GenAI-bench setup.
+  E Fir writes the N=4 multi-round training rollout (chain to depth 4, branch 4 siblings at one random round; t8's
+  hybrid critiques, image tokens trained) after B/C pick full-history vs MDP. F Fir: N=4 from t8. G TamIA: N=4 from SFT.
+  Code is written only by the Fir session (pushed to `darshan-rl-test`); other sessions pull it.
+  **Your task D:** official benchmarks (GenEval2 + TIIF, same pipeline and seed 713 as `bench_mila`) for **t8 checkpoint-500**,
+  jeet's best model (val800 final AM 0.825 vs t7 ck-200's 0.764): t7 ck-200 → 300 more steps of the stabilised recipe
+  (1 PPO epoch, adv std floor 0.04, break weight 2, 36 prompts/step). It is a **merged full model** (no LoRA):
+  `BASE_MODEL=$SCRATCH/models/tar/sft/rl_ft_oracle_t8_merged500`, no `LORA_PATH`. The user is copying it to Mila
+  (rsync from Fir, 15 GB); check 4 `model-*.safetensors`, `config.json` sha256 `fbe9de40…`, index sha256 `f20f5984…`.
+  Also run its depth: if `bench_mila.sh` can do more than one refinement round, report final AM after rounds 1–4 too
+  (t8 was trained on one round; the user and jeet want to know if more rounds help). Later: t11 checkpoints 150/200/300
+  as Fir keeps them, and the GenAI-bench setup.
 - 2026-10-12 01:45 PDT from Fir, item 2 (remaining part): GenAI-bench, and t11's checkpoints on all benchmarks.
   GenEval2 + TIIF for SFT / t7 ck-100 / ck-200 are done (Log 2026-10-12 10:00).
 

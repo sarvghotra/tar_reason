@@ -18,6 +18,20 @@ One row per run. Each session edits only the rows for its own cluster. Longer no
 | `darshan_t11_tamia` | TamIA | t11, same flags as `darshan_t11_fir` (`DATASET_SEED=421`) | 36/step (4 nodes × 3 H100 × 3) | queued 2026-10-12 05:00 EDT (612742 → 612743 → 612744, 12 h each; smoke passed, 612742 pending on Priority) | – | `tamia.md` |
 | `darshan_t11_fir` | Fir | t11 (collaborator): base + KL ref = t8 ckpt-500 merged into t21; fresh LoRA; critique tokens trained (`--critique_source policy`, K=3 critiques x M=4 images, critique advantage = mean of its images, `REFLECT_TOKEN_WEIGHT=20`); image tokens KL-only (`--image_adv_scale 0`); LR 1e-4 const, KL 0.05, 1 epoch, `BREAK_WEIGHT=2`, stop penalty 0, std floor 0.04, `DATASET_SEED=421` | 36/step (4 nodes x 3 H100 x 3) | stalled at step 123 since 2026-10-12 11:45 (SIGBUS in a judge at step 13, then in a trainer rank at step 123; spare 64518140 queued, will resume from ckpt-120) | **step 0 val800** (= merged t8): own fix 42.6%, brk 5.3%, delta_am +0.054, draft AM 0.773, final AM 0.828, looks_good on passing/failing drafts 0.45/0.09; oracle fix 45.2%, brk 6.5%, final 0.841 (jeet's t8 @500: 0.42 / 0.06 / +0.048 / 0.776 / 0.825 / 0.46/0.08; oracle 0.47 / 0.845): the merged base reproduces t8. **Step 50:** own fix 44.8%, brk 6.1%, delta_am +0.057, draft 0.770, final 0.827, looks_good pass/fail 0.55/0.11; oracle fix 48.6%, brk 6.3%, final 0.842. Anchor holds (draft and oracle unchanged); critic changes small (fix +2.2 pt, stops more on passing drafts but also slightly more on failing ones), final AM flat. Train kl_img 0.001 → 0.0066 (step 40) → 0.005 (50), kl_txt 0.06. **Step 100:** own fix 44.7%, brk 5.9%, delta_am +0.058, draft 0.762, final 0.820, **looks_good pass/fail 0.60/0.20** (fail doubled: more missed errors); oracle fix 48.9%, brk 5.4%, final 0.845 (refiner intact). kl_img ~0.004. checkpoint-50/100 kept. | `fir.md` |
 
+
+## Plan (agreed 2026-10-12 by the user and jeet)
+| Task | What | Cluster | Status |
+|---|---|---|---|
+| A | t11 (`darshan_t11_fir`) to step 300; evals every 50; stop-penalty decision with jeet if looks_good_fail keeps rising | Fir | running/queued |
+| B | t8 ckpt-500 eval, full-history chains to depth 4 (`--eval_branch 1,1,1,1,1`, val + val_oracle per round) + SFT baseline | TamIA | to run |
+| C | MDP eval mode in `rollout.py` (each round sees prompt + latest image + its critique only), then t8 at depth 4 | Fir writes, TamIA runs | to build |
+| D | Official benchmarks (GenEval2, TIIF) of t8 merged-500 (+ rounds 1–4 if possible), then t11 ckpts; GenAI-bench setup | Mila | needs t8 copied to Mila |
+| E | N=4 multi-round training rollout: chain to depth 4, 4 siblings at one random round (cost ~t8's), hybrid critiques, image tokens trained; full history or MDP per B/C | Fir writes | after B/C, design with jeet |
+| F | N=4 training from t8 (merged base = anchor t8, or adapter on SFT: to decide) | Fir | after E and A |
+| G | N=4 training from SFT (ablation) | TamIA | after E |
+Open questions for jeet: t8 init t7 ckpt-200 (script) or 250 (message)? "3 chains" = 3 rounds in one chain? exact MDP
+definition; N=4 tree shape/budget.
+
 ## Reference: the collaborator's runs (Fir, their account)
 - `rl_ft_oracle_t7`: the recipe above at 36 prompts/step (2 nodes × 3 train ranks × 6, per its header;
   unconfirmed). The collaborator reports refined > draft. Their notes: oracle fix 15.3%, brk 7.0% at step 0;
