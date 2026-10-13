@@ -78,6 +78,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-13 04:25: t11 step-250 val800: own fix 0.477, final 0.824, looks_good pass/fail 0.71/0.22; checkpoint-250 kept.
 - 2026-10-13 00:50: t11 step-200 val800: final 0.831, own fix 0.441, looks_good pass/fail 0.58/0.09; checkpoint-200 kept.
 - 2026-10-12 23:05: Inbox from Mila handled: t8 official GenEval2 76.8 / TIIF long 68.6; depth on official GenEval2 best at 2 rounds
   (76.4) then down to 74.3 at 4, critic almost never stops (626/800 still refining at round 4). Supports task F.
