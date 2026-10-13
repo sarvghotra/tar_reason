@@ -55,7 +55,7 @@ N_TRAIN_GPUS=3
 TRAIN_GPUS=0,1,2
 WORLD_SIZE_GPUS=$((N_TRAIN_GPUS * N_NODES))
 
-PREV_STAGE_CHECKPOINT=${MODELS}/sft/rl_ft_oracle_t8_merged500   # base + KL reference; fresh LoRA
+PREV_STAGE_CHECKPOINT=${PREV_STAGE_CHECKPOINT:-${MODELS}/sft/rl_ft_oracle_t8_merged500}   # base + KL reference; fresh LoRA (override for evals, e.g. the SFT model)
 
 REWARD_QUESTION_BATCH=32
 REWARD_IMAGES_PER_REQ=8
