@@ -3,14 +3,18 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-12 10:00 EDT; the user is away until 2026-10-13)
-- **Nothing running on Mila.** Both Fir inbox items were worked on today:
-  1. Critic diagnostic (SFT vs t7 ck-200, val800): done; results in `runs.md` (`critic_diag_*`).
-  2. Official benchmarks: GenEval2 + TIIF done for SFT t21, t7 Mila ck-100 and ck-200 (`runs.md`, `bench_mila`).
-     GenEval2 final AM 61.8 → 65.7 → 71.7. Open: GenAI-bench (needs a third env with transformers ≥ 5 and the 54 GB
-     Qwen3.5-27B judge), more seeds, and t11 checkpoints once they exist.
-- To benchmark another checkpoint: `MODEL_NAME=<label> LORA_PATH=<ckpt dir> sbatch scripts/eval/bench_mila.sh`
-  (~66 min on 4× A100; resubmit if cut off, stages are resumable). SFT is the default `BASE_MODEL`.
+## Now (2026-10-12 21:00 EDT)
+- **Task D (plan, Fir inbox 2026-10-12 17:45 PDT): t8 checkpoint-500 on the official benchmarks.** The merged model is
+  on Mila (`$SCRATCH/models/tar/sft/rl_ft_oracle_t8_merged500`, 4 shards, `config.json` and index sha256 match,
+  all 339 tensors present). Queued on `short-unkillable` 4× A100, in order:
+  1. **11222563** `bench_t8_merged500`: `bench_mila.sh` (GenEval2 official scorer + TIIF, seed 713, one refinement).
+  2. **11222564 / 11222565** `depth4_t8_geneval2_part{1,2}`: depth. `bench_mila.sh`'s generators do one round only and
+     new code is Fir's, so this uses the trainer's existing eval-only path (`bash_mila_t7.sh`, `MAX_STEPS=0
+     EVAL_ORACLE=0`, `--eval_branch 1,1,1,1,1` = draft + 4 full-history rounds, greedy policy critic, Qwen3-VL-8B in
+     GenEval2 answer mode) on the **official** 800 prompts split 400/400 (`$SCRATCH/benchmarks/GenEval2/splits/`),
+     with `--val_dump_dir`. Reports `val/am_0…am_4` and `am_final` per half; I combine them. Round 1 is checked
+     against the official-scorer number from job 1.
+- Earlier today: critic diagnostic and official benchmarks for SFT / t7 ck-100 / ck-200 (`runs.md`).
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -60,6 +64,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   GenEval2 + TIIF for SFT / t7 ck-100 / ck-200 are done (Log 2026-10-12 10:00).
 
 ## Log (newest first)
+- 2026-10-12 21:00: pulled the A–G plan (`9793e0e` … `3e0c98f`); verified the t8 merged copy; queued task D.
 - 2026-10-12 10:00: t7 Mila ck-100 benchmarks done: GenEval2 64.7 → 65.7, TIIF short 63.7 → 64.8, long 59.5 → 59.7.
 - 2026-10-12 08:50: official benchmarks for SFT t21 and t7 Mila ck-200 done (numbers in `runs.md`, row `bench_mila`):
   GenEval2 final AM 61.8 → 71.7; TIIF short final 63.6 → 71.5, long 60.3 → 61.7 (refine hurts on long).
