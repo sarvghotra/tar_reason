@@ -2,14 +2,16 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-12 17:45 PDT)
+## Now (2026-10-12 18:00 PDT)
 - **Plan (user + jeet, 2026-10-12; `runs.md` "Plan"):** Fir = A (t11 to step 300), writes C (MDP eval mode) and E (N=4
   multi-round training rollout), later runs F (N=4 from t8). TamIA = B (t8/SFT depth-4 evals), then C's eval, later G.
   Mila = D (official benchmarks of t8, then t11 checkpoints). TamIA's duplicate t11 is cancelled (user).
-- Hardening (node-local staging of envs + weights, `STAGE_LOCAL=1` in `bash_fir_t11.sh`, archive
-  `~/scratch/stage/envs_tar_qwenjudge.tar.zst`, rebuilt after any env change): login-node test passed (unpack 7 s,
-  both envs import from the local copy); GPU test 64608933 queued. When it passes: cancel spare 64518140, resubmit
-  the t11 chain with the hardened launcher (resumes from checkpoint-120), restart the watcher, commit.
+- **Fir GPU outage from 2026-10-13 10:00 PDT** (reservation `GPUoutage`, 160 GPU nodes fc101xx–fc110xx, end not given).
+  No Fir GPU work after that until it lifts; plan tasks F (and anything else 4-node) move to TamIA unless it ends soon.
+- **t11 resubmitted with the hardened launcher** (commit `b00c50e`; smoke 64608933: staging 13 s, judge ready 10 s,
+  step-0 val identical): 64620282 + spare 64620283, `TimeLimit=16:00:00 TimeMin=03:00:00` so they can start with a
+  shortened limit that ends before the outage. Resumes from checkpoint-120; ~13.5 h needed to reach 300. Old spare
+  64518140 cancelled. Watcher restarted (scratchpad `t11/watch.sh`).
 - **Running: `darshan_t11_fir`** (collaborator's t11: critic-only, image tokens KL-anchored to merged t8; see `runs.md`),
   4 nodes = 12 train ranks x 3 prompts = 36 prompts/step, 300 steps, val800 every 50. Chain: 64511966 (started 02:06,
   **failed at step 13**, 03:39: the node-1 judge died of a **Bus error / SIGBUS**, the trainer then hit "reward server
@@ -75,6 +77,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - 2026-10-12 04:35 EDT from TamIA: t11 queue estimates (`--test-only`, 12 h, at 04:29 EDT): 4 nodes → 2026-10-13 04:56 EDT, 2 nodes → 2026-10-13 02:42 EDT, 1 node → 2026-10-12 23:21 EDT. TamIA's `--test-only` has run ~6 h optimistic, and t7's 516261 (2 nodes, `squeue --start` 21:15 EDT today) is ahead in our own queue. Worktree ready; smoke test waits for the user's copy of `rl_ft_oracle_t8_merged500`.
 
 ## Log (newest first)
+- 2026-10-12 17:50: hardened launcher committed (`b00c50e`); t11 resubmitted 64620282/83 (TimeMin 3 h, before the 10-13 outage).
 - 2026-10-12 11:45: t11 job 64511967 failed at step 123: SIGBUS in a training rank (local_rank 0, fc10114); spare 64518140 queued (Priority).
 - 2026-10-12 10:20: step-100 val800: looks_good on failing drafts 0.20 (from 0.09); checkpoint-50/100 kept.
 - 2026-10-12 06:00: step-50 val800: anchor holds (draft 0.770, oracle fix 0.486), own fix 0.448.
