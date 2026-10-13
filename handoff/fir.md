@@ -69,14 +69,11 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-12 20:55 EDT from TamIA: trimmed plan applied. SFT eval cancelled; t8 eval resubmitted as `t8_depth4_full_tamia` (job 614114, 2 nodes × 8 h, pending on Priority, est. ~03:15 EDT). `text`/`mdp` evals will be submitted once you push the context-mode option.
-- 2026-10-12 20:50 EDT from TamIA: plan tasks 1–3 done. `darshan_t11_tamia` cancelled (612742–44). Task B queued as eval-only jobs on 2 nodes × 8 h each: 614104 `t8_depth4_tamia` (merged t8) and 614105 `sft_depth4_tamia` (SFT t21 ckpt-17000, via the new `PREV_STAGE_CHECKPOINT` override in `bash_tamia_t11.sh`, `28f6d3b`); est. start ~04:00 EDT 2026-10-13. Results will go in `runs.md` and here.
-- 2026-10-12 06:45 EDT from Mila: critic diagnostic (your item 1) done on val800 for SFT t21 and t7 Mila ck-200; headline in `runs.md` (row `critic_diag_*`, cross-run finding). t7 left the critic's stop decision unchanged and made Corrections narrower (names all of 2 failed objects 44% vs SFT 55%); full reports on Mila in `output_dir/critic_diag_*/critic_diagnostic.txt`. Baseline for t11.
-- 2026-10-12 05:50 EDT from TamIA: t11 smoke test passed on TamIA (job 612737, 19 min): step-0 val fix 0.41 / am_final 0.824 / oracle fix 0.47, steps 1–2 with nonzero pg_txt and kl_img ≤ 0.0011, checkpoint-2, `Done.`, val_dump written (row in `runs.md`). TamIA can take over t11 if Fir's run stalls; not submitting the full run unless the user asks.
-- 2026-10-12 05:05 EDT from TamIA: the user asked to run t11 on TamIA as well. `darshan_t11_tamia` (4 nodes, 36/step, same launcher config) is queued: 612742 (after the smoke test 612737 succeeds) → 612743 → 612744. Distinct RUN_NAME, no wandb collision. Both clusters now run t11 in parallel (same `DATASET_SEED=421`, so near-replicates).
-- 2026-10-12 04:35 EDT from TamIA: t11 queue estimates (`--test-only`, 12 h, at 04:29 EDT): 4 nodes → 2026-10-13 04:56 EDT, 2 nodes → 2026-10-13 02:42 EDT, 1 node → 2026-10-12 23:21 EDT. TamIA's `--test-only` has run ~6 h optimistic, and t7's 516261 (2 nodes, `squeue --start` 21:15 EDT today) is ahead in our own queue. Worktree ready; smoke test waits for the user's copy of `rl_ft_oracle_t8_merged500`.
+(empty)
 
 ## Log (newest first)
+- 2026-10-12 18:05: Inbox cleared: TamIA cancelled its t11 (612742–44) and queued task B (t8 depth-4 full, job 614114, est. 03:15 EDT;
+  SFT eval cancelled per the trimmed plan); Mila verified the t8 copy and queued task D (11222563–65); Mila critic diagnostic noted earlier.
 - 2026-10-12 17:50: hardened launcher committed (`b00c50e`); t11 resubmitted 64620282/83 (TimeMin 3 h, before the 10-13 outage).
 - 2026-10-12 11:45: t11 job 64511967 failed at step 123: SIGBUS in a training rank (local_rank 0, fc10114); spare 64518140 queued (Priority).
 - 2026-10-12 10:20: step-100 val800: looks_good on failing drafts 0.20 (from 0.09); checkpoint-50/100 kept.
