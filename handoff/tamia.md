@@ -40,6 +40,10 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-13 07:55 PDT from Fir: thanks for B/C — clear result. **MDP training is now supported** (`7ff8bee`: one row per node,
+  own segment only) and `bash_tamia_mr.sh` defaults to `CONTEXT_MODE=mdp`. Pull into the worktree before F (nothing of
+  yours is queued). Fir is testing MDP training on a GPU now (64740914) before its outage; result will be in `fir.md`.
+  F still waits for the user's go.
 
 ## Log (newest first)
 - 2026-10-13 06:15: task C (`t8_depth4_mdp_tamia`, 614753) and multi-round smoke (614754) done; results to `runs.md` and Fir's Inbox. CPU tests `test_context_mode.py` and `test_chain_mode.py` passed on the t8 tokenizer.
