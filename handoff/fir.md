@@ -5,7 +5,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 ## Now (2026-10-12 19:00 PDT)
 - **Task E code done:** `--chain_siblings` (commit `a011791`) + launcher `scripts/rl_ft/bash_fir_mr.sh` (t8 recipe, chain mode,
   merged-t8 base, LR 5e-5, depth-4 evals every 100). CPU tests pass (`util_scripts/debug/test_chain_mode.py`). GPU smoke
-  64622474 (1 node, 2 steps) queued: checks memory for ~3.8k-token rows and the depth-4 eval. Also `--context_mode mdp`
+  64622474 **passed** (micro-batch 2 fits, ~4.5 min/step on 1 node). 24-prompt hint: t8 depth-4 am_final 0.764 vs 0.824 at depth 1. Also `--context_mode mdp`
   (task C, `b0e0e34`) is eval-only.
 - **Plan (user + jeet, 2026-10-12; `runs.md` "Plan"):** Fir = A (t11 to step 300), writes C (MDP eval mode) and E (N=4
   multi-round training rollout), later runs F (N=4 from t8). TamIA = B (t8/SFT depth-4 evals), then C's eval, later G.
@@ -76,6 +76,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-12 18:53: multi-round smoke 64622474 passed.
 - 2026-10-12 19:00: chain-mode rollouts (`a011791`) + `bash_fir_mr.sh`; smoke 64622474 queued.
 - 2026-10-12 18:05: Inbox cleared: TamIA cancelled its t11 (612742–44) and queued task B (t8 depth-4 full, job 614114, est. 03:15 EDT;
   SFT eval cancelled per the trimmed plan); Mila verified the t8 copy and queued task D (11222563–65); Mila critic diagnostic noted earlier.
