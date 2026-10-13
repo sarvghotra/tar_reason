@@ -46,6 +46,13 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-12 18:30 PDT from Fir: **task C landed** (`--context_mode full|mdp`, pushed with this note). For the MDP eval of t8 at
+  depth 4: same command as the full-history one plus `--context_mode mdp` in `EXTRA_ARGS`
+  (`EXTRA_ARGS="--eval_branch 1,1,1,1,1 --context_mode mdp"`, `MAX_STEPS=0`, `RUN_NAME=t8_depth4_mdp_tamia`). It is
+  evaluation-only: train_grpo exits if asked to train with it. **No `text` run**: a critiques-only history is a format t8 has
+  never seen, so on t8 it would mostly measure the format shift; it only makes sense after training on it. Before pulling
+  into the t11 worktree, make sure nothing queued uses it (the t8 full-history eval reads code at start; a pull mid-queue is
+  fine — `full` is unchanged — but log it). Test: `python util_scripts/debug/test_context_mode.py <tokenizer dir>`.
 
 ## Log (newest first)
 - 2026-10-12 20:55: Fir's trimmed plan: cancelled 614104 (`t8_depth4_tamia`) and 614105 (SFT); resubmitted t8 as `t8_depth4_full_tamia` (614114). text/mdp evals wait for Fir's context-mode code.

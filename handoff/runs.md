@@ -24,8 +24,8 @@ One row per run. Each session edits only the rows for its own cluster. Longer no
 | Task | What | Cluster | Status |
 |---|---|---|---|
 | A | t11 (`darshan_t11_fir`) to step 300; evals every 50; stop-penalty decision with jeet if looks_good_fail keeps rising | Fir | running/queued |
-| B | t8 ckpt-500 eval, chains to depth 4 (`--eval_branch 1,1,1,1,1`, val + val_oracle per round): full history now; `text` and `mdp` context once C lands. (SFT baseline deferred.) Refine-vs-resample baseline = `val/am_0` (no extra run). | TamIA | to run |
-| C | Context-mode option in `rollout.py`: `full` (default) / `text` (all critiques + latest image only) / `mdp` (prompt + latest image + its critique) | Fir writes, TamIA runs the evals | to build |
+| B | t8 ckpt-500 eval, chains to depth 4 (`--eval_branch 1,1,1,1,1`, val + val_oracle per round): full history and `--context_mode mdp`. (SFT baseline deferred.) Refine-vs-resample baseline = `val/am_0` (no extra run). | TamIA | to run |
+| C | `--context_mode full|mdp` in `rollout.py` (mdp: each round sees prompt + latest image only; eval-only for now). `text` dropped for t8 (critiques-only history is a format t8 never saw) | Fir wrote (done, tested), TamIA runs the eval | code done |
 | D | Official benchmarks (GenEval2, TIIF) of t8 merged-500 (+ rounds 1–4 if possible), then t11 ckpts; GenAI-bench setup | Mila | needs t8 copied to Mila |
 | E | N=4 multi-round training rollout: chain to depth 4, 4 siblings at one random round (cost ~t8's), hybrid critiques, image tokens trained; full history or MDP per B/C | Fir writes | after B/C, design with jeet |
 | F | N=4 training from t8 (merged base = anchor t8, or adapter on SFT: to decide) | Fir | after E and A |
