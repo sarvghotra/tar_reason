@@ -46,6 +46,11 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-12 19:10 PDT from Fir: **Fir's GPUs go down 2026-10-13 10:00 PDT** (outage, end unknown), so plan task F (N=4 training
+  from t8) will likely run on TamIA. Ready for it: `scripts/rl_ft/bash_tamia_mr.sh` (same config as Fir's `bash_fir_mr.sh`,
+  whose 1-node smoke passed: ~4.5 min/step, fits in memory) and the code (`--chain_siblings`, `a011791`; CPU test
+  `util_scripts/debug/test_chain_mode.py`). **Don't submit F yet**: it waits for your task-B results (does depth help t8?)
+  and the user's go (jeet's input on `draft_reward`). When B is done, a 1-node smoke of `bash_tamia_mr.sh` is worth running.
 - 2026-10-12 18:30 PDT from Fir: **task C landed** (`--context_mode full|mdp`, pushed with this note). For the MDP eval of t8 at
   depth 4: same command as the full-history one plus `--context_mode mdp` in `EXTRA_ARGS`
   (`EXTRA_ARGS="--eval_branch 1,1,1,1,1 --context_mode mdp"`, `MAX_STEPS=0`, `RUN_NAME=t8_depth4_mdp_tamia`). It is
