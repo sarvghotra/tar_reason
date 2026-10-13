@@ -2,27 +2,27 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-12 20:50 EDT)
+## Now (2026-10-12 20:55 EDT)
 - **Plan A–G** (user + jeet, 2026-10-12; `runs.md` "Plan"): TamIA does **B** (depth-4 eval chains, full history, t8 and
   SFT baseline), later **C** (same in MDP mode, once Fir pushes it) and **G** (N=4 training from SFT, once Fir writes E).
   Code is written only by the Fir session; TamIA pulls it (exception: the launcher override below, per Fir's Inbox).
-- **Task B queued** (eval only, `MAX_STEPS=0`, val800, `--eval_branch 1,1,1,1,1` via `EXTRA_ARGS`, `--eval_oracle` on,
-  val_dump on; launcher `bash_tamia_t11.sh` in the worktree, 2 nodes × 8 h each, est. start ~04:00 2026-10-13):
-  - **614104 `t8_depth4_tamia`**: merged t8 (`rl_ft_oracle_t8_merged500`, the launcher default).
-  - **614105 `sft_depth4_tamia`**: `PREV_STAGE_CHECKPOINT=$SCRATCH/models/tar/sft/slf_ref_edit_t21_ckpt17000`
-    (override added in `28f6d3b`).
-  Logs: `tar_reason_t11/output_dir/slurm_logs/{t8,sft}_depth4_tamia_<jobid>.{out,err}`. Expect `step=0` with
-  `val/am_0..am_4`, fix/brk/looks_good per round and the `val_oracle/` ones, then `Done.` An eval killed by the time
-  limit restarts from scratch (no checkpoint at step 0).
-  **When done:** report per-round `val/am_k`, `fix_k`, `brk_k`, `looks_good_k` and oracle ones in `runs.md`
-  (rows `t8_depth4_tamia`, `sft_depth4_tamia`) and in Fir's Inbox; then wait for C (MDP mode) from Fir.
+- **Task B (trimmed by Fir 2026-10-12 18:05 PDT): only t8 at depth 4**, three history settings, which decide the
+  history setting for the N=4 training:
+  - **`t8_depth4_full_tamia`: queued, job 614114** (eval only, `MAX_STEPS=0`, val800, `--eval_branch 1,1,1,1,1` via
+    `EXTRA_ARGS`, `--eval_oracle` + val_dump on; launcher `bash_tamia_t11.sh` in the worktree (default base = merged t8);
+    2 nodes × 8 h). Logs `tar_reason_t11/output_dir/slurm_logs/t8_depth4_full_tamia_614114.{out,err}`.
+  - `t8_depth4_text_tamia` and `t8_depth4_mdp_tamia`: **after Fir pushes the context-mode option** (`full` / `text` =
+    all critiques + only the latest image / `mdp` = prompt + latest image + its critique). Pull it into the worktree only
+    when that doesn't change code under a queued/running job (rule 4), then submit both the same way.
+  - SFT baseline skipped for now (614105 cancelled). An eval killed by the time limit restarts from scratch.
+  **When done:** per-round `val/am_k`, `fix_k`, `brk_k`, `looks_good_k` + oracle ones → `runs.md` rows and Fir's Inbox.
 - **t11 on TamIA cancelled** (612742–44, 2026-10-12 20:40, user's decision via the plan: Fir's t11 continues to 300).
   The smoke test's outputs stay in `tar_reason_t11/output_dir/t11_smoke_tamia/`.
 - **t7 stopped** at step 250/300 (2026-10-12). Checkpoints 230–250 in the run dir, 85 and 100 in
   `$SCRATCH/tar_reason_kept/darshan_t7_tamia/`. Results in `runs.md`.
 - **Checkouts:** `tar_reason/` (main) and the worktree `/scratch/d/dars11/git/tar_reason_t11` (detached HEAD on
   `origin/darshan-rl-test`; the queued evals use it). Before pulling with jobs queued, check rule 4.
-- Watcher: this tmux session (2026-10-12 20:40) waits for 614104/614105 to start, then watches them; dies with the session.
+- Watcher: this tmux session (2026-10-12 20:40) waits for 614114 to start, then watches them; dies with the session.
 
 ## Setup
 - User `dars11`, single account `aip-agrawal`. `$SCRATCH=/scratch/d/dars11` (2 TB quota), `~/scratch` → `$SCRATCH`,
@@ -46,14 +46,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-12 18:05 PDT from Fir (**update to the 17:45 item; time is limited, so fewer runs**):
-  task B = **only t8 at depth 4, full history** for now (your items 1, 2, 4). **Skip item 3 (SFT baseline)** for now.
-  Next, after Fir pushes the context-mode option (`full` / `text` = all critiques + only the latest image / `mdp` =
-  prompt + latest image + its critique), run the same t8 depth-4 eval with `text` and with `mdp`. Those three evals decide
-  the history setting for the N=4 training. Keep the run names `t8_depth4_full_tamia`, `t8_depth4_text_tamia`,
-  `t8_depth4_mdp_tamia`.
 
 ## Log (newest first)
+- 2026-10-12 20:55: Fir's trimmed plan: cancelled 614104 (`t8_depth4_tamia`) and 614105 (SFT); resubmitted t8 as `t8_depth4_full_tamia` (614114). text/mdp evals wait for Fir's context-mode code.
 - 2026-10-12 20:50: Fir Inbox (plan A–G) handled: cancelled `darshan_t11_tamia` (612742–44); added `PREV_STAGE_CHECKPOINT` override to `bash_tamia_t11.sh` (`28f6d3b`); submitted task B evals 614104 (t8) and 614105 (SFT), 2 nodes × 8 h.
 - 2026-10-12 13:20: user back in VSCode; tmux session's watchers gone. 612742 still pending, est. 20:30.
 - 2026-10-12 05:47: t11 smoke test passed (612737); 612742 released from its dependency.
