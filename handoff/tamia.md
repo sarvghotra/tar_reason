@@ -2,13 +2,13 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-12 20:55 EDT)
+## Now (2026-10-13 04:45 EDT)
 - **Plan A–G** (user + jeet, 2026-10-12; `runs.md` "Plan"): TamIA does **B** (depth-4 eval chains, full history, t8 and
   SFT baseline), later **C** (same in MDP mode, once Fir pushes it) and **G** (N=4 training from SFT, once Fir writes E).
   Code is written only by the Fir session; TamIA pulls it (exception: the launcher override below, per Fir's Inbox).
 - **Task B (trimmed by Fir 2026-10-12 18:05 PDT): only t8 at depth 4**, three history settings, which decide the
   history setting for the N=4 training:
-  - **`t8_depth4_full_tamia`: queued, job 614114** (eval only, `MAX_STEPS=0`, val800, `--eval_branch 1,1,1,1,1` via
+  - **`t8_depth4_full_tamia`: done** (job 614114, 1 h 32 min on 2 nodes; results in `runs.md`) (eval only, `MAX_STEPS=0`, val800, `--eval_branch 1,1,1,1,1` via
     `EXTRA_ARGS`, `--eval_oracle` + val_dump on; launcher `bash_tamia_t11.sh` in the worktree (default base = merged t8);
     2 nodes × 8 h). Logs `tar_reason_t11/output_dir/slurm_logs/t8_depth4_full_tamia_614114.{out,err}`.
   - `t8_depth4_text_tamia` and `t8_depth4_mdp_tamia`: **after Fir pushes the context-mode option** (`full` / `text` =
@@ -22,7 +22,7 @@ Owned by the TamIA session.
   `$SCRATCH/tar_reason_kept/darshan_t7_tamia/`. Results in `runs.md`.
 - **Checkouts:** `tar_reason/` (main) and the worktree `/scratch/d/dars11/git/tar_reason_t11` (detached HEAD on
   `origin/darshan-rl-test`; the queued evals use it). Before pulling with jobs queued, check rule 4.
-- Watcher: this tmux session (2026-10-12 20:40) waits for 614114 to start, then watches them; dies with the session.
+- No jobs queued; no watcher. Next: the `text` and `mdp` evals once Fir pushes the context-mode option (~1.5 h each on 2 nodes; 3 h jobs are enough).
 
 ## Setup
 - User `dars11`, single account `aip-agrawal`. `$SCRATCH=/scratch/d/dars11` (2 TB quota), `~/scratch` → `$SCRATCH`,
@@ -61,6 +61,7 @@ Owned by the TamIA session.
   fine — `full` is unchanged — but log it). Test: `python util_scripts/debug/test_context_mode.py <tokenizer dir>`.
 
 ## Log (newest first)
+- 2026-10-13 04:45: `t8_depth4_full_tamia` done (614114, 02:54–04:27); results to `runs.md` and Fir's Inbox. Final AM by depth computed from val_dump.
 - 2026-10-12 20:55: Fir's trimmed plan: cancelled 614104 (`t8_depth4_tamia`) and 614105 (SFT); resubmitted t8 as `t8_depth4_full_tamia` (614114). text/mdp evals wait for Fir's context-mode code.
 - 2026-10-12 20:50: Fir Inbox (plan A–G) handled: cancelled `darshan_t11_tamia` (612742–44); added `PREV_STAGE_CHECKPOINT` override to `bash_tamia_t11.sh` (`28f6d3b`); submitted task B evals 614104 (t8) and 614105 (SFT), 2 nodes × 8 h.
 - 2026-10-12 13:20: user back in VSCode; tmux session's watchers gone. 612742 still pending, est. 20:30.

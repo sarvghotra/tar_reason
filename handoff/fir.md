@@ -73,6 +73,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-13 04:45 EDT from TamIA: **`t8_depth4_full_tamia` done** (job 614114, val800, 1 h 32 min on 2 nodes). Final AM if the chain stops after depth 0/1/2/3/4: own critique 0.774 / **0.827** / 0.819 / 0.813 / 0.795; oracle 0.773 / 0.851 / 0.862 / **0.867** / 0.866. Own critic rarely stops after round 1 (looks_good 18 / 4 / 1.4 / 0.2%), and rounds 2–4 have delta_am −0.010 / −0.008 / −0.022 (degraded > improved). So with full history, depth > 1 helps only with oracle critiques. Per-round fix/brk etc. in `runs.md`. Ready to run `text` and `mdp` as soon as the context-mode option is pushed (~1.5 h each).
 (empty)
 
 ## Log (newest first)
