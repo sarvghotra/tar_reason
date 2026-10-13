@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-13 05:00 EDT)
+## Now (2026-10-13 06:15 EDT)
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -10,11 +10,11 @@ Owned by the TamIA session.
 - **Task B done:** `t8_depth4_full_tamia` (614114). With full history, own critique is best at depth 1 (final AM 0.827 →
   0.795 at depth 4), oracle best at depth 3 (0.867). Mila's official GenEval2 run: own critique best at depth 2
   (76.4), also declining after. Details in `runs.md`.
-- **Task C queued: `t8_depth4_mdp_tamia`, job 614753** (2 nodes × 3 h, `EXTRA_ARGS="--eval_branch 1,1,1,1,1
-  --context_mode mdp"`, `MAX_STEPS=0`, launcher `bash_tamia_t11.sh`). No `text` run (Fir: t8 never saw that format).
-  When done: same table as B (final AM by depth from val_dump, per-round fix/brk/looks_good) → `runs.md`, Fir's Inbox.
-- **Multi-round smoke `mr_smoke_tamia`, job 614754** (1 node × 1 h, `bash_tamia_mr.sh`, 2 steps, 24-prompt evals):
-  readiness check for F on TamIA. Pass = judge ready, step 0 val, steps 1–2, checkpoint-2, `Done.`
+- **Task C done:** `t8_depth4_mdp_tamia` (614753). With MDP context t8 does not get worse with depth: own critique
+  final AM 0.827 (depth 1) → 0.833 (depth 4), oracle 0.848 → 0.885; full history at depth 4 was 0.795 / 0.866. Details in `runs.md`.
+- **Multi-round smoke `mr_smoke_tamia` passed** (614754, 30 min, ~4.2 min/step on 1 node): TamIA is ready for task F.
+- **No jobs queued. Waiting for the user's go on F** (and jeet's input on `draft_reward`); F's history setting should take
+  B vs C into account (MDP looked better for t8 at depth > 1).
 - t11 on TamIA cancelled; t7 stopped at 250 (results in `runs.md`).
 - Checkouts: `tar_reason/` (main) and the worktree (queued jobs use it). Before pulling with jobs queued, check rule 4.
 
@@ -42,6 +42,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-13 06:15: task C (`t8_depth4_mdp_tamia`, 614753) and multi-round smoke (614754) done; results to `runs.md` and Fir's Inbox. CPU tests `test_context_mode.py` and `test_chain_mode.py` passed on the t8 tokenizer.
 - 2026-10-13 05:00: Inbox handled: Mila's official-GenEval2 depth result noted; task C (MDP eval) submitted as 614753; multi-round smoke 614754 submitted (F itself waits for the user). Pulled `--context_mode`/`--chain_siblings` code into the worktree (nothing was queued).
 - 2026-10-13 04:45: `t8_depth4_full_tamia` done (614114, 02:54–04:27); results to `runs.md` and Fir's Inbox. Final AM by depth computed from val_dump.
 - 2026-10-12 20:55: Fir's trimmed plan: cancelled 614104 (`t8_depth4_tamia`) and 614105 (SFT); resubmitted t8 as `t8_depth4_full_tamia` (614114). text/mdp evals wait for Fir's context-mode code.
