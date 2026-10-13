@@ -2,50 +2,17 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-12 19:00 PDT)
-- **Task E code done:** `--chain_siblings` (commit `a011791`) + launcher `scripts/rl_ft/bash_fir_mr.sh` (t8 recipe, chain mode,
-  merged-t8 base, LR 5e-5, depth-4 evals every 100). CPU tests pass (`util_scripts/debug/test_chain_mode.py`). GPU smoke
-  64622474 **passed** (micro-batch 2 fits, ~4.5 min/step on 1 node). 24-prompt hint: t8 depth-4 am_final 0.764 vs 0.824 at depth 1. Also `--context_mode mdp`
-  (task C, `b0e0e34`) is eval-only.
-- **Plan (user + jeet, 2026-10-12; `runs.md` "Plan"):** Fir = A (t11 to step 300), writes C (MDP eval mode) and E (N=4
-  multi-round training rollout), later runs F (N=4 from t8). TamIA = B (t8/SFT depth-4 evals), then C's eval, later G.
-  Mila = D (official benchmarks of t8, then t11 checkpoints). TamIA's duplicate t11 is cancelled (user).
-- **Fir GPU outage from 2026-10-13 10:00 PDT** (reservation `GPUoutage`, 160 GPU nodes fc101xx–fc110xx, end not given).
-  No Fir GPU work after that until it lifts; plan tasks F (and anything else 4-node) move to TamIA unless it ends soon.
-- **t11 resubmitted with the hardened launcher** (commit `b00c50e`; smoke 64608933: staging 13 s, judge ready 10 s,
-  step-0 val identical): 64620282 + spare 64620283, `TimeLimit=16:00:00 TimeMin=03:00:00` so they can start with a
-  shortened limit that ends before the outage. Resumes from checkpoint-120; ~13.5 h needed to reach 300. Old spare
-  64518140 cancelled. Watcher restarted (scratchpad `t11/watch.sh`).
-- **Running: `darshan_t11_fir`** (collaborator's t11: critic-only, image tokens KL-anchored to merged t8; see `runs.md`),
-  4 nodes = 12 train ranks x 3 prompts = 36 prompts/step, 300 steps, val800 every 50. Chain: 64511966 (started 02:06,
-  **failed at step 13**, 03:39: the node-1 judge died of a **Bus error / SIGBUS**, the trainer then hit "reward server
-  unreachable") → **64511967 running** (resumes from checkpoint-10) → spare **64518140** (`afterany`). Second SIGBUS
-  on Fir in 3 days (t7 died the same way at step 41): likely Fir scratch/home (Lustre) dropping a memory-mapped page,
-  not our code. Possible hardening, not done yet (needs the user): stage the judge and policy weights to node-local
-  `$SLURM_TMPDIR` at job start; restart a dead judge inside the launcher (the trainer's retry window must cover a
-  ~2–4 min reload).
-- **64511967 failed at step 123 (11:45) with SIGBUS (exit −7) in a training rank on fc10114** — third SIGBUS on Fir
-  (t7 @41, t11 judge @13, now a trainer rank). Spare **64518140** pending on Priority since 11:46 (no start estimate);
-  it will resume from checkpoint-120. Kept: checkpoint-50/100. TamIA's `darshan_t11_tamia` is still queued there
-  (`squeue --start` 20:30 EDT).
-- Before the crash (step ~100 at 10:20; ~3.8 min/step). Evals 0/50/100 in `runs.md`. **Step 100: the critic
-  stops on failing drafts twice as often (looks_good_fail 0.09 → 0.11 → 0.20)** — jeet's pre-set trigger to raise
-  STOP_PENALTY; final AM 0.828 → 0.820, own fix flat 0.447, oracle fix holds 0.489, kl_img ~0.004. Decision with the user.
-- Watcher: the tmux session ended ~10:15 and its scratchpad (watch scripts) is gone; no watcher is running.
-- Launcher `scripts/rl_ft/bash_fir_t11.sh` (`66a0fcd`; code = merge `a43f083` of jeet's main). Base + KL reference:
-  `~/scratch/models/tar/sft/rl_ft_oracle_t8_merged500` (copy of jeet's merged t8 checkpoint-500, verified).
-- Smoke test 64509374 (1 node, 2 steps, 24-prompt evals) reproduced t8's baseline at step 0 (own fix 0.41,
-  final AM 0.824, oracle fix 0.465 vs t8 0.42 / 0.825 / 0.47); steps 1–2: pg_txt nonzero, pg_img 0, kl_img 0.001,
-  crit_icc ~0.3; checkpoint-2 saved; val dumps written. ~3.5 min/step at 9 prompts/rank... (1 node).
-- Success (jeet): val/fix_1 and val/delta_am_1 rise toward val_oracle/ while val_oracle/fix_1 holds ~0.47 and
-  val/am_0 ~0.776; train/kl_img stays << 0.05 (if it climbs past ~0.05, raise KL_COEF); watch crit_icc_1 (should
-  rise from ~0.25), looks_good_pass_1 up / looks_good_fail_1 down, kl_txt and reflect_len_1 (critic collapse).
-- Watcher (Monitor in session `2f24f487…`, re-armed every 30 min; `scratchpad/t11/watch.sh` + `parse.py`, state in
-  `scratchpad/t11/state/`): job states, errors, alerts (kl_img > 0.05, KL > 0.5, grad > 1), a train summary every
-  10 steps, every val800, `Done.`, and copies checkpoint-50/100/…/300 to `~/scratch/tar_reason_kept/darshan_t11_fir/`
-  (SAVE_STEPS=10, 5 kept). Dies with the session.
-- Logs: `output_dir/slurm_logs/darshan_t11_fir_<jobid>.{out,err}`; run dir `output_dir/darshan_t11_fir/` (val dumps
-  in `val_dump/`). t7 results and kept t7 checkpoints: see Log and `runs.md`.
+## Now (2026-10-13 08:00 PDT)
+- **Nothing running on Fir. Fir GPU outage from today 10:00 PDT** (reservation `GPUoutage`, end not given).
+- **t11 (`darshan_t11_fir`) done**, 300 steps (`runs.md`): final AM 0.828 at step 0 and at 300, own-critique fix 42.6% → 46.4%,
+  stop decision oscillates between evals (looks_good on failing drafts 0.09 … 0.22 … 0.09). Kept: checkpoint-50…300 in
+  `~/scratch/tar_reason_kept/darshan_t11_fir/`. wandb complete: https://wandb.ai/darshan-singh/tar_reasoning/runs/darshan_t11_fir
+- **Tasks C and E (code) done**: `--context_mode mdp` (eval-only, `b0e0e34`), `--chain_siblings` chain-mode multi-round
+  training (`a011791`), launchers `bash_fir_mr.sh` / `bash_tamia_mr.sh`; Fir multi-round smoke 64622474 passed.
+  Task F (N=4 from t8) waits for the user + jeet; with Fir down it would run on TamIA (`bash_tamia_mr.sh`).
+- Hardened launcher (node-local staging of envs + weights, `STAGE_LOCAL=1`) in `bash_fir_t11.sh` and `bash_fir_mr.sh`;
+  the env archive `~/scratch/stage/envs_tar_qwenjudge.tar.zst` must be rebuilt after any env change (command in the launcher).
+- Watcher: none needed (nothing running).
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
@@ -78,6 +45,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-13 07:55: t11 done (step-300 val800 final 0.828, own fix 0.464); checkpoint-300 kept; spare 64620283 cancelled; wandb synced.
 - 2026-10-13 04:25: t11 step-250 val800: own fix 0.477, final 0.824, looks_good pass/fail 0.71/0.22; checkpoint-250 kept.
 - 2026-10-13 00:50: t11 step-200 val800: final 0.831, own fix 0.441, looks_good pass/fail 0.58/0.09; checkpoint-200 kept.
 - 2026-10-12 23:05: Inbox from Mila handled: t8 official GenEval2 76.8 / TIIF long 68.6; depth on official GenEval2 best at 2 rounds
