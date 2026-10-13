@@ -2,27 +2,21 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-13 04:45 EDT)
-- **Plan A–G** (user + jeet, 2026-10-12; `runs.md` "Plan"): TamIA does **B** (depth-4 eval chains, full history, t8 and
-  SFT baseline), later **C** (same in MDP mode, once Fir pushes it) and **G** (N=4 training from SFT, once Fir writes E).
-  Code is written only by the Fir session; TamIA pulls it (exception: the launcher override below, per Fir's Inbox).
-- **Task B (trimmed by Fir 2026-10-12 18:05 PDT): only t8 at depth 4**, three history settings, which decide the
-  history setting for the N=4 training:
-  - **`t8_depth4_full_tamia`: done** (job 614114, 1 h 32 min on 2 nodes; results in `runs.md`) (eval only, `MAX_STEPS=0`, val800, `--eval_branch 1,1,1,1,1` via
-    `EXTRA_ARGS`, `--eval_oracle` + val_dump on; launcher `bash_tamia_t11.sh` in the worktree (default base = merged t8);
-    2 nodes × 8 h). Logs `tar_reason_t11/output_dir/slurm_logs/t8_depth4_full_tamia_614114.{out,err}`.
-  - `t8_depth4_text_tamia` and `t8_depth4_mdp_tamia`: **after Fir pushes the context-mode option** (`full` / `text` =
-    all critiques + only the latest image / `mdp` = prompt + latest image + its critique). Pull it into the worktree only
-    when that doesn't change code under a queued/running job (rule 4), then submit both the same way.
-  - SFT baseline skipped for now (614105 cancelled). An eval killed by the time limit restarts from scratch.
-  **When done:** per-round `val/am_k`, `fix_k`, `brk_k`, `looks_good_k` + oracle ones → `runs.md` rows and Fir's Inbox.
-- **t11 on TamIA cancelled** (612742–44, 2026-10-12 20:40, user's decision via the plan: Fir's t11 continues to 300).
-  The smoke test's outputs stay in `tar_reason_t11/output_dir/t11_smoke_tamia/`.
-- **t7 stopped** at step 250/300 (2026-10-12). Checkpoints 230–250 in the run dir, 85 and 100 in
-  `$SCRATCH/tar_reason_kept/darshan_t7_tamia/`. Results in `runs.md`.
-- **Checkouts:** `tar_reason/` (main) and the worktree `/scratch/d/dars11/git/tar_reason_t11` (detached HEAD on
-  `origin/darshan-rl-test`; the queued evals use it). Before pulling with jobs queued, check rule 4.
-- No jobs queued; no watcher. Next: the `text` and `mdp` evals once Fir pushes the context-mode option (~1.5 h each on 2 nodes; 3 h jobs are enough).
+## Now (2026-10-13 05:00 EDT)
+- **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
+  `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
+  Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
+  it waits for the user's go (and jeet's input on `draft_reward`). Don't submit F before that.
+- **Task B done:** `t8_depth4_full_tamia` (614114). With full history, own critique is best at depth 1 (final AM 0.827 →
+  0.795 at depth 4), oracle best at depth 3 (0.867). Mila's official GenEval2 run: own critique best at depth 2
+  (76.4), also declining after. Details in `runs.md`.
+- **Task C queued: `t8_depth4_mdp_tamia`, job 614753** (2 nodes × 3 h, `EXTRA_ARGS="--eval_branch 1,1,1,1,1
+  --context_mode mdp"`, `MAX_STEPS=0`, launcher `bash_tamia_t11.sh`). No `text` run (Fir: t8 never saw that format).
+  When done: same table as B (final AM by depth from val_dump, per-round fix/brk/looks_good) → `runs.md`, Fir's Inbox.
+- **Multi-round smoke `mr_smoke_tamia`, job 614754** (1 node × 1 h, `bash_tamia_mr.sh`, 2 steps, 24-prompt evals):
+  readiness check for F on TamIA. Pass = judge ready, step 0 val, steps 1–2, checkpoint-2, `Done.`
+- t11 on TamIA cancelled; t7 stopped at 250 (results in `runs.md`).
+- Checkouts: `tar_reason/` (main) and the worktree (queued jobs use it). Before pulling with jobs queued, check rule 4.
 
 ## Setup
 - User `dars11`, single account `aip-agrawal`. `$SCRATCH=/scratch/d/dars11` (2 TB quota), `~/scratch` → `$SCRATCH`,
@@ -46,21 +40,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-13 00:40 EDT from Mila: t8 ck-500 depth on the **official** GenEval2 800 prompts (full-history chain to depth 4, greedy own critic, Qwen3-VL-8B in GenEval2 mode): final AM after 0/1/2/3/4 rounds = 70.9 / 75.7 / **76.4** / 75.5 / 74.3; GM 26.7 / 32.1 / 32.7 / 30.5 / 28.3; 626 of 800 prompts still refining at round 4. Best at 2 rounds, deeper rounds hurt. Row `depth4_t8_geneval2_*` in `runs.md`; compare with task B on val800.
-- 2026-10-12 19:10 PDT from Fir: **Fir's GPUs go down 2026-10-13 10:00 PDT** (outage, end unknown), so plan task F (N=4 training
-  from t8) will likely run on TamIA. Ready for it: `scripts/rl_ft/bash_tamia_mr.sh` (same config as Fir's `bash_fir_mr.sh`,
-  whose 1-node smoke passed: ~4.5 min/step, fits in memory) and the code (`--chain_siblings`, `a011791`; CPU test
-  `util_scripts/debug/test_chain_mode.py`). **Don't submit F yet**: it waits for your task-B results (does depth help t8?)
-  and the user's go (jeet's input on `draft_reward`). When B is done, a 1-node smoke of `bash_tamia_mr.sh` is worth running.
-- 2026-10-12 18:30 PDT from Fir: **task C landed** (`--context_mode full|mdp`, pushed with this note). For the MDP eval of t8 at
-  depth 4: same command as the full-history one plus `--context_mode mdp` in `EXTRA_ARGS`
-  (`EXTRA_ARGS="--eval_branch 1,1,1,1,1 --context_mode mdp"`, `MAX_STEPS=0`, `RUN_NAME=t8_depth4_mdp_tamia`). It is
-  evaluation-only: train_grpo exits if asked to train with it. **No `text` run**: a critiques-only history is a format t8 has
-  never seen, so on t8 it would mostly measure the format shift; it only makes sense after training on it. Before pulling
-  into the t11 worktree, make sure nothing queued uses it (the t8 full-history eval reads code at start; a pull mid-queue is
-  fine — `full` is unchanged — but log it). Test: `python util_scripts/debug/test_context_mode.py <tokenizer dir>`.
 
 ## Log (newest first)
+- 2026-10-13 05:00: Inbox handled: Mila's official-GenEval2 depth result noted; task C (MDP eval) submitted as 614753; multi-round smoke 614754 submitted (F itself waits for the user). Pulled `--context_mode`/`--chain_siblings` code into the worktree (nothing was queued).
 - 2026-10-13 04:45: `t8_depth4_full_tamia` done (614114, 02:54–04:27); results to `runs.md` and Fir's Inbox. Final AM by depth computed from val_dump.
 - 2026-10-12 20:55: Fir's trimmed plan: cancelled 614104 (`t8_depth4_tamia`) and 614105 (SFT); resubmitted t8 as `t8_depth4_full_tamia` (614114). text/mdp evals wait for Fir's context-mode code.
 - 2026-10-12 20:50: Fir Inbox (plan A–G) handled: cancelled `darshan_t11_tamia` (612742–44); added `PREV_STAGE_CHECKPOINT` override to `bash_tamia_t11.sh` (`28f6d3b`); submitted task B evals 614104 (t8) and 614105 (SFT), 2 nodes × 8 h.
