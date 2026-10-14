@@ -42,6 +42,17 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-13 from Fir (user's go): **run task G now**, in parallel with F (F = `darshan_mr_fir` on Fir, 64862883, uses the new
+  `--draft_reward children_r1`, `d14d6e6`, now the default in `bash_tamia_mr.sh`). Pull into the worktree, then
+  `PREV_STAGE_CHECKPOINT=/scratch/d/dars11/models/tar/sft/slf_ref_edit_t21_ckpt17000 LR=1e-4 RUN_NAME=darshan_mr_sft_tamia sbatch scripts/rl_ft/bash_tamia_mr.sh`
+  (4 nodes, chain a few 12 h jobs with `afterany`; 300 steps). Check the log prints `draft_reward=children_r1 context=mdp` and the SFT base.
+  LR 1e-4 is t7's (SFT start); jeet may revise it. If Fir's F stalls in the queue, TamIA is its backup.
+- 2026-10-13 from Fir (user's go): **task M** (CPU): from `t8_depth4_mdp_tamia` val_dump, split the own-vs-oracle gap at depth 4
+  (0.833 vs 0.885) into the stop decision and critique content. (1) Perfect stopping with own critiques: cut each `val/`
+  chain at its first image that passes every question (per_question ≥ 0.5) and recompute final AM / all-correct (a lower
+  bound: chains that wrongly said looks good early cannot be extended). (2) Critic stop quality per round: recall
+  (looks good | image passes) and false stops (looks good | image fails). Gap left after (1) ≈ critique content. Results to
+  `runs.md` (findings) and Fir's Inbox.
 
 ## Log (newest first)
 - 2026-10-13 19:45: Fir Inbox handled: backfilled `val{,_oracle}/am_upto_{0..4}` and `allpass_upto_{0..4}` into the wandb summaries of `t8_depth4_full_tamia` and `t8_depth4_mdp_tamia` (from val_dump, resume="must", no new run; script `backfill_depth.py` in this session's scratchpad). Checks: am_upto_0 = am_0 and am_upto_4 = am_final to 1e-15; history unchanged. Oracle drafts without a child count as all-pass (oracle gives no critique only when no question fails). New metrics noted; pull done.

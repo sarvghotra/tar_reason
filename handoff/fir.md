@@ -2,20 +2,15 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-13 08:00 PDT)
-- **Nothing running on Fir. Fir GPU outage from today 10:00 PDT** (reservation `GPUoutage`, end not given).
-- **t11 (`darshan_t11_fir`) done**, 300 steps (`runs.md`): final AM 0.828 at step 0 and at 300, own-critique fix 42.6% → 46.4%,
-  stop decision oscillates between evals (looks_good on failing drafts 0.09 … 0.22 … 0.09). Kept: checkpoint-50…300 in
-  `~/scratch/tar_reason_kept/darshan_t11_fir/`. wandb complete: https://wandb.ai/darshan-singh/tar_reasoning/runs/darshan_t11_fir
-- **Tasks C and E (code) done**: `--context_mode mdp` (eval-only, `b0e0e34`), `--chain_siblings` chain-mode multi-round
-  training (`a011791`), launchers `bash_fir_mr.sh` / `bash_tamia_mr.sh`; Fir multi-round smoke 64622474 passed.
-  Task F (N=4 from t8) waits for the user + jeet; with Fir down it would run on TamIA (`bash_tamia_mr.sh`).
-- **MDP training now supported** (`7ff8bee`: one row per node, own segment only; CPU tests pass); launchers default
-  `CONTEXT_MODE=mdp` because TamIA's B/C showed full history degrades t8 after round 1 and mdp does not.
-  GPU smoke of MDP training (64740914, 1 node) **passed** (30 min, no errors, checkpoint-2, `Done.`).
-- Hardened launcher (node-local staging of envs + weights, `STAGE_LOCAL=1`) in `bash_fir_t11.sh` and `bash_fir_mr.sh`;
-  the env archive `~/scratch/stage/envs_tar_qwenjudge.tar.zst` must be rebuilt after any env change (command in the launcher).
-- Watcher: none needed (nothing running).
+## Now (2026-10-13, evening PDT)
+- **Task F submitted: `darshan_mr_fir`** (64862883 → 64862884 `afterany`, 4 nodes × 24 h, 300 steps): N=4 chain-mode MDP training
+  from merged t8, `--draft_reward children_r1` (`d14d6e6`, user-approved; each draft judged after one refinement), LR 5e-5,
+  depth-4 mdp val800 evals every 100 steps. Pending in the queue. Watch for: step time (~5 min/step expected), KL, `train/chain_*`.
+- Plan F–N in `runs.md`: G (from SFT) on TamIA in parallel; H (official GenEval2 depth-4 MDP), I (base Tar), J (GenAI-bench) on
+  Mila; L (am_upto backfill) TamIA + Mila; M (stop vs content split) TamIA; N done here (no unrecognised stop phrases).
+- Fir's GPU outage is over. t11 done (results in `runs.md`); kept checkpoints in `~/scratch/tar_reason_kept/`.
+- Hardened launcher (`STAGE_LOCAL=1`) in `bash_fir_t11.sh` and `bash_fir_mr.sh`; rebuild the env archive after any env change.
+- Watcher: none yet (offer to start one on 64862883 when it starts).
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
@@ -47,6 +42,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-13: user approved F (children_r1), G now on TamIA, GenAI-bench on Mila. `d14d6e6` children_r1 + test; N done; F submitted 64862883/84; Inbox to TamIA (G, M) and Mila (H, I, J).
 - 2026-10-13: asked TamIA (`t8_depth4_full/mdp_tamia`) and Mila (`depth4_t8_geneval2_part1/2`) to backfill `am_upto_d` into their wandb summaries.
 - 2026-10-13: Inbox from TamIA handled: tasks B and C done (full history degrades t8 after round 1, mdp does not) -> F defaults to mdp; TamIA multi-round smoke passed.
 - 2026-10-13 08:22: MDP-training smoke 64740914 passed.

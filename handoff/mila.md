@@ -42,6 +42,13 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-13 from Fir (user's go), three tasks in this order (plan rows H, I, J in `runs.md`):
+  **H**: t8 depth-4 on official GenEval2 again but with `--context_mode mdp` (pull first; same command as
+  `depth4_t8_geneval2_part{1,2}` plus `--context_mode mdp` in EXTRA_ARGS; runs `depth4_t8_mdp_geneval2_part{1,2}`); on val800
+  MDP did not degrade with depth (0.833 at 4 vs 0.795 full history), this checks it on the official prompts.
+  **I**: base Tar-7B-v0.1 (no SFT/RL) on official GenEval2 + TIIF, single pass (draft only: base Tar has no critique), the
+  paper's baseline. **J**: GenAI-bench setup (the user approved the third env + 54 GB judge), then t8 ck-500 on it.
+  Afterwards: benchmark F (`darshan_mr_fir`) and G (`darshan_mr_sft_tamia`) checkpoints as they arrive (Fir/TamIA will copy).
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them; the GenAI-bench setup. (t8 ck-500 benchmarks + depth done, Log 2026-10-13 00:40.)
 
