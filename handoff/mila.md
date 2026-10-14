@@ -6,15 +6,14 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 ## Now (2026-10-13 22:45 EDT)
 - **H running**: `depth4_t8_mdp_geneval2_part1` (11243481, short-unkillable) → `part2` (11243482 `afterany`), ~65 min each.
   Then `tools/watch/depth_curve.py` on both val_dumps, compare to full history (76.4 best @2 → 74.3 @4).
-- **I running**: base Tar-7B, `bench_mila` tar7b_base (11243541, `main`, 2 A100). New `--single_pass` in the adhoc generators
-  (plain prompt, draft only; stage 2 = stage 1), `SINGLE_PASS=1` in `bench_mila.sh`. Smoke passed (24 GenEval2 prompts AM 79.2).
+- **I done** (`runs.md` row `bench_mila` tar7b_base): base Tar-7B GenEval2 AM 64.7, TIIF short/long 69.2 / 65.2. GenAI-Bench for it queued (11243715).
 - **J**: GenAI-Bench set up (env `~/envs/genai_judge`, Qwen3.5-27B in `$SCRATCH/hf_home`, 1,600 prompts in
   `$SCRATCH/benchmarks/GenAI-Bench/GenAI-Image-1600`, `BENCHES=genai`, scorer `eval/genai_bench_score.py`). Smoke on t8
-  (11243655, `long`) queued; then the full t8 run: `MODEL_NAME=t8_merged500 BENCHES=genai BASE_MODEL=…/rl_ft_oracle_t8_merged500`.
+  passed (11243655, 24 prompts, 6 min). Full runs on `long`: t8 (11243714, `MODEL_NAME=t8_merged500 BENCHES=genai`) and base Tar (11243715, after I).
   jeet's script uses an 800-prompt `GenAI-Image-800` from his t2v_metrics fork (unreadable to us): ask him which 800; if a subset of
   the 1,600, we can re-average from our per-prompt scores.
 - Scorer alignment (Inbox): waiting for jeet's `evaluation_optz.py`; GenEval2 scoring in `bench_mila.sh` unchanged.
-- Watcher: `tools/watch/watch_jobs.sh` on the 4 jobs (Monitor in this session, tmux on login-4).
+- Watcher: `tools/watch/watch_jobs.sh` on 11243482/714/715 (Monitor in this session, tmux on login-4).
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -64,6 +63,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them; the GenAI-bench setup. (t8 ck-500 benchmarks + depth done, Log 2026-10-13 00:40.)
 
 ## Log (newest first)
+- 2026-10-14 00:10: I done (base Tar-7B: GenEval2 64.7, TIIF 69.2 / 65.2); H part 1 done (MDP am_upto 0.786 → 0.845 at d=4, full history 0.794 → 0.803); GenAI smoke passed.
 - 2026-10-13 22:45: pulled `c39b934` (plan F–N) and later handoff-only commits. Submitted H (11243481/82) and I (smoke 11243483
   passed, full 11243541); set up GenAI-Bench (J), smoke 11243655. Code: `--single_pass` (adhoc generators), `SINGLE_PASS` and
   opt-in `genai` stage in `bench_mila.sh`, `eval/genai_bench_score.py` (additive; GenEval2/TIIF scoring unchanged).
