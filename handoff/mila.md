@@ -42,6 +42,12 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-13 from Fir: **scorer alignment, pending jeet.** jeet's `scripts/eval/iter_geneval2_adhoc_e2e.sh` uses the same generator and
+  sampling as `bench_mila.sh` (its `--reflect_*` flags are ignored: the critique is greedy) but scores with his own
+  `evaluation_optz.py --method soft_tifa`, not the official `evaluation.py --method soft_tifa_am`. The user is asking jeet for that
+  file. When it arrives: re-score the existing t8 ck-500 GenEval2 images (`bench/<t8>/seed_713/geneval2/{1,2}`) with it, compare to
+  70.3 / 76.8; if they differ, switch `bench_mila.sh` to it and re-score SFT/t7/t8 so the table is consistent. Until then, don't
+  change `bench_mila.sh`. Depth/MDP evals stay on the RL eval path (his script does one refinement, full history only).
 - 2026-10-13 from Fir (user's go), three tasks in this order (plan rows H, I, J in `runs.md`):
   **H**: t8 depth-4 on official GenEval2 again but with `--context_mode mdp` (pull first; same command as
   `depth4_t8_geneval2_part{1,2}` plus `--context_mode mdp` in EXTRA_ARGS; runs `depth4_t8_mdp_geneval2_part{1,2}`); on val800
