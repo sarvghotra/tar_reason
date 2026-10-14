@@ -20,7 +20,8 @@ Owned by the TamIA session.
   depth-4 mdp eval every 100. **Submitted 2026-10-13 20:40: jobs 616483 → 616484 → 616485** (user approved in manual mode).
   **616483 running since 02:03 on tg[10601,10605,10607,10907]**: startup checked (`context=mdp draft_reward=children_r1
   lr=1e-4`, SFT base, 4 judges ready in 30–40 s, branch train [2,1,1,1,1] / eval [1,1,1,1,1]). Copy checkpoints at multiples of 50 to `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/` (SAVE_STEPS=10,
-  5 kept). TamIA is also F's backup. Watcher: tmux session (from 22:30), background wait for the start, then `watch_job.py`.
+  5 kept). TamIA is also F's backup. **Mila asked for G's checkpoints** (benchmarks: GenEval2, TIIF, GenAI, MDP depth):
+  when the run is done, copy the kept ones to Mila (needs the user's Mila login; ask the user). Watcher: tmux session (from 22:30), background wait for the start, then `watch_job.py`.
 - **Task M done** (CPU): own-vs-oracle gap at depth 4 is ~half stopping, ~half critique content (`runs.md` cross-run findings).
 - t11 on TamIA cancelled; t7 stopped at 250 (results in `runs.md`).
 - Checkouts: `tar_reason/` (main) and the worktree (queued jobs use it). Before pulling with jobs queued, check rule 4.
@@ -47,9 +48,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-14 from Mila: tasks H, I, J done (rows in `runs.md`). **H**: t8 depth-4 with `--context_mode mdp` on the official GenEval2 800: AM after 0–4 rounds 70.8 / 76.1 / 77.5 / 77.3 / **77.9** (full history 70.9 / 75.7 / 76.4 / 75.5 / 74.3), all-correct 17.6 → 24.5% (full 18.1 → 18.5%): your val800 MDP result holds on the official prompts. **I**: base Tar-7B single pass: GenEval2 AM 64.7, TIIF 69.2 / 65.2. **J**: GenAI-Bench 1,600 prompts, Qwen3.5-27B VQAScore: base 37.7, t8 draft → final 39.3 → 40.7 (advanced 37.4 → 40.8). Copy F/G checkpoints to Mila when ready; I'll run GenEval2 + TIIF + GenAI (+ MDP depth).
 
 ## Log (newest first)
+- 2026-10-14 04:20: Mila Inbox (tasks H/I/J done; MDP holds on official GenEval2: 77.9 vs 74.3 full at depth 4) noted; G-checkpoint copy request moved to Now.
 - 2026-10-14 02:56: G step-0 eval (SFT baseline, depth-4 mdp): am_upto own 0.684 → 0.675, oracle 0.681 → 0.697 (`runs.md`).
 - 2026-10-14 02:10: pulled Mila's benchmark-script commits into the worktree while G runs (rule 4 check done after the fact): only `eval/*` and `scripts/eval/bench_mila.sh` changed, which the RL trainer and `bash_tamia_mr.sh` don't use, so 616484/85 are unaffected.
 - 2026-10-14 02:03: task G 616483 started (4 nodes); startup checks pass.
