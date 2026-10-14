@@ -110,11 +110,13 @@ def add_vllm_arguments(parser: argparse.ArgumentParser) -> None:
     # call is strictly better than the small HF batch; the flush interval grows
     # with it so part files stay a reasonable size.
     parser.set_defaults(batch_size=64, flush_rows=256)
-    parser.add_argument("--gpu_memory_utilization", type=float, default=0.90,
-                        help="Fraction of each GPU vLLM may claim for weights + KV cache.")
-    parser.add_argument("--max_model_len", type=int, default=None,
-                        help="Context length cap (default: the model config's). Lowering it "
-                             "frees KV cache for more concurrent sequences.")
+    parser.add_argument("--gpu_memory_utilization", type=float, default=0.85,
+                        help="Fraction of each GPU vLLM may claim for weights + KV cache. The rest holds SAM 3 for the "
+                             "detector counts (about 2 GB of weights plus activations; see --count_batch_size).")
+    parser.add_argument("--max_model_len", type=int, default=16384,
+                        help="Context length cap. A critique prompt is ~2.2k tokens (system prompt, image at "
+                             "--max_pixels, caption, detector counts) plus up to two retry turns and 4k thinking "
+                             "tokens; the model's own 262k does not fit next to SAM 3 at --gpu_memory_utilization 0.85.")
     parser.add_argument("--max_num_seqs", type=int, default=64,
                         help="Sequences the engine runs concurrently.")
     parser.add_argument("--swap_space", type=float, default=None,

@@ -21,7 +21,7 @@ set -euo pipefail
 MODEL=/home/mila/s/sarvjeet-singh.ghotra/scratch/models/pre_train/Qwen3.6-27B
 INPUT_DIR=/home/mila/s/sarvjeet-singh.ghotra/scratch/data/syn_data_critique/conceptmix/prompts_13K_vqa_unverif_2/
 OUTPUT_DIR=/home/mila/s/sarvjeet-singh.ghotra/scratch/data/syn_data_critique/conceptmix/prompts_13K_vqa_unverif_2_critic
-MODE=${MODE:-Instruct}   # Instruct | Thinking (case-insensitive)
+MODE=${MODE:-Thinking}   # Instruct | Thinking (case-insensitive)
 
 # mkdir -p "$OUTPUT_DIR"
 
@@ -33,7 +33,6 @@ python util_scripts/create_data/gen_critic/generate_critic_hf_parquet.py \
     --batch_size 8 \
     --flush_rows 64 \
     --max_pixels 262144 \
-    --mode Thinking \
     --seed 1119 \
 
 # --samples 16 \
