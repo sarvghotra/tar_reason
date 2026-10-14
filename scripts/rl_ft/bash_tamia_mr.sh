@@ -78,7 +78,7 @@ HYBRID_ORACLE_FRAC=0.5
 ORACLE_FAIL_THRESHOLD=0.5
 
 BREAK_WEIGHT=2.0
-DRAFT_REWARD=${DRAFT_REWARD:-children}
+DRAFT_REWARD=${DRAFT_REWARD:-children_r1}  # every draft judged after one refinement (chain depths differ)
 STOP_PENALTY=0.5
 STOP_THRESHOLD=0.8
 MIN_REFINES=0

@@ -11,6 +11,7 @@ Per optimizer step, each rank:
      score(node)    = a*AM + (1-a)*GM of the node's image
      reward(draft)  = score(draft)                          (--draft_reward own)
                     = mean score over the draft's leaves    (--draft_reward children)
+                    = mean score of its round-1 children    (--draft_reward children_r1)
      reward(round k)= score(child) - score(parent)          (refined)
                     = -stop_penalty * max(0, stop_threshold - score(parent))
                                                             ("looks good")
@@ -111,10 +112,13 @@ def parse_args():
                    help="Decoded images per POST to the reward server.")
     p.add_argument("--reward_decode_batch", type=int, default=8,
                    help="Images de-tokenized per de-tokenizer forward pass.")
-    p.add_argument("--draft_reward", default="own", choices=["own", "children"],
+    p.add_argument("--draft_reward", default="own", choices=["own", "children", "children_r1"],
                    help="own: a draft is rewarded with its own score. children: with the "
                         "mean final score of its leaves, so it is credited for the outcome "
-                        "of the whole trajectory (refinement tokens keep the parent baseline).")
+                        "of the whole trajectory (refinement tokens keep the parent baseline). "
+                        "children_r1: with the mean score of its round-1 children, i.e. the "
+                        "outcome after one refinement for every draft (= children for one-round "
+                        "trees; for chain mode, where drafts of a prompt reach different depths).")
     p.add_argument("--stop_penalty", type=float, default=0.0,
                    help="A 'looks good' child is rewarded -stop_penalty * max(0, "
                         "stop_threshold - parent_score) instead of 0, so stopping on an "
@@ -455,8 +459,10 @@ def score_tree(batch: RolloutBatch, reward, draft_reward: str = "own",
     parent's (the parent score is the within-group baseline; see refine_reward
     for ``break_weight``); a "looks good" child gets
     ``-stop_penalty * max(0, stop_threshold - parent_score)``; a draft gets its
-    own score (``draft_reward="own"``) or the mean final score of its leaves
-    (``"children"``). Intermediate rounds of deeper trees keep the
+    own score (``draft_reward="own"``), the mean final score of its leaves
+    (``"children"``) or the mean score of its round-1 children (``"children_r1"``;
+    a "looks good" child carries the draft's score, a draft with no child keeps
+    its own). Intermediate rounds of deeper trees keep the
     parent-relative delta.
     """
     score_nodes([n for level in batch.nodes_by_round for n in level
@@ -476,6 +482,10 @@ def score_tree(batch: RolloutBatch, reward, draft_reward: str = "own",
         for root in batch.roots:
             leaves = descendant_leaves(root)
             root.reward = sum(reward.combine(l.am, l.gm) for l in leaves) / len(leaves)
+    elif draft_reward == "children_r1":
+        for root in batch.roots:
+            if root.children:
+                root.reward = sum(reward.combine(c.am, c.gm) for c in root.children) / len(root.children)
     elif draft_reward != "own":
         raise ValueError(f"Unknown draft_reward {draft_reward}")
 
