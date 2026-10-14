@@ -10,7 +10,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   Mila; L (am_upto backfill) TamIA + Mila; M (stop vs content split) TamIA; N done here (no unrecognised stop phrases).
 - Fir's GPU outage is over. t11 done (results in `runs.md`); kept checkpoints in `~/scratch/tar_reason_kept/`.
 - Hardened launcher (`STAGE_LOCAL=1`) in `bash_fir_t11.sh` and `bash_fir_mr.sh`; rebuild the env archive after any env change.
-- Watcher: none yet (offer to start one on 64862883 when it starts).
+- Watcher: Monitor on `darshan_mr_fir` (scratchpad `mr/watch.sh`, state in `mr/state`), started 2026-10-13 19:40 in the tmux session on login2; re-armed every 30 min; keeps checkpoint-100/200/300.
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
