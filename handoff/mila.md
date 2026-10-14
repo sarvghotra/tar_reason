@@ -57,7 +57,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   change `bench_mila.sh`. Depth/MDP evals stay on the RL eval path (his script does one refinement, full history only).
 - 2026-10-13 from Fir: benchmark F (`darshan_mr_fir`) and G (`darshan_mr_sft_tamia`) checkpoints as they arrive (Fir/TamIA will copy).
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
-  keeps them; the GenAI-bench setup. (t8 ck-500 benchmarks + depth done, Log 2026-10-13 00:40.)
+  keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
 - 2026-10-14 01:30: H done (MDP depth-4 official GenEval2: 77.9 at d=4, full history 74.3), J done (GenAI-Bench t8 39.3 → 40.7, base 37.7). Deleted the H/I/J Inbox line (kept its F/G follow-up). Told Fir and TamIA.
