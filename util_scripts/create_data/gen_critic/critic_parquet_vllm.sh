@@ -7,8 +7,13 @@
 #SBATCH --cpus-per-task=24
 #SBATCH --job-name=critic_vllm
 #SBATCH --partition long
-#SBATCH -o /home/mila/s/sarvjeet-singh.ghotra/scratch/data/critique/geneval_critique/cric_logs/cri_%j_%t.out
-#SBATCH -e /home/mila/s/sarvjeet-singh.ghotra/scratch/data/critique/geneval_critique/cric_logs/cri_%j_%t.err
+#SBATCH -o /home/mila/s/sarvjeet-singh.ghotra/scratch/data/critique/geneval_critique/cric_logs/cri_%A_%a.out
+#SBATCH -e /home/mila/s/sarvjeet-singh.ghotra/scratch/data/critique/geneval_critique/cric_logs/cri_%A_%a.err
+
+# Multi-node: submit as a job array, one node per array task, e.g.
+#   sbatch --array=0-3 util_scripts/create_data/gen_critic/critic_parquet_vllm.sh
+# Each task takes every NUM_SHARDS-th input file starting at SHARD_ID. Keep the
+# array size fixed across resubmits, or resume will not find its progress files.
 
 export TRITON_CACHE_DIR=/tmp/triton_cache_$SLURM_JOB_ID   # local disk, not NFS
 export TRITON_HOME=/tmp/triton_home_$SLURM_JOB_ID
@@ -49,6 +54,10 @@ MODE=${MODE:-Thinking}   # Instruct | Thinking (case-insensitive)
 # per GPU (data-parallel) instead of sharding one engine over all four.
 GPUS_PER_REPLICA=${GPUS_PER_REPLICA:-1}
 
+# Without --array these fall back to a single shard (the whole input).
+NUM_SHARDS=${NUM_SHARDS:-${SLURM_ARRAY_TASK_COUNT:-1}}
+SHARD_ID=${SHARD_ID:-${SLURM_ARRAY_TASK_ID:-0}}
+
 # mkdir -p "$OUTPUT_DIR"
 
 python util_scripts/create_data/gen_critic/generate_critic_vllm_paraquet.py \
@@ -57,6 +66,8 @@ python util_scripts/create_data/gen_critic/generate_critic_vllm_paraquet.py \
     --model "$MODEL" \
     --mode "$MODE" \
     --gpus_per_replica "$GPUS_PER_REPLICA" \
+    --num_shards "$NUM_SHARDS" \
+    --shard_id "$SHARD_ID" \
     --batch_size 256 \
     --flush_rows 256 \
     --max_num_seqs 64 \
@@ -67,6 +78,12 @@ python util_scripts/create_data/gen_critic/generate_critic_vllm_paraquet.py \
 
 # --samples 16 \
 
+
+# Only one array task renders the viz; it shows whatever the other shards have
+# written so far, so rerun it by hand once the whole array has finished.
+if [ "$SHARD_ID" -ne 0 ]; then
+    exit 0
+fi
 
 mamba activate tar
 
