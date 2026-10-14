@@ -3,16 +3,18 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-13 00:40 EDT)
-- **Nothing running on Mila.** Task D (plan): t8 ck-500 done on the official benchmarks (GenEval2 final 76.8, TIIF
-  short/long final 70.5/68.6) and on depth (official GenEval2, full history: best at 2 rounds, 76.4; rounds 3–4 lower
-  it to 74.3). Both in `runs.md`.
-- **Open items of task D:** t11 checkpoints 150/200/300 once Fir keeps them (t11 step-150 val800 is flat vs step 0,
-  per `runs.md`), and the GenAI-bench setup (needs the user's go-ahead: third env with transformers ≥ 5, 54 GB judge).
-- To benchmark another checkpoint: `MODEL_NAME=<label> LORA_PATH=<ckpt> sbatch scripts/eval/bench_mila.sh`
-  (merged models: `BASE_MODEL=<dir>`, no `LORA_PATH`), ~66 min on 4× A100. Depth: `bash_mila_t7.sh` with
-  `MAX_STEPS=0 EVAL_ORACLE=0 VAL_JSONL=<split> EXTRA_ARGS="--model_name_or_path <model> --eval_branch 1,1,1,1,1
-  --val_dump_dir output_dir/<run>/val_dump"` (~70–80 min per 400 prompts), then `tools/watch/depth_curve.py <dumps>`.
+## Now (2026-10-13 22:45 EDT)
+- **H running**: `depth4_t8_mdp_geneval2_part1` (11243481, short-unkillable) → `part2` (11243482 `afterany`), ~65 min each.
+  Then `tools/watch/depth_curve.py` on both val_dumps, compare to full history (76.4 best @2 → 74.3 @4).
+- **I running**: base Tar-7B, `bench_mila` tar7b_base (11243541, `main`, 2 A100). New `--single_pass` in the adhoc generators
+  (plain prompt, draft only; stage 2 = stage 1), `SINGLE_PASS=1` in `bench_mila.sh`. Smoke passed (24 GenEval2 prompts AM 79.2).
+- **J**: GenAI-Bench set up (env `~/envs/genai_judge`, Qwen3.5-27B in `$SCRATCH/hf_home`, 1,600 prompts in
+  `$SCRATCH/benchmarks/GenAI-Bench/GenAI-Image-1600`, `BENCHES=genai`, scorer `eval/genai_bench_score.py`). Smoke on t8
+  (11243655, `long`) queued; then the full t8 run: `MODEL_NAME=t8_merged500 BENCHES=genai BASE_MODEL=…/rl_ft_oracle_t8_merged500`.
+  jeet's script uses an 800-prompt `GenAI-Image-800` from his t2v_metrics fork (unreadable to us): ask him which 800; if a subset of
+  the 1,600, we can re-average from our per-prompt scores.
+- Scorer alignment (Inbox): waiting for jeet's `evaluation_optz.py`; GenEval2 scoring in `bench_mila.sh` unchanged.
+- Watcher: `tools/watch/watch_jobs.sh` on the 4 jobs (Monitor in this session, tmux on login-4).
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -21,7 +23,10 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   `mila code CODE/LatentDCR --alloc …` (runs on a compute node, not a login node). Resume:
   `cd ~/CODE/LatentDCR && claude --resume 830290ea-cb02-4188-9cf2-1c5fb3768fa2`. No tmux login node chosen yet
   (Mila's `login.server.mila.quebec` round-robins over several login nodes; pick one with `ssh login-N`).
-- Envs: `~/envs/tar` (training), `~/envs/qwen_judge` (judge; freeze in `~/envs/qwen_judge.freeze.txt`).
+- Envs: `~/envs/tar` (training), `~/envs/qwen_judge` (judge; freeze in `~/envs/qwen_judge.freeze.txt`), `~/envs/genai_judge`
+  (GenAI-Bench: Python 3.11, torch 2.8.0+cu128, transformers 5.19, upstream `$SCRATCH/git/t2v_metrics` editable @ `6ecb74f`;
+  freeze in `~/envs/genai_judge.freeze.txt`). `import t2v_metrics` needs `ffmpeg` on PATH: a symlink to the imageio-ffmpeg
+  binary sits in the env's `bin/`, which `bench_mila.sh` puts on PATH. Run it without tar_reason on PYTHONPATH.
 - Weights: `$SCRATCH/models/tar/` (Tar-7B, `ta_tok.pth`, `ar_dtok_lp_512px.pth`, `vq_ds16_t2i.pt`,
   `siglip2-so400m-patch14-384/config.json`, `sft/slf_ref_edit_t21_ckpt17000`), `$SCRATCH/models/vlm/Qwen3-VL-8B-Instruct`.
 - Data: `$SCRATCH/data/geneval2_50K_v2/` (train 49,000 + val800 + val256). `$SCRATCH/data/geneval2_50K/` is the
@@ -59,6 +64,9 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them; the GenAI-bench setup. (t8 ck-500 benchmarks + depth done, Log 2026-10-13 00:40.)
 
 ## Log (newest first)
+- 2026-10-13 22:45: pulled `c39b934` (plan F–N) and later handoff-only commits. Submitted H (11243481/82) and I (smoke 11243483
+  passed, full 11243541); set up GenAI-Bench (J), smoke 11243655. Code: `--single_pass` (adhoc generators), `SINGLE_PASS` and
+  opt-in `genai` stage in `bench_mila.sh`, `eval/genai_bench_score.py` (additive; GenEval2/TIIF scoring unchanged).
 - 2026-10-13 20:40: backfilled `val/am_upto_{0..4}` and `val/allpass_upto_{0..4}` into the wandb summaries of
   `depth4_t8_geneval2_part1/2` (Fir inbox, user request), recomputed from each run's val_dump with `tree_stats`'
   definition @ `7d568ff`; checked `am_upto_0` = `am_0` and `am_upto_4` = `am_final` in both, and the 800-prompt mean

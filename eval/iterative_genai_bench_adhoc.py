@@ -95,6 +95,9 @@ def parse_args():
     parser.add_argument("--bf16", action=argparse.BooleanOptionalAction,
                         default=True)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--single_pass", action="store_true",
+                        help="Base-model baseline: plain prompt (no iterative prefix), "
+                             "draft only; stage 2 repeats stage 1.")
     parser.add_argument("--verbose", action="store_true",
                         help="Print the generated sequences (image runs elided).")
     parser.add_argument("--strip_photo_prefix",

@@ -92,6 +92,9 @@ def parse_args():
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--single_pass", action="store_true",
+                        help="Base-model baseline: plain prompt (no iterative prefix), "
+                             "draft only; stage 2 repeats stage 1.")
     parser.add_argument("--verbose", action="store_true",
                         help="Print the generated sequences (image runs elided).")
     parser.add_argument("--strip_photo_prefix",
@@ -222,7 +225,8 @@ def summarize_model_output(text, head=2, tail=3):
 def make_prefix(tokenizer, prompt, args):
     messages = [
         {"role": "system", "content": args.system_prompt},
-        {"role": "user", "content": ITERATIVE_PROMPT_PREFIX + prompt},
+        {"role": "user", "content": prompt if getattr(args, "single_pass", False)
+         else ITERATIVE_PROMPT_PREFIX + prompt},
     ]
     return tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
@@ -317,6 +321,18 @@ def generate_batch(model, tokenizer, visual_tok, prompts, image_token_map,
     prefixes = [make_prefix(tokenizer, prompt, args) for prompt in prompts]
     phase1_rows = tokenizer(prefixes, add_special_tokens=False).input_ids
     codes1, image1_ids = generate_image_codes(phase1_rows, gen_seq_len=args.draft_gen_seq_len)
+    if getattr(args, "single_pass", False):
+        # Base-model baseline: one image from the plain prompt, no critique; the
+        # "final" image is the draft.
+        visual_tok.ar_model.cls_token_num = args.draft_gen_seq_len
+        visual_tok.encoder.pool_scale = args.draft_img_scale + 1
+        images = []
+        for code_batch in even_chunks(torch.tensor(codes1, dtype=torch.long),
+                                      args.decode_batch_size):
+            images.extend(visual_tok.decode_from_encoder_indices(
+                code_batch.to(device, non_blocking=True), {"cfg_scale": args.cfg_scale}))
+        firsts = [Image.fromarray(image.numpy()) for image in images]
+        return [(image, image, "") for image in firsts]
 
     # ── Phase 2: self-reflection text ────────────────────────────────────────
     reflect_prefix_ids = encode("<im_end>\nSelf-reflect:")

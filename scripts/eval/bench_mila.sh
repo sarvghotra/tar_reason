@@ -20,7 +20,11 @@
 #
 #   MODEL_NAME=sft_t21 sbatch scripts/eval/bench_mila.sh
 #   MODEL_NAME=t7mila_ck200 LORA_PATH=$SCRATCH/tar_reason/kept/darshan_t7_mila/checkpoint-200 sbatch scripts/eval/bench_mila.sh
-# Optional: SEED (713), BENCHES ("geneval2 tiif"), BASE_MODEL (the t21 SFT checkpoint),
+# Base Tar baseline (single pass: plain prompt, no critique; final = draft):
+#   MODEL_NAME=tar7b_base BASE_MODEL=$SCRATCH/models/tar/Tar-7B SINGLE_PASS=1 sbatch scripts/eval/bench_mila.sh
+# GenAI-Bench (1,600 prompts, VQAScore with Qwen3.5-27B via t2v_metrics in ~/envs/genai_judge) is opt-in:
+#   BENCHES="genai" (or "geneval2 tiif genai").
+# Optional: SEED (713), BENCHES ("geneval2 tiif"), BASE_MODEL (the t21 SFT checkpoint), SINGLE_PASS (0),
 # SMOKE=1 (24 GenEval2 prompts + the TIIF 2d_spatial_relation dimension only; results go to
 # <MODEL_NAME>_smoke and are not comparable).
 # Every stage leaves a .done marker; resubmitting the same command skips finished stages, so a
@@ -37,12 +41,14 @@ MODEL_NAME=${MODEL_NAME:?set MODEL_NAME (a label for the results folder)}
 SEED=${SEED:-713}
 BENCHES=${BENCHES:-geneval2 tiif}
 SMOKE=${SMOKE:-0}
+SINGLE_PASS=${SINGLE_PASS:-0}
 [ "$SMOKE" = 1 ] && MODEL_NAME=${MODEL_NAME}_smoke
 OUT=/network/scratch/s/singhsd/tar_reason/bench/${MODEL_NAME}/seed_${SEED}
 N_GPUS=${N_GPUS:-${SLURM_GPUS_ON_NODE:-4}}
 TAR_PY=/home/mila/s/singhsd/envs/tar/bin/python
 TAR_TORCHRUN=/home/mila/s/singhsd/envs/tar/bin/torchrun
 JUDGE_PY=/home/mila/s/singhsd/envs/qwen_judge/bin/python
+GENAI_PY=/home/mila/s/singhsd/envs/genai_judge/bin/python   # t2v_metrics, transformers >= 5; its bin/ has ffmpeg (imported by t2v_metrics)
 export HF_HOME=/network/scratch/s/singhsd/hf_home          # Qwen3-VL-8B / Qwen2.5-VL-7B caches
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
 export PYTHONPATH=${REPO}
@@ -60,7 +66,8 @@ GEN_ARGS=(--model "$BASE_MODEL" "${LORA_ARG[@]}" --seed "$SEED"
           --batch_size 32 --decode_batch_size 32
           --ar_path ${MODELS}/ar_dtok_lp_512px.pth --encoder_path ${TMP_DIR}/ta_tok.pth
           --decoder_path ${MODELS}/vq_ds16_t2i.pt)
-echo "N_GPUS=${N_GPUS} MODEL_NAME=${MODEL_NAME} BASE_MODEL=${BASE_MODEL} LORA_PATH=${LORA_PATH:-none} SEED=${SEED} BENCHES=${BENCHES} job=${SLURM_JOB_ID:-local} host=$(hostname)"
+[ "$SINGLE_PASS" = 1 ] && GEN_ARGS+=(--single_pass)
+echo "N_GPUS=${N_GPUS} MODEL_NAME=${MODEL_NAME} BASE_MODEL=${BASE_MODEL} LORA_PATH=${LORA_PATH:-none} SEED=${SEED} SINGLE_PASS=${SINGLE_PASS} BENCHES=${BENCHES} job=${SLURM_JOB_ID:-local} host=$(hostname)"
 GENEVAL2_DATA=${BENCH}/GenEval2/geneval2_data.jsonl
 TIIF_EVAL_DIR=${BENCH}/TIIF-Bench/data/testmini_eval_prompts
 DIM_ARG=()
@@ -70,6 +77,8 @@ if [ "$SMOKE" = 1 ]; then
   cp ${TIIF_EVAL_DIR}/2d_spatial_relation_eval_prompts.jsonl "$OUT/smoke_data/tiif_eval/"; TIIF_EVAL_DIR=$OUT/smoke_data/tiif_eval
   DIM_ARG=(--dimensions 2d_spatial_relation)
 fi
+GENAI_SET=${BENCH}/GenAI-Bench/GenAI-Image-1600
+GENAI_LIMIT=0; [ "$SMOKE" = 1 ] && GENAI_LIMIT=24
 done_() { [ -f "$OUT/.done_$1" ]; }
 mark() { touch "$OUT/.done_$1"; echo "$(date +%H:%M:%S) stage $1 done"; }
 
@@ -133,6 +142,36 @@ if [[ " $BENCHES " == *" tiif "* ]]; then
   fi
 fi
 
+# ---------------------------------------------------------------- GenAI-Bench (image, 1,600 prompts)
+if [[ " $BENCHES " == *" genai "* ]]; then
+  A=$OUT/genai
+  if ! done_ genai_gen; then
+    echo "$(date +%H:%M:%S) GenAI-Bench generation"
+    LIMIT_SET=$GENAI_SET
+    if [ "$GENAI_LIMIT" != 0 ]; then   # smoke: first N prompts only
+      LIMIT_SET=$OUT/smoke_data/GenAI-Image-1600; mkdir -p "$LIMIT_SET"; cp $GENAI_SET/genai_skills.json "$LIMIT_SET/"
+      $TAR_PY -c "import json,sys; d=json.load(open(sys.argv[1])); k=sorted(d)[:int(sys.argv[3])]; json.dump({x: d[x] for x in k}, open(sys.argv[2], 'w'))" \
+          $GENAI_SET/genai_image.json "$LIMIT_SET/genai_image.json" $GENAI_LIMIT
+    fi
+    $TAR_TORCHRUN --standalone --nproc_per_node=$N_GPUS eval/iterative_genai_bench_adhoc.py "${GEN_ARGS[@]}" \
+        --root_dir "$(dirname "$LIMIT_SET")" --eval_set_dir GenAI-Image-1600 --output_dir "$OUT" --gen_model genai \
+        --repeat 1 --skip_existing \
+      && mark genai_gen || { echo "GenAI-Bench generation failed"; exit 1; }
+  fi
+  if ! done_ genai_score; then
+    echo "$(date +%H:%M:%S) GenAI-Bench VQAScore (Qwen3.5-27B; draft on GPU 0, final on GPU 1)"
+    pids=()
+    for st in 1 2; do
+      CUDA_VISIBLE_DEVICES=$(( (st - 1) % N_GPUS )) PATH=$(dirname $GENAI_PY):$PATH env -u PYTHONPATH $GENAI_PY eval/genai_bench_score.py \
+          --set_dir "$GENAI_SET" --image_dir "$A/$st" --out_json "$A/$st/scores_qwen3.5-27b.json" \
+          --limit $GENAI_LIMIT > "$A/$st/score_log.txt" 2>&1 &
+      pids+=($!)
+    done
+    ok=1; for p in "${pids[@]}"; do wait $p || ok=0; done
+    [ $ok = 1 ] && mark genai_score || { echo "GenAI-Bench scoring failed; see $A/*/score_log.txt"; tail -5 $A/*/score_log.txt; exit 1; }
+  fi
+fi
+
 # ---------------------------------------------------------------- summary.json
 $JUDGE_PY - "$OUT" "$MODEL_NAME" <<'EOF'
 import json, os, sys
@@ -146,6 +185,11 @@ for st, label in (("1", "draft"), ("2", "final")):
         res[f"geneval2_{label}_am"] = 100 * sum(sum(s) / len(s) for s in lists) / len(lists)
         res[f"geneval2_{label}_gm"] = 100 * sum(gmean(s) for s in lists) / len(lists)
         res[f"geneval2_{label}_all_correct"] = 100 * sum(all(x >= 0.5 for x in s) for s in lists) / len(lists)
+    f = os.path.join(out, "genai", st, "scores_qwen3.5-27b.json")
+    if os.path.exists(f):
+        sk = json.load(open(f))["skills"]
+        for g in ("all", "basic", "advanced"):
+            if sk.get(g) is not None: res[f"genai_{label}_{g}"] = 100 * sk[g]
 dim = os.path.join(out, "tiif", "eval_results", "result_summary_dimension.txt")
 if os.path.exists(dim):
     res["tiif_summary_file"] = dim
