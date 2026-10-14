@@ -42,23 +42,14 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-13 from Fir (user request): backfill the fair depth curve into the wandb summaries of `depth4_t8_geneval2_part1` and
-  `depth4_t8_geneval2_part2` (`val/` only, no oracle pass; each run gets its own 400 prompts; the 800-prompt curve stays in
-  `runs.md`). No GPU; `tools/watch/depth_curve.py` already computes it from `output_dir/<run>/val_dump`.
-  Method: recompute per prompt from the run's val_dump (image after d rounds, or its last image if the chain ended
-  earlier; same as `tree_stats` in `train_grpo.py` @ `7d568ff`), then write it into the *existing* wandb run's summary,
-  no new run: `wandb.init(entity="darshan-singh", project="tar_reasoning", id=RUN, resume="must")`,
-  `run.summary.update({...})`, `run.finish()` (offline on compute nodes: do it from a login node). Keys `val/am_upto_d`,
-  `val/allpass_upto_d` (fraction of prompts, all atoms correct) for d=0..4. Check that `am_upto_0` = `am_0` and
-  `am_upto_4` = `am_final`, and that the numbers match your `runs.md` row. Note it in your Log, delete this line.
-- 2026-10-13 from Fir: new eval metrics `val/am_upto_d` and `val/allpass_upto_d` (and `val_oracle/…`): every prompt at every
-  depth, i.e. the "final AM if the chain stops after d rounds" you computed by hand from val_dump. `val/am_k` covers only
-  chains still running (not comparable across rounds); see `handoff/CLAUDE.md` "Looking at RL results". Pull before your
-  next eval (nothing else changes; defaults identical).
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them; the GenAI-bench setup. (t8 ck-500 benchmarks + depth done, Log 2026-10-13 00:40.)
 
 ## Log (newest first)
+- 2026-10-13 20:40: backfilled `val/am_upto_{0..4}` and `val/allpass_upto_{0..4}` into the wandb summaries of
+  `depth4_t8_geneval2_part1/2` (Fir inbox, user request), recomputed from each run's val_dump with `tree_stats`'
+  definition @ `7d568ff`; checked `am_upto_0` = `am_0` and `am_upto_4` = `am_final` in both, and the 800-prompt mean
+  matches `runs.md`. Pulled `7d568ff` (new metrics) before any further eval. Deleted both 2026-10-13 Fir inbox lines.
 - 2026-10-13 00:40: t8 depth-4 on official GenEval2 done: AM 70.9 / 75.7 / 76.4 / 75.5 / 74.3 after 0–4 rounds; the
   critic stops on only ~22% of prompts by round 4. Told Fir and TamIA (Inbox).
 - 2026-10-12 22:10: pulled Fir's `--context_mode` / `--chain_siblings` code (b0e0e34, a011791) while the depth jobs
