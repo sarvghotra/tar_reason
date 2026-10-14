@@ -11,7 +11,7 @@ Owned by the TamIA session.
   0.795 at depth 4), oracle best at depth 3 (0.867). Mila's official GenEval2 run: own critique best at depth 2
   (76.4), also declining after. Details in `runs.md`.
 - **Task C done:** `t8_depth4_mdp_tamia` (614753). With MDP context t8 does not get worse with depth: own critique
-  final AM 0.827 (depth 1) → 0.833 (depth 4), oracle 0.848 → 0.885; full history at depth 4 was 0.795 / 0.866. Details in `runs.md`.
+  final AM 0.826 (depth 1) → 0.833 (depth 4), oracle 0.848 → 0.885; full history at depth 4 was 0.795 / 0.866. Details in `runs.md`.
 - **Multi-round smoke `mr_smoke_tamia` passed** (614754, 30 min, ~4.2 min/step on 1 node): TamIA is ready for task F.
 - **No jobs queued. Waiting for the user's go on F** (and jeet's input on `draft_reward`). Worktree pulled to `5fe658e`:
   MDP training supported (`7ff8bee`), `bash_tamia_mr.sh` defaults to `CONTEXT_MODE=mdp` (`bb7d75e`); Fir's MDP-training
@@ -42,20 +42,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-13 from Fir (user request): backfill the fair depth curve into the wandb summaries of `t8_depth4_full_tamia` and
-  `t8_depth4_mdp_tamia`, for both `val/` and `val_oracle/` (no GPU; val_dumps in `tar_reason_t11/output_dir/<run>/val_dump/`).
-  Method: recompute per prompt from the run's val_dump (image after d rounds, or its last image if the chain ended
-  earlier; same as `tree_stats` in `train_grpo.py` @ `7d568ff`), then write it into the *existing* wandb run's summary,
-  no new run: `wandb.init(entity="darshan-singh", project="tar_reasoning", id=RUN, resume="must")`,
-  `run.summary.update({...})`, `run.finish()` (offline on compute nodes: do it from a login node). Keys `val/am_upto_d`,
-  `val/allpass_upto_d` (fraction of prompts, all atoms correct) for d=0..4. Check that `am_upto_0` = `am_0` and
-  `am_upto_4` = `am_final`, and that the numbers match your `runs.md` row. Note it in your Log, delete this line.
-- 2026-10-13 from Fir: new eval metrics `val/am_upto_d` and `val/allpass_upto_d` (and `val_oracle/…`): every prompt at every
-  depth, i.e. the "final AM if the chain stops after d rounds" you computed by hand from val_dump. `val/am_k` covers only
-  chains still running (not comparable across rounds); see `handoff/CLAUDE.md` "Looking at RL results". Pull before your
-  next eval (nothing else changes; defaults identical).
 
 ## Log (newest first)
+- 2026-10-13 19:45: Fir Inbox handled: backfilled `val{,_oracle}/am_upto_{0..4}` and `allpass_upto_{0..4}` into the wandb summaries of `t8_depth4_full_tamia` and `t8_depth4_mdp_tamia` (from val_dump, resume="must", no new run; script `backfill_depth.py` in this session's scratchpad). Checks: am_upto_0 = am_0 and am_upto_4 = am_final to 1e-15; history unchanged. Oracle drafts without a child count as all-pass (oracle gives no critique only when no question fails). New metrics noted; pull done.
 - 2026-10-13 19:25: wandb synced `t8_depth4_full_tamia` and `t8_depth4_mdp_tamia` (one offline folder each, in `tar_reason_t11/wandb/`); verified via the API (finished, step 0, summaries match the logs).
 - 2026-10-13 19:15: Fir Inbox (MDP training landed) handled: pulled `5fe658e` into both checkouts (nothing queued).
 - 2026-10-13 06:15: task C (`t8_depth4_mdp_tamia`, 614753) and multi-round smoke (614754) done; results to `runs.md` and Fir's Inbox. CPU tests `test_context_mode.py` and `test_chain_mode.py` passed on the t8 tokenizer.

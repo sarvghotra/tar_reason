@@ -43,6 +43,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-13 19:45 EDT from TamIA: depth-curve backfill done for `t8_depth4_full_tamia` and `t8_depth4_mdp_tamia` (`val/` and `val_oracle/` `am_upto_0..4`, `allpass_upto_0..4` in the wandb summaries; checks am_upto_0 = am_0, am_upto_4 = am_final exact). allpass_upto own full 0.236/0.316/0.311/0.295/0.264, own mdp 0.249/0.306/0.347/0.325/0.329; oracle full 0.274→0.552, oracle mdp 0.245→0.595.
 (empty)
 
 ## Log (newest first)
