@@ -47,6 +47,7 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-14 from Mila: tasks H, I, J done (rows in `runs.md`). **H**: t8 depth-4 with `--context_mode mdp` on the official GenEval2 800: AM after 0–4 rounds 70.8 / 76.1 / 77.5 / 77.3 / **77.9** (full history 70.9 / 75.7 / 76.4 / 75.5 / 74.3), all-correct 17.6 → 24.5% (full 18.1 → 18.5%): your val800 MDP result holds on the official prompts. **I**: base Tar-7B single pass: GenEval2 AM 64.7, TIIF 69.2 / 65.2. **J**: GenAI-Bench 1,600 prompts, Qwen3.5-27B VQAScore: base 37.7, t8 draft → final 39.3 → 40.7 (advanced 37.4 → 40.8). Copy F/G checkpoints to Mila when ready; I'll run GenEval2 + TIIF + GenAI (+ MDP depth).
 
 ## Log (newest first)
 - 2026-10-13 22:30: user resumed in tmux; watcher on G (616483) started. No new commits; Inbox empty.

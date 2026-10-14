@@ -53,8 +53,8 @@ tmux session named `claude` on a fixed login node only while away (so watchers k
   collaborator's t7 recipe (pixel judge, oracle/hybrid critiques) is being reproduced on Mila and Fir.
 - Next (from the paper plan): rebuild the SFT data (image-conditioned critiques for all caption families; refine
   pairs from the model's own drafts), run the diagnostic experiments, RL with reward `α·AM + (1−α)·GM`.
-- Official GenEval2 and TIIF (testmini) results exist for SFT t21, t7 and t8 (`bench_mila` in `runs.md`); GenAI-bench is not
-  set up yet. In-training validation is GenEval2-style IID prompts (val256 / val800).
+- Official GenEval2 and TIIF (testmini) results exist for base Tar-7B, SFT t21, t7 and t8; GenAI-Bench (1,600 prompts,
+  Qwen3.5-27B VQAScore) for base Tar-7B and t8 (`bench_mila` rows in `runs.md`; Mila runs them with `scripts/eval/bench_mila.sh`). In-training validation is GenEval2-style IID prompts (val256 / val800).
 
 ## Reference material
 Read the notes first; open the PDFs only for exact numbers. In `~/scratch/git/papers/` (outside the repo):
