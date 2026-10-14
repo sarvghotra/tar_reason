@@ -6,7 +6,9 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - **Task F submitted: `darshan_mr_fir`** (64862883 → 64862884 `afterany`, 4 nodes × 24 h, 300 steps): N=4 chain-mode MDP training
   from merged t8, `--draft_reward children_r1` (`d14d6e6`, user-approved; each draft judged after one refinement), LR 5e-5,
   depth-4 mdp val800 evals every 100 steps. **Running since 21:05 PDT** (4 nodes staged + judges ready in seconds). Step-0 val800 depth-4 mdp: own am_upto
-  0.779/0.825/0.829/0.830/0.835, oracle 0.774/0.844/0.867/0.874/0.882 (= TamIA's t8 mdp eval within noise). Watch for: step time (~5 min/step expected), KL, `train/chain_*`.
+  0.779/0.825/0.829/0.830/0.835, oracle 0.774/0.844/0.867/0.874/0.882 (= TamIA's t8 mdp eval within noise).
+  **Step-100** val800: own am_upto 0.763/0.813/0.833/0.830/0.834 (final flat vs 0.835; draft −0.016; round-2 gain up: delta_am_2
+  +0.025 vs +0.005, fix_2 0.35 vs 0.27; all-correct after 2 rounds 35.0% vs 32.5%); oracle 0.756/…/0.881 (flat). KL 0.10–0.18. checkpoint-100 kept. Watch for: step time (~5 min/step expected), KL, `train/chain_*`.
 - Plan F–N in `runs.md`: G (from SFT) on TamIA in parallel; H (official GenEval2 depth-4 MDP), I (base Tar), J (GenAI-bench) on
   Mila; L (am_upto backfill) TamIA + Mila; M (stop vs content split) TamIA; N done here (no unrecognised stop phrases).
 - Fir's GPU outage is over. t11 done (results in `runs.md`); kept checkpoints in `~/scratch/tar_reason_kept/`.
@@ -45,6 +47,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-14 07:40: F step-100 eval: final AM flat (0.834), draft −0.016, round 2 now gains (+0.025); checkpoint-100 kept.
 - 2026-10-13 21:05: F (64862883) started; step-0 depth-4 eval matches TamIA's t8 mdp eval (own 0.835 / oracle 0.882 at depth 4).
 - 2026-10-13: user approved F (children_r1), G now on TamIA, GenAI-bench on Mila. `d14d6e6` children_r1 + test; N done; F submitted 64862883/84; Inbox to TamIA (G, M) and Mila (H, I, J).
 - 2026-10-13: asked TamIA (`t8_depth4_full/mdp_tamia`) and Mila (`depth4_t8_geneval2_part1/2`) to backfill `am_upto_d` into their wandb summaries.
