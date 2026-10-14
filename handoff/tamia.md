@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-14 11:50 EDT)
+## Now (2026-10-14 14:10 EDT)
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -18,7 +18,8 @@ Owned by the TamIA session.
   `PREV_STAGE_CHECKPOINT=/scratch/d/dars11/models/tar/sft/slf_ref_edit_t21_ckpt17000 LR=1e-4 RUN_NAME=darshan_mr_sft_tamia
   sbatch -J darshan_mr_sft_tamia scripts/rl_ft/bash_tamia_mr.sh` (4 nodes, 12 h), chained 3× with `afterany`; 300 steps,
   depth-4 mdp eval every 100. **Submitted 2026-10-13 20:40: jobs 616483 → 616484 → 616485** (user approved in manual mode).
-  **616483 running since 02:03 on tg[10601,10605,10607,10907]**: startup checked (`context=mdp draft_reward=children_r1
+  **616483 ran 02:03–14:03 (TIMEOUT at step ~128, latest checkpoint-120); 616484 pending (Priority), resumes from 120**.
+  616483 was on tg[10601,10605,10607,10907]: startup checked (`context=mdp draft_reward=children_r1
   lr=1e-4`, SFT base, 4 judges ready in 30–40 s, branch train [2,1,1,1,1] / eval [1,1,1,1,1]). Copy checkpoints at multiples of 50 to `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/` (SAVE_STEPS=10,
   5 kept). TamIA is also F's backup. **Mila asked for G's checkpoints** (benchmarks: GenEval2, TIIF, GenAI, MDP depth):
   when the run is done, copy the kept ones to Mila (needs the user's Mila login; ask the user). Watcher: tmux session (from 22:30), background wait for the start, then `watch_job.py`.
@@ -50,6 +51,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-14 14:04: G job 616483 hit its 12 h limit at step ~128; 616484 queued to resume from checkpoint-120.
 - 2026-10-14 11:48: G step-100 eval: own final 0.675 → 0.697 (best depth 2: 0.705), oracle 0.697 → 0.728 (`runs.md`). Checkpoints 50 and 100 kept in `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`.
 - 2026-10-14 04:20: Mila Inbox (tasks H/I/J done; MDP holds on official GenEval2: 77.9 vs 74.3 full at depth 4) noted; G-checkpoint copy request moved to Now.
 - 2026-10-14 02:56: G step-0 eval (SFT baseline, depth-4 mdp): am_upto own 0.684 → 0.675, oracle 0.681 → 0.697 (`runs.md`).
