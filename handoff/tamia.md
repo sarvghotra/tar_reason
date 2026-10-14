@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-14 02:10 EDT)
+## Now (2026-10-14 11:50 EDT)
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -50,6 +50,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-14 11:48: G step-100 eval: own final 0.675 → 0.697 (best depth 2: 0.705), oracle 0.697 → 0.728 (`runs.md`). Checkpoints 50 and 100 kept in `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`.
 - 2026-10-14 04:20: Mila Inbox (tasks H/I/J done; MDP holds on official GenEval2: 77.9 vs 74.3 full at depth 4) noted; G-checkpoint copy request moved to Now.
 - 2026-10-14 02:56: G step-0 eval (SFT baseline, depth-4 mdp): am_upto own 0.684 → 0.675, oracle 0.681 → 0.697 (`runs.md`).
 - 2026-10-14 02:10: pulled Mila's benchmark-script commits into the worktree while G runs (rule 4 check done after the fact): only `eval/*` and `scripts/eval/bench_mila.sh` changed, which the RL trainer and `bash_tamia_mr.sh` don't use, so 616484/85 are unaffected.
