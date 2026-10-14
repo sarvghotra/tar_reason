@@ -46,6 +46,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-13: asked TamIA (`t8_depth4_full/mdp_tamia`) and Mila (`depth4_t8_geneval2_part1/2`) to backfill `am_upto_d` into their wandb summaries.
 - 2026-10-13: Inbox from TamIA handled: tasks B and C done (full history degrades t8 after round 1, mdp does not) -> F defaults to mdp; TamIA multi-round smoke passed.
 - 2026-10-13 08:22: MDP-training smoke 64740914 passed.
 - 2026-10-13 07:50: MDP training support (`7ff8bee`), CONTEXT_MODE in the mr launchers; smoke 64740914 submitted.
