@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-13 19:15 EDT)
+## Now (2026-10-13 20:30 EDT)
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -13,10 +13,13 @@ Owned by the TamIA session.
 - **Task C done:** `t8_depth4_mdp_tamia` (614753). With MDP context t8 does not get worse with depth: own critique
   final AM 0.826 (depth 1) → 0.833 (depth 4), oracle 0.848 → 0.885; full history at depth 4 was 0.795 / 0.866. Details in `runs.md`.
 - **Multi-round smoke `mr_smoke_tamia` passed** (614754, 30 min, ~4.2 min/step on 1 node): TamIA is ready for task F.
-- **No jobs queued. Waiting for the user's go on F** (and jeet's input on `draft_reward`). Worktree pulled to `5fe658e`:
-  MDP training supported (`7ff8bee`), `bash_tamia_mr.sh` defaults to `CONTEXT_MODE=mdp` (`bb7d75e`); Fir's MDP-training
-  GPU smoke 64740914 passed. F command (4 nodes, 12 h, chain with `afterany`): `sbatch scripts/rl_ft/bash_tamia_mr.sh`
-  (RUN_NAME `darshan_mr_tamia`). Fir is in a GPU outage from 2026-10-13 10:00 PDT, so F runs here.
+- **Task G (user's go via Fir, 2026-10-13): N=4 multi-round training from SFT**, in parallel with F (`darshan_mr_fir` on Fir).
+  Worktree at `c39b934` (`--draft_reward children_r1` default, `d14d6e6`; CPU test `test_draft_reward.py` OK). Command:
+  `PREV_STAGE_CHECKPOINT=/scratch/d/dars11/models/tar/sft/slf_ref_edit_t21_ckpt17000 LR=1e-4 RUN_NAME=darshan_mr_sft_tamia
+  sbatch -J darshan_mr_sft_tamia scripts/rl_ft/bash_tamia_mr.sh` (4 nodes, 12 h), chained 3× with `afterany`; 300 steps,
+  depth-4 mdp eval every 100. **Not submitted yet: Claude Code's auto mode blocked the multi-node sbatch**; the user approves.
+  After start: check the log prints `draft_reward=children_r1 context=mdp` and the SFT base. TamIA is also F's backup.
+- **Task M done** (CPU): own-vs-oracle gap at depth 4 is ~half stopping, ~half critique content (`runs.md` cross-run findings).
 - t11 on TamIA cancelled; t7 stopped at 250 (results in `runs.md`).
 - Checkouts: `tar_reason/` (main) and the worktree (queued jobs use it). Before pulling with jobs queued, check rule 4.
 
@@ -42,19 +45,10 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-13 from Fir (user's go): **run task G now**, in parallel with F (F = `darshan_mr_fir` on Fir, 64862883, uses the new
-  `--draft_reward children_r1`, `d14d6e6`, now the default in `bash_tamia_mr.sh`). Pull into the worktree, then
-  `PREV_STAGE_CHECKPOINT=/scratch/d/dars11/models/tar/sft/slf_ref_edit_t21_ckpt17000 LR=1e-4 RUN_NAME=darshan_mr_sft_tamia sbatch scripts/rl_ft/bash_tamia_mr.sh`
-  (4 nodes, chain a few 12 h jobs with `afterany`; 300 steps). Check the log prints `draft_reward=children_r1 context=mdp` and the SFT base.
-  LR 1e-4 is t7's (SFT start); jeet may revise it. If Fir's F stalls in the queue, TamIA is its backup.
-- 2026-10-13 from Fir (user's go): **task M** (CPU): from `t8_depth4_mdp_tamia` val_dump, split the own-vs-oracle gap at depth 4
-  (0.833 vs 0.885) into the stop decision and critique content. (1) Perfect stopping with own critiques: cut each `val/`
-  chain at its first image that passes every question (per_question ≥ 0.5) and recompute final AM / all-correct (a lower
-  bound: chains that wrongly said looks good early cannot be extended). (2) Critic stop quality per round: recall
-  (looks good | image passes) and false stops (looks good | image fails). Gap left after (1) ≈ critique content. Results to
-  `runs.md` (findings) and Fir's Inbox.
+- 2026-10-13 from Fir (user's go): task G — see Now; **submit blocked by Claude Code auto mode** (multi-node sbatch), waiting for the user to approve or submit.
 
 ## Log (newest first)
+- 2026-10-13 20:30: pulled `c39b934` (plan F–N; children_r1). Task M done (CPU, `t8_depth4_mdp_tamia` val_dump) → `runs.md`, Fir's Inbox. Task G submit blocked by auto mode.
 - 2026-10-13 19:45: Fir Inbox handled: backfilled `val{,_oracle}/am_upto_{0..4}` and `allpass_upto_{0..4}` into the wandb summaries of `t8_depth4_full_tamia` and `t8_depth4_mdp_tamia` (from val_dump, resume="must", no new run; script `backfill_depth.py` in this session's scratchpad). Checks: am_upto_0 = am_0 and am_upto_4 = am_final to 1e-15; history unchanged. Oracle drafts without a child count as all-pass (oracle gives no critique only when no question fails). New metrics noted; pull done.
 - 2026-10-13 19:25: wandb synced `t8_depth4_full_tamia` and `t8_depth4_mdp_tamia` (one offline folder each, in `tar_reason_t11/wandb/`); verified via the API (finished, step 0, summaries match the logs).
 - 2026-10-13 19:15: Fir Inbox (MDP training landed) handled: pulled `5fe658e` into both checkouts (nothing queued).

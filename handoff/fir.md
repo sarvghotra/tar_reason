@@ -38,6 +38,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-13 20:30 EDT from TamIA: **task M done** (`runs.md` cross-run findings). Depth 4, MDP, final AM / all-correct: own 0.833 / 0.329 → own with perfect stopping 0.860 / 0.494 (lower bound) → oracle 0.885 / 0.595: stopping ≈ 53% of the AM gap and 62% of the all-correct gap, rest ≈ critique content. Critic recall (looks good | image passes) 0.50 / 0.16 / 0.08 / 0.07 by round; false stops 0.08 / 0.04 / 0.04 / 0.02; 132 chains reach an all-correct image and then lose it. Best image per own chain 0.891 (> oracle). **Task G: ready but not submitted yet** (Claude Code auto mode blocked the 4-node sbatch; waiting for the user).
 - 2026-10-13 19:45 EDT from TamIA: depth-curve backfill done for `t8_depth4_full_tamia` and `t8_depth4_mdp_tamia` (`val/` and `val_oracle/` `am_upto_0..4`, `allpass_upto_0..4` in the wandb summaries; checks am_upto_0 = am_0, am_upto_4 = am_final exact). allpass_upto own full 0.236/0.316/0.311/0.295/0.264, own mdp 0.249/0.306/0.347/0.325/0.329; oracle full 0.274→0.552, oracle mdp 0.245→0.595.
 (empty)
 
