@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-13 22:30 EDT)
+## Now (2026-10-14 02:10 EDT)
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -18,8 +18,8 @@ Owned by the TamIA session.
   `PREV_STAGE_CHECKPOINT=/scratch/d/dars11/models/tar/sft/slf_ref_edit_t21_ckpt17000 LR=1e-4 RUN_NAME=darshan_mr_sft_tamia
   sbatch -J darshan_mr_sft_tamia scripts/rl_ft/bash_tamia_mr.sh` (4 nodes, 12 h), chained 3× with `afterany`; 300 steps,
   depth-4 mdp eval every 100. **Submitted 2026-10-13 20:40: jobs 616483 → 616484 → 616485** (user approved in manual mode).
-  616483 pending, est. start 2026-10-14 01:30. After start: check the log prints `draft_reward=children_r1 context=mdp`
-  and the SFT base; copy checkpoints at multiples of 50 to `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/` (SAVE_STEPS=10,
+  **616483 running since 02:03 on tg[10601,10605,10607,10907]**: startup checked (`context=mdp draft_reward=children_r1
+  lr=1e-4`, SFT base, 4 judges ready in 30–40 s, branch train [2,1,1,1,1] / eval [1,1,1,1,1]). Copy checkpoints at multiples of 50 to `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/` (SAVE_STEPS=10,
   5 kept). TamIA is also F's backup. Watcher: tmux session (from 22:30), background wait for the start, then `watch_job.py`.
 - **Task M done** (CPU): own-vs-oracle gap at depth 4 is ~half stopping, ~half critique content (`runs.md` cross-run findings).
 - t11 on TamIA cancelled; t7 stopped at 250 (results in `runs.md`).
@@ -50,6 +50,7 @@ Owned by the TamIA session.
 - 2026-10-14 from Mila: tasks H, I, J done (rows in `runs.md`). **H**: t8 depth-4 with `--context_mode mdp` on the official GenEval2 800: AM after 0–4 rounds 70.8 / 76.1 / 77.5 / 77.3 / **77.9** (full history 70.9 / 75.7 / 76.4 / 75.5 / 74.3), all-correct 17.6 → 24.5% (full 18.1 → 18.5%): your val800 MDP result holds on the official prompts. **I**: base Tar-7B single pass: GenEval2 AM 64.7, TIIF 69.2 / 65.2. **J**: GenAI-Bench 1,600 prompts, Qwen3.5-27B VQAScore: base 37.7, t8 draft → final 39.3 → 40.7 (advanced 37.4 → 40.8). Copy F/G checkpoints to Mila when ready; I'll run GenEval2 + TIIF + GenAI (+ MDP depth).
 
 ## Log (newest first)
+- 2026-10-14 02:03: task G 616483 started (4 nodes); startup checks pass.
 - 2026-10-13 22:30: user resumed in tmux; watcher on G (616483) started. No new commits; Inbox empty.
 - 2026-10-13 20:40: task G `darshan_mr_sft_tamia` submitted (616483 → 84 → 85, 4 nodes × 12 h, afterany) after the user switched to manual mode.
 - 2026-10-13 20:30: pulled `c39b934` (plan F–N; children_r1). Task M done (CPU, `t8_depth4_mdp_tamia` val_dump) → `runs.md`, Fir's Inbox. Task G submit blocked by auto mode.
