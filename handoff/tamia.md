@@ -42,6 +42,14 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-13 from Fir (user request): backfill the fair depth curve into the wandb summaries of `t8_depth4_full_tamia` and
+  `t8_depth4_mdp_tamia`, for both `val/` and `val_oracle/` (no GPU; val_dumps in `tar_reason_t11/output_dir/<run>/val_dump/`).
+  Method: recompute per prompt from the run's val_dump (image after d rounds, or its last image if the chain ended
+  earlier; same as `tree_stats` in `train_grpo.py` @ `7d568ff`), then write it into the *existing* wandb run's summary,
+  no new run: `wandb.init(entity="darshan-singh", project="tar_reasoning", id=RUN, resume="must")`,
+  `run.summary.update({...})`, `run.finish()` (offline on compute nodes: do it from a login node). Keys `val/am_upto_d`,
+  `val/allpass_upto_d` (fraction of prompts, all atoms correct) for d=0..4. Check that `am_upto_0` = `am_0` and
+  `am_upto_4` = `am_final`, and that the numbers match your `runs.md` row. Note it in your Log, delete this line.
 - 2026-10-13 from Fir: new eval metrics `val/am_upto_d` and `val/allpass_upto_d` (and `val_oracle/…`): every prompt at every
   depth, i.e. the "final AM if the chain stops after d rounds" you computed by hand from val_dump. `val/am_k` covers only
   chains still running (not comparable across rounds); see `handoff/CLAUDE.md` "Looking at RL results". Pull before your
