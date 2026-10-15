@@ -49,6 +49,29 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-14 from Fir (user's go, start now): **task 3a, stop-SFT, runs on Mila** (moved from TamIA). Goal: teach the critique WHEN
+  to say looks good (task M: ~half the own-vs-oracle gap at depth 4 is stopping; critic recall on all-pass images 0.50/0.16/0.08 by round).
+  Fir runs 3b (stop-RL, `--stop_reward`, `1057e16`, `bash_fir_stop.sh`) in parallel; both start from F and use the same eval.
+  **Model:** F checkpoint-250 (F = `darshan_mr_fir`, N=4 MDP training from merged t8; adapter only, 617 MB). The user copies it from a
+  Mila terminal: `rsync -av --exclude optimizer.pt dars11@fir.alliancecan.ca:/home/dars11/scratch/tar_reason_kept/darshan_mr_fir/checkpoint-250
+  $SCRATCH/tar_reason/kept/darshan_mr_fir/` (Fir asks for 2FA). Merge it into your merged t8 copy with `util_scripts/merge_lora.py`
+  (CPU, ~15 GB RAM) → F-merged-250 (base + reference for everything below). F-300 follows tomorrow; switch to it if the pipeline is ready.
+  **(1) Data:** roll out F-merged on ~2,000 TRAIN prompts (`geneval2_50K_v2` train, never val800), MDP chains to depth 4
+  (`--context_mode mdp`), critiques **sampled** (temperature 1.0, as in training) so wording varies; save for every image its codes, the
+  prompt + vqa_list, its critique, looks_good flag and per_question (the existing eval path with `--val_dump_dir` saves all but the image
+  codes: add a small default-off flag to also dump codes, or a separate script). Shard over several 1-node jobs (short-unkillable).
+  **(2) Labels:** image passes every question (per_question ≥ 0.5) → target = a 'looks good' critique (F's own wording when it produced
+  one for that image, else a fixed template like 'no issues, it matches the prompt.\nCorrection: looks good.'); image fails one → F's own
+  fix critique, or the oracle critique (`oracle_critique.py`) where F said looks good. Balance ~50/50 pass/fail; report counts per round.
+  **(3) Train:** one example = system + iterative prefix + prompt + that image (MDP context, same token layout as rollout `_state`) →
+  `Self-reflect: … Correction: …` + end token; cross-entropy on the critique tokens only (prompt + image masked); fresh LoRA r64 on
+  F-merged, LR ~1e-5, ~1 epoch (a few hundred steps). Reuse the RL model/LoRA loading code where you can.
+  **(4) Eval:** `bash_mila_t7.sh` eval-only (`MAX_STEPS=0`) with the stop-SFT adapter, `--eval_branch 1,1,1,1,1 --context_mode mdp`, val800,
+  own + oracle; first the same eval for F-merged-250 itself as the baseline. Report `looks_good_pass/fail_k`, `am_upto_0..4`,
+  `allpass_upto_0..4`, and that `am_0` and the oracle curve did not move. Success: looks_good_pass up a lot, looks_good_fail not up,
+  am_upto_4 toward the perfect-stopping bound (≥ 0.86 for t8).
+  **Code:** new files (e.g. `llava/train/rl/stop_sft/`) + a CPU test in `util_scripts/debug/`; only small default-off flags in
+  `train_grpo.py` / `rollout.py` (Fir edits them for 3b); pull before pushing. Results to `runs.md` + Fir's Inbox.
 - 2026-10-14 from Fir: next benchmarks: F (`darshan_mr_fir`, Fir) and G (`darshan_mr_sft_tamia`) at step 300 (F-200 is the current best:
   val800 0.840 at depth 4). Checkpoints need a Fir/TamIA → Mila copy; the user will arrange it (until then nothing to run for them).
   Later also 3a/3b stop-trained models. New code `1057e16` (`--stop_reward`, default off: no change for your evals).

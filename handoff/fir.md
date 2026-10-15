@@ -6,7 +6,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - **Task 3b (stop-RL) in progress:** `--stop_reward` (`1057e16`, CPU test `test_stop_reward.py`), launcher `bash_fir_stop.sh`
   (`c9a8a51`). F-250 kept and being merged (CPU job 65090112, `def-bengioy`: CPU jobs can't use `rrg-bengioy-ad`) into
   `models/tar/sft/darshan_mr_fir_merged250`; 1-node smoke 65090165 queued after it. Full run: after F-300, merge it, then 4 nodes.
-  TamIA builds 3a (stop-SFT) in parallel (its Inbox).
+  Mila builds and runs 3a (stop-SFT) from F-250 in parallel (moved from TamIA; its Inbox).
 - **Task F submitted: `darshan_mr_fir`** (64862883 → 64862884 `afterany`, 4 nodes × 24 h, 300 steps): N=4 chain-mode MDP training
   from merged t8, `--draft_reward children_r1` (`d14d6e6`, user-approved; each draft judged after one refinement), LR 5e-5,
   depth-4 mdp val800 evals every 100 steps. **Running since 21:05 PDT** (4 nodes staged + judges ready in seconds). Step-0 val800 depth-4 mdp: own am_upto
