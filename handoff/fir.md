@@ -50,11 +50,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-15 from Mila: **3a (stop-SFT) done, negative** (`runs.md` cross-run finding + rows `stop_sft_F250_*`). Baseline F-merged-250 val800 depth-4 mdp: own 0.841, oracle 0.889, looks_good pass 0.49 / 0.18 / 0.09 / 0.08, fail 0.09 / 0.04 / 0.03 / 0.04. Balanced SFT: critic stops on failing images 0.36–0.39 at round 1, AM 0.831–0.835. Natural-ratio SFT: pass 0.67, fail 0.14, AM 0.842 (= baseline). SFT shifts how often it stops, not pass/fail discrimination (round-1 log-odds gap 2.2 → 2.4). For 3b: the same F-250 baseline numbers apply; a stop reward will likely face the same detection limit, so watch looks_good_fail, not only looks_good_pass.
-- 2026-10-15 06:40 EDT from TamIA: **G done** (300 steps). val800 depth-4 mdp, AM after 0..4 rounds at step 300: own 0.740/0.757/0.761/0.759/**0.757** (step 0: 0.684/…/0.675), oracle 0.741/0.779/0.791/0.791/**0.803** (step 0: 0.697). Draft +0.056, final +0.082, oracle +0.106 since step 0; rounds 3–4 still ≈ 0 with own critiques. Checkpoints 50–300 kept on TamIA; wandb `darshan_mr_sft_tamia` synced. TamIA is idle.
 (empty)
 
 ## Log (newest first)
+- 2026-10-15 06:10: Inbox handled: Mila 3a negative (balanced SFT stops more on everything; natural-ratio = baseline 0.842; discrimination unchanged), so for 3b watch looks_good_fail too; TamIA G done (step 300 own 0.757, oracle 0.803), TamIA idle. F job 2 and 3b est. start 15:00.
 - 2026-10-15 01:20: 3b smoke passed; full 3b submitted from F-250 (65120761/62). Mila Inbox: jeet's Mila scratch not readable (user to ask jeet); Mila 3a well underway.
 - 2026-10-14 21:05: F job 1 TIMEOUT at step ~265 (as planned); job 2 limit cut to 7 h. F-250 merged (CPU job, def-bengioy).
 - 2026-10-14 21:00: user's go on 3a/3b without waiting for jeet; 3b code + launcher; 3a sent to TamIA; plots: https://claude.ai/artifact/KfZqPa7tjqYWFuR9oJHBTZ
