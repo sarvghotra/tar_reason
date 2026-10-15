@@ -2,12 +2,14 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-14 21:00 PDT)
-- **Task 3b (stop-RL) in progress:** `--stop_reward` (`1057e16`, CPU test `test_stop_reward.py`), launcher `bash_fir_stop.sh`
-  (`c9a8a51`). F-250 kept and being merged (CPU job 65090112, `def-bengioy`: CPU jobs can't use `rrg-bengioy-ad`) into
-  `models/tar/sft/darshan_mr_fir_merged250`; 1-node smoke 65090165 queued after it. Full run: after F-300, merge it, then 4 nodes.
-  Mila builds and runs 3a (stop-SFT) from F-250 in parallel (moved from TamIA; its Inbox).
-- **Task F submitted: `darshan_mr_fir`** (64862883 → 64862884 `afterany`, 4 nodes × 24 h, 300 steps): N=4 chain-mode MDP training
+## Now (2026-10-15 01:20 PDT)
+- **Task 3b (stop-RL) submitted: `darshan_stop_fir`** 65120761 → 65120762 (`afterany`), 4 nodes × 24 h, 200 steps, depth-4 mdp val800
+  eval every 50. Base + KL ref = **F-250 merged** (`models/tar/sft/darshan_mr_fir_merged250`, same start as Mila's 3a, so they compare
+  directly), fresh LoRA, t11 critic-only setup (K=3 × M=4, image tokens KL-only) + `--stop_reward 0.2` (`1057e16`), launcher
+  `bash_fir_stop.sh`. Smoke 65090165 passed (1 node, 28 min, ~3.5 min/step, looks_good 7–11% of sampled critiques). Baseline
+  (Mila, F-250 val800 depth-4 mdp): own am_upto_4 0.841, looks_good_pass 0.49/0.18/0.09/0.08, fail 0.09/0.04/0.03/0.04.
+- **Task F `darshan_mr_fir`**: job 64862883 hit its 24 h limit 2026-10-14 21:05 at step ~265 (checkpoint-260); **64862884 resumes it, limit
+  cut to 7 h, est. start 2026-10-15 11:00** (300 steps total): N=4 chain-mode MDP training
   from merged t8, `--draft_reward children_r1` (`d14d6e6`, user-approved; each draft judged after one refinement), LR 5e-5,
   depth-4 mdp val800 evals every 100 steps. **Running since 21:05 PDT** (4 nodes staged + judges ready in seconds). Step-0 val800 depth-4 mdp: own am_upto
   0.779/0.825/0.829/0.830/0.835, oracle 0.774/0.844/0.867/0.874/0.882 (= TamIA's t8 mdp eval within noise).
@@ -48,10 +50,11 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-15 from Mila: jeet's Mila scratch is **not readable** to us: `/home/mila/s/sarvjeet-singh.ghotra` is `drwx------` and `/network/scratch/s/sarvjeet-singh.ghotra` is `drwxr-x---+` (ACL without singhsd). Ask him to copy `evaluation_optz.py` and his GenAI-Image-800 `genai_image.json` somewhere world-readable (e.g. `/network/scratch/s/sarvjeet-singh.ghotra/tmp/`, `chmod o+rx` on the path), or `setfacl -m u:singhsd:rx`. 3a started: F-250 merged; baseline eval + data rollout jobs submitted (see `mila.md` Now).
 (empty)
 
 ## Log (newest first)
+- 2026-10-15 01:20: 3b smoke passed; full 3b submitted from F-250 (65120761/62). Mila Inbox: jeet's Mila scratch not readable (user to ask jeet); Mila 3a well underway.
+- 2026-10-14 21:05: F job 1 TIMEOUT at step ~265 (as planned); job 2 limit cut to 7 h. F-250 merged (CPU job, def-bengioy).
 - 2026-10-14 21:00: user's go on 3a/3b without waiting for jeet; 3b code + launcher; 3a sent to TamIA; plots: https://claude.ai/artifact/KfZqPa7tjqYWFuR9oJHBTZ
 - 2026-10-14 19:30 PDT: Inbox handled (TamIA: L backfill, M split, G steps 100/200; Mila: H, I, J); all in `runs.md`. Watcher restarted (tmux session had ended).
 - 2026-10-14 16:20: F step-200 eval: final 0.840 (+0.005), depth-3 0.845, draft 0.785, oracle 0.890; checkpoint-200 kept. 13:00: KL 0.37 at step 162, recovered; checkpoint-150 kept as a fallback.
