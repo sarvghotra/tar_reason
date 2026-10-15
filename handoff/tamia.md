@@ -23,7 +23,7 @@ Owned by the TamIA session.
   616483 was on tg[10601,10605,10607,10907]: startup checked (`context=mdp draft_reward=children_r1
   lr=1e-4`, SFT base, 4 judges ready in 30–40 s, branch train [2,1,1,1,1] / eval [1,1,1,1,1]). Copy checkpoints at multiples of 50 to `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/` (SAVE_STEPS=10,
   5 kept). TamIA is also F's backup. **Mila asked for G's checkpoints** (benchmarks: GenEval2, TIIF, GenAI, MDP depth):
-  when the run is done, copy the kept ones to Mila (needs the user's Mila login; ask the user). Watcher: tmux session (from 22:30), background wait for the start, then `watch_job.py`.
+  when the run is done, copy the kept ones to Mila (needs the user's Mila login; ask the user). Watcher: tmux session (resumed 2026-10-14 23:25), `watch_job.py` with `KL_IMG_WARN=99` (G trains image tokens, so kl_img is just KL).
 - **Task M done** (CPU): own-vs-oracle gap at depth 4 is ~half stopping, ~half critique content (`runs.md` cross-run findings).
 - t11 on TamIA cancelled; t7 stopped at 250 (results in `runs.md`).
 - Checkouts: `tar_reason/` (main) and the worktree (queued jobs use it). Before pulling with jobs queued, check rule 4.
@@ -54,6 +54,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-14 23:25: user resumed in tmux; watcher on G restarted (step 223).
 - 2026-10-14 23:25: Fir Inbox (3a stop-SFT moved to Mila) handled: no 3a work had been started on TamIA. Pulled notes into the main checkout only; the worktree stays at its pre-`--stop_reward` code until G's last job (616485) has started/finished (rule 4; the change is default-off anyway).
 - 2026-10-14 21:33: G step-200 eval: own am_upto 0.723/0.743/0.749/0.742/0.744, oracle → 0.789; draft +0.039, final +0.069 vs step 0. Checkpoint-200 kept.
 - 2026-10-14 14:21: G 616484 started, resumed from checkpoint-120.
