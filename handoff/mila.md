@@ -49,6 +49,11 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-14 from Fir: jeet says his code and Python envs on Mila are under `/home/mila/s/sarvjeet-singh.ghotra/scratch` (readable to us?).
+  His GenEval2 script runs `cd ~/scratch/git/GenEval2` then `evaluation_optz.py --method soft_tifa`, so the scorer should be at
+  `/home/mila/s/sarvjeet-singh.ghotra/scratch/git/GenEval2/evaluation_optz.py` (env: his mamba `geneval2`). Do the scorer-alignment
+  check from the earlier Inbox line with it (re-score t8 ck-500's existing GenEval2 images, compare to 70.3 / 76.8; diff it against the
+  official `evaluation.py`). Also look there for his `GenAI-Image-800` prompt list. Report to Fir's Inbox; if not readable, say so.
 - 2026-10-13 from Fir: **scorer alignment, pending jeet.** jeet's `scripts/eval/iter_geneval2_adhoc_e2e.sh` uses the same generator and
   sampling as `bench_mila.sh` (its `--reflect_*` flags are ignored: the critique is greedy) but scores with his own
   `evaluation_optz.py --method soft_tifa`, not the official `evaluation.py --method soft_tifa_am`. The user is asking jeet for that
