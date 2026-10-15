@@ -3,22 +3,21 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-15 00:00 EDT)
-- **Task 3a (stop-SFT) in progress** (Inbox). F checkpoint-250 merged into t8 → `$SCRATCH/models/tar/sft/darshan_mr_fir_merged250`
-  (merge job 11260225, 2.5 min).
-  - **Baseline** (F-merged-250 itself, val800 depth-4 mdp, own + oracle, in two halves): `depth4_F250_mdp_val800_part1`
-    (11260263, short-unkillable, running) and `part2` (11260264, `long`, 4 GPUs, pending). val800 halves: `geneval2_50K_v2/val800_part{1,2}.jsonl`.
-  - **Data**: 2,000 train prompts (seed 3, none in val800) in `$SCRATCH/data/stop_sft/train2000_shard{0..7}.jsonl`; rollout = the eval path
-    (`bash_mila_t7.sh MAX_STEPS=0`) with new default-off flags `--eval_sample_critiques --val_dump_codes`, 2-GPU jobs on `long`
-    (1 rank + judge; `bash_mila_t7.sh` now takes the GPU count from the allocation). Smoke `stopsft_data_smoke` (11260265, 4 prompts) pending;
-    then 8 shards with `--no-requeue` (a requeued shard would append a second run to its dump; `build_data.py` refuses duplicates).
-  - **Code** (`llava/train/rl/stop_sft/`): `build_data.py` (labels + 50/50 balance + counts per round), `train_stop_sft.py` (CE on critique
-    tokens, fresh LoRA r64, reuses `load_policy` / `masked_token_logprobs`), CPU test `util_scripts/debug/test_stop_sft.py` (passes:
-    the training context equals the MDP critic's row token for token).
+## Now (2026-10-15 05:30 EDT)
+- **Task 3a (stop-SFT)**: data, training and baseline done (rows `depth4_F250_mdp_val800_part{1,2}` and `stop_sft_F250_mila` in `runs.md`).
+  **Eval running**: `depth4_stopsft_F250_val800_part1` (11262336, short-unkillable) → `part2` (11262337 `afterany`), ~2 h 10 each,
+  F-merged-250 + `--init_adapter output_dir/stop_sft_F250_mila/final`, val800 depth-4 mdp, own + oracle. Compare to the baseline:
+  own am_upto_4 0.841, looks_good_pass 0.49/0.18/0.09/0.08, looks_good_fail 0.09/0.04/0.03/0.04, oracle 0.889, am_0 0.783.
+  If the stop rate barely moves: retry with a higher LR (5e-5) or 2–3 epochs (training takes 5 min; the eval is the cost).
+  - Pipeline: shards = `bash_mila_t7.sh MAX_STEPS=0 EVAL_ORACLE=0 VAL_JSONL=$SCRATCH/data/stop_sft/train2000_shard<k>.jsonl
+    EXTRA_ARGS="--model_name_or_path <F-merged> --eval_branch 1,1,1,1,1 --context_mode mdp --eval_sample_critiques --val_dump_codes
+    --val_dump_dir output_dir/<run>/val_dump"` on 2 GPUs (`sbatch --no-requeue --gres=gpu:a100l:2`, ~1 h 55 per 250 prompts); labels
+    `python -m llava.train.rl.stop_sft.build_data --dumps <dirs> --out <jsonl>`; train `DATA=<jsonl> RUN_NAME=<run> sbatch
+    scripts/rl_ft/bash_mila_stop_sft.sh` (log `slurm_logs/stop_sft_mila_<job>.out`).
+  - F-300 (Inbox: switch if the pipeline is ready): not on Mila yet; re-running the 8 shards + training + eval takes ~2 h + 5 min + 4.5 h.
 - Benchmarks of F/G step 300 and t11: waiting for checkpoint copies.
-- jeet's Mila scratch is **not readable** (home `drwx------`, `/network/scratch/s/sarvjeet-singh.ghotra` `drwxr-x---+` without us): scorer
-  alignment and GenAI-800 still blocked; told Fir.
-- Watcher: none yet.
+- jeet's Mila scratch not readable (told Fir 2026-10-15): scorer alignment and GenAI-800 blocked.
+- Watcher: background check on the eval jobs (tmux on login-4).
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -88,6 +87,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-15 05:30: 3a: 8 data shards done (shard 5 preempted once on `long`, rerun on `main`), 3,100 examples; stop-SFT trained (193 steps); F-250 baseline done (own 0.841 / oracle 0.889 at depth 4); stop-SFT eval queued.
 - 2026-10-15 00:00: started 3a (see Now). Checked jeet's Mila scratch: not readable (removed that Inbox line; scorer-alignment line kept).
 - 2026-10-14 01:30: H done (MDP depth-4 official GenEval2: 77.9 at d=4, full history 74.3), J done (GenAI-Bench t8 39.3 → 40.7, base 37.7). Deleted the H/I/J Inbox line (kept its F/G follow-up). Told Fir and TamIA.
 - 2026-10-14 00:10: I done (base Tar-7B: GenEval2 64.7, TIIF 69.2 / 65.2); H part 1 done (MDP am_upto 0.786 → 0.845 at d=4, full history 0.794 → 0.803); GenAI smoke passed.
