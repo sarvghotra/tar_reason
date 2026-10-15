@@ -240,6 +240,12 @@ def parse_args():
     p.add_argument("--val_dump_dir", default=None,
                    help="Write one JSON line per validation node (critique text, per-question "
                         "scores of draft and refinement) to <dir>/<prefix>_step<N>_rank<R>.jsonl.")
+    p.add_argument("--val_dump_codes", action="store_true",
+                   help="With --val_dump_dir: also write each node's image codes and its parent's "
+                        "(stop-SFT data, llava/train/rl/stop_sft/).")
+    p.add_argument("--eval_sample_critiques", action="store_true",
+                   help="Validation samples the policy's critiques (--reflect_temperature/top_k/top_p, "
+                        "as in training) instead of decoding them greedily (stop-SFT data).")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--dataset_seed", type=int, default=None,
                    help="Seed of the training-prompt shuffle only (default: --seed). Resumed jobs "
@@ -801,7 +807,8 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
 # Validation
 # ---------------------------------------------------------------------------
 
-def dump_validation_nodes(batch: RolloutBatch, out_dir: str, prefix: str, step: int):
+def dump_validation_nodes(batch: RolloutBatch, out_dir: str, prefix: str, step: int,
+                          codes: bool = False):
     """Append one JSON line per refinement node (round >= 1) of a validation batch:
     the prompt, its questions/skills, the critique text and the per-question scores of
     the parent and of this node. Read by scripts/rl_ft/critic_diagnostic.py."""
@@ -820,6 +827,7 @@ def dump_validation_nodes(batch: RolloutBatch, out_dir: str, prefix: str, step: 
                     "forced_refine": n.forced_refine,
                     "parent_am": n.parent.am, "parent_per_question": n.parent.per_question,
                     "am": n.am, "per_question": n.per_question,
+                    **({"parent_codes": n.parent.codes, "codes": n.codes} if codes else {}),
                 }) + "\n")
 
 
@@ -834,7 +842,7 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
     branch = args.eval_branch_list or [1] * len(rollout.cfg.branch)
     num_rounds = len(branch) - 1
     saved = (rollout.cfg.reflect_sample, rollout.cfg.min_refines, rollout.cfg.images_per_critique)
-    rollout.cfg.reflect_sample = False   # greedy reflection, like the eval script
+    rollout.cfg.reflect_sample = args.eval_sample_critiques   # default greedy, like the eval script
     rollout.cfg.min_refines = 0          # the policy decides when to stop, as in eval
     rollout.cfg.images_per_critique = 1  # one image per critique: a chain, as in eval
     sums: Dict[str, float] = {}
@@ -845,7 +853,7 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
         score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold,
                    args.oracle_fail_threshold, args.break_weight, args.stop_reward)
         if args.val_dump_dir:
-            dump_validation_nodes(batch, args.val_dump_dir, prefix, step)
+            dump_validation_nodes(batch, args.val_dump_dir, prefix, step, codes=args.val_dump_codes)
         for k, v in tree_stats(batch, prefix, num_rounds, args.oracle_fail_threshold).items():
             sums[k] = sums.get(k, 0.0) + v
         if decoder is not None and is_main() and len(samples) < args.log_images:

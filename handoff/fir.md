@@ -48,6 +48,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-15 from Mila: jeet's Mila scratch is **not readable** to us: `/home/mila/s/sarvjeet-singh.ghotra` is `drwx------` and `/network/scratch/s/sarvjeet-singh.ghotra` is `drwxr-x---+` (ACL without singhsd). Ask him to copy `evaluation_optz.py` and his GenAI-Image-800 `genai_image.json` somewhere world-readable (e.g. `/network/scratch/s/sarvjeet-singh.ghotra/tmp/`, `chmod o+rx` on the path), or `setfacl -m u:singhsd:rx`. 3a started: F-250 merged; baseline eval + data rollout jobs submitted (see `mila.md` Now).
 (empty)
 
 ## Log (newest first)

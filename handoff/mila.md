@@ -3,20 +3,22 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-14 01:30 EDT)
-- **Nothing running on Mila.** Tasks H, I, J done (rows in `runs.md`): MDP depth-4 on official GenEval2 77.9 (full history 74.3);
-  base Tar-7B GenEval2 64.7, TIIF 69.2 / 65.2, GenAI 37.7; t8 GenAI 39.3 → 40.7.
-- **Next**: benchmark F (`darshan_mr_fir`) and G (`darshan_mr_sft_tamia`) checkpoints when Fir/TamIA copy them:
-  `MODEL_NAME=<label> LORA_PATH=<ckpt> BENCHES="geneval2 tiif genai" sbatch scripts/eval/bench_mila.sh` (merged: `BASE_MODEL=<dir>`);
-  GenAI on 2 A100 takes ~80 min, so for 4 GPUs on short-unkillable all three fit in ~2.5 h (resubmit if cut: stages resume).
-  Multi-round models: also depth (MDP) with `bash_mila_t7.sh` (command below, add `--context_mode mdp`).
-- Waiting on jeet: his `evaluation_optz.py` (GenEval2 scorer alignment, Inbox) and which prompts form his `GenAI-Image-800`.
-- Base Tar baseline: `SINGLE_PASS=1 BASE_MODEL=$SCRATCH/models/tar/Tar-7B` (plain prompt, draft only).
-- To benchmark another checkpoint: `MODEL_NAME=<label> LORA_PATH=<ckpt> sbatch scripts/eval/bench_mila.sh`
-  (merged models: `BASE_MODEL=<dir>`, no `LORA_PATH`), ~66 min on 4× A100. Depth: `bash_mila_t7.sh` with
-  `MAX_STEPS=0 EVAL_ORACLE=0 VAL_JSONL=<split> EXTRA_ARGS="--model_name_or_path <model> --eval_branch 1,1,1,1,1
-  --val_dump_dir output_dir/<run>/val_dump"` (~70–80 min per 400 prompts), then `tools/watch/depth_curve.py <dumps>`.
-- Watcher: none (nothing running).
+## Now (2026-10-15 00:00 EDT)
+- **Task 3a (stop-SFT) in progress** (Inbox). F checkpoint-250 merged into t8 → `$SCRATCH/models/tar/sft/darshan_mr_fir_merged250`
+  (merge job 11260225, 2.5 min).
+  - **Baseline** (F-merged-250 itself, val800 depth-4 mdp, own + oracle, in two halves): `depth4_F250_mdp_val800_part1`
+    (11260263, short-unkillable, running) and `part2` (11260264, `long`, 4 GPUs, pending). val800 halves: `geneval2_50K_v2/val800_part{1,2}.jsonl`.
+  - **Data**: 2,000 train prompts (seed 3, none in val800) in `$SCRATCH/data/stop_sft/train2000_shard{0..7}.jsonl`; rollout = the eval path
+    (`bash_mila_t7.sh MAX_STEPS=0`) with new default-off flags `--eval_sample_critiques --val_dump_codes`, 2-GPU jobs on `long`
+    (1 rank + judge; `bash_mila_t7.sh` now takes the GPU count from the allocation). Smoke `stopsft_data_smoke` (11260265, 4 prompts) pending;
+    then 8 shards with `--no-requeue` (a requeued shard would append a second run to its dump; `build_data.py` refuses duplicates).
+  - **Code** (`llava/train/rl/stop_sft/`): `build_data.py` (labels + 50/50 balance + counts per round), `train_stop_sft.py` (CE on critique
+    tokens, fresh LoRA r64, reuses `load_policy` / `masked_token_logprobs`), CPU test `util_scripts/debug/test_stop_sft.py` (passes:
+    the training context equals the MDP critic's row token for token).
+- Benchmarks of F/G step 300 and t11: waiting for checkpoint copies.
+- jeet's Mila scratch is **not readable** (home `drwx------`, `/network/scratch/s/sarvjeet-singh.ghotra` `drwxr-x---+` without us): scorer
+  alignment and GenAI-800 still blocked; told Fir.
+- Watcher: none yet.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -75,11 +77,6 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 - 2026-10-14 from Fir: next benchmarks: F (`darshan_mr_fir`, Fir) and G (`darshan_mr_sft_tamia`) at step 300 (F-200 is the current best:
   val800 0.840 at depth 4). Checkpoints need a Fir/TamIA → Mila copy; the user will arrange it (until then nothing to run for them).
   Later also 3a/3b stop-trained models. New code `1057e16` (`--stop_reward`, default off: no change for your evals).
-- 2026-10-14 from Fir: jeet says his code and Python envs on Mila are under `/home/mila/s/sarvjeet-singh.ghotra/scratch` (readable to us?).
-  His GenEval2 script runs `cd ~/scratch/git/GenEval2` then `evaluation_optz.py --method soft_tifa`, so the scorer should be at
-  `/home/mila/s/sarvjeet-singh.ghotra/scratch/git/GenEval2/evaluation_optz.py` (env: his mamba `geneval2`). Do the scorer-alignment
-  check from the earlier Inbox line with it (re-score t8 ck-500's existing GenEval2 images, compare to 70.3 / 76.8; diff it against the
-  official `evaluation.py`). Also look there for his `GenAI-Image-800` prompt list. Report to Fir's Inbox; if not readable, say so.
 - 2026-10-13 from Fir: **scorer alignment, pending jeet.** jeet's `scripts/eval/iter_geneval2_adhoc_e2e.sh` uses the same generator and
   sampling as `bench_mila.sh` (its `--reflect_*` flags are ignored: the critique is greedy) but scores with his own
   `evaluation_optz.py --method soft_tifa`, not the official `evaluation.py --method soft_tifa_am`. The user is asking jeet for that
@@ -91,6 +88,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-15 00:00: started 3a (see Now). Checked jeet's Mila scratch: not readable (removed that Inbox line; scorer-alignment line kept).
 - 2026-10-14 01:30: H done (MDP depth-4 official GenEval2: 77.9 at d=4, full history 74.3), J done (GenAI-Bench t8 39.3 → 40.7, base 37.7). Deleted the H/I/J Inbox line (kept its F/G follow-up). Told Fir and TamIA.
 - 2026-10-14 00:10: I done (base Tar-7B: GenEval2 64.7, TIIF 69.2 / 65.2); H part 1 done (MDP am_upto 0.786 → 0.845 at d=4, full history 0.794 → 0.803); GenAI smoke passed.
 - 2026-10-13 22:45: pulled `c39b934` (plan F–N) and later handoff-only commits. Submitted H (11243481/82) and I (smoke 11243483

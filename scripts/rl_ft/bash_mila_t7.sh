@@ -50,10 +50,12 @@ DATA_PATH="output_dir/${RUN_NAME}/data.yaml"
 VAL_DATA_PATH="output_dir/${RUN_NAME}/val.yaml"
 
 # ===================== Config params (t7 values) ========================
-N_GPUS=4
-JUDGE_GPU=3                       # last GPU judges and nothing else
-TRAIN_GPUS=0,1,2
-N_TRAIN_GPUS=3
+# GPUs from the allocation (default 4: ranks on 0,1,2, judge on 3). Eval-only shards can run on
+# 2 GPUs (one rank + judge), e.g. sbatch --partition=long --gres=gpu:a100l:2 --cpus-per-task=8 --mem=64G.
+N_GPUS=${SLURM_GPUS_ON_NODE:-4}
+JUDGE_GPU=$((N_GPUS - 1))         # last GPU judges and nothing else
+TRAIN_GPUS=$(seq -s, 0 $((N_GPUS - 2)))
+N_TRAIN_GPUS=$((N_GPUS - 1))
 
 PREV_STAGE_CHECKPOINT=${MODELS}/sft/slf_ref_edit_t21_ckpt17000
 
