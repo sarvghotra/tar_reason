@@ -3,7 +3,7 @@
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
 ## Now (2026-10-15 01:20 PDT)
-- **Task 3b (stop-RL) submitted: `darshan_stop_fir`** 65120761 → 65120762 (`afterany`), 4 nodes × 24 h, 200 steps, depth-4 mdp val800
+- **Task 3b (stop-RL) submitted: `darshan_stop_fir`** 65224187 → 65224188 (`afterany`; first try 65120761 failed at startup: PREV_STAGE_CHECKPOINT not exported, fell back to the missing F-300 default), 4 nodes × 24 h, 200 steps, depth-4 mdp val800
   eval every 50. Base + KL ref = **F-250 merged** (`models/tar/sft/darshan_mr_fir_merged250`, same start as Mila's 3a, so they compare
   directly), fresh LoRA, t11 critic-only setup (K=3 × M=4, image tokens KL-only) + `--stop_reward 0.2` (`1057e16`), launcher
   `bash_fir_stop.sh`. Smoke 65090165 passed (1 node, 28 min, ~3.5 min/step, looks_good 7–11% of sampled critiques). Baseline
