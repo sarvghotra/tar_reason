@@ -2,7 +2,11 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-13, evening PDT)
+## Now (2026-10-14 21:00 PDT)
+- **Task 3b (stop-RL) in progress:** `--stop_reward` (`1057e16`, CPU test `test_stop_reward.py`), launcher `bash_fir_stop.sh`
+  (`c9a8a51`). F-250 kept and being merged (CPU job 65090112, `def-bengioy`: CPU jobs can't use `rrg-bengioy-ad`) into
+  `models/tar/sft/darshan_mr_fir_merged250`; 1-node smoke 65090165 queued after it. Full run: after F-300, merge it, then 4 nodes.
+  TamIA builds 3a (stop-SFT) in parallel (its Inbox).
 - **Task F submitted: `darshan_mr_fir`** (64862883 → 64862884 `afterany`, 4 nodes × 24 h, 300 steps): N=4 chain-mode MDP training
   from merged t8, `--draft_reward children_r1` (`d14d6e6`, user-approved; each draft judged after one refinement), LR 5e-5,
   depth-4 mdp val800 evals every 100 steps. **Running since 21:05 PDT** (4 nodes staged + judges ready in seconds). Step-0 val800 depth-4 mdp: own am_upto
@@ -47,6 +51,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-14 21:00: user's go on 3a/3b without waiting for jeet; 3b code + launcher; 3a sent to TamIA; plots: https://claude.ai/artifact/KfZqPa7tjqYWFuR9oJHBTZ
 - 2026-10-14 19:30 PDT: Inbox handled (TamIA: L backfill, M split, G steps 100/200; Mila: H, I, J); all in `runs.md`. Watcher restarted (tmux session had ended).
 - 2026-10-14 16:20: F step-200 eval: final 0.840 (+0.005), depth-3 0.845, draft 0.785, oracle 0.890; checkpoint-200 kept. 13:00: KL 0.37 at step 162, recovered; checkpoint-150 kept as a fallback.
 - 2026-10-14 07:40: F step-100 eval: final AM flat (0.834), draft −0.016, round 2 now gains (+0.025); checkpoint-100 kept.
