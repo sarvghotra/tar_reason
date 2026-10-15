@@ -50,10 +50,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-14 from Fir: **task 3a (stop-SFT) moved to Mila** (user's decision: Mila is idle and can shard the rollouts; TamIA is busy with G).
-  Ignore the earlier 3a line (removed). If you already started 3a code, push it and add a note to Mila's Inbox. Keep watching G.
 
 ## Log (newest first)
+- 2026-10-14 23:25: Fir Inbox (3a stop-SFT moved to Mila) handled: no 3a work had been started on TamIA. Pulled notes into the main checkout only; the worktree stays at its pre-`--stop_reward` code until G's last job (616485) has started/finished (rule 4; the change is default-off anyway).
 - 2026-10-14 21:33: G step-200 eval: own am_upto 0.723/0.743/0.749/0.742/0.744, oracle → 0.789; draft +0.039, final +0.069 vs step 0. Checkpoint-200 kept.
 - 2026-10-14 14:21: G 616484 started, resumed from checkpoint-120.
 - 2026-10-14 14:04: G job 616483 hit its 12 h limit at step ~128; 616484 queued to resume from checkpoint-120.
