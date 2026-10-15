@@ -14,6 +14,8 @@ Per optimizer step, each rank:
                     = mean score of its round-1 children    (--draft_reward children_r1)
      reward(round k)= score(child) - score(parent)          (refined)
                     = -stop_penalty * max(0, stop_threshold - score(parent))
+                    = +stop_reward / -stop_reward   ("looks good", --stop_reward > 0:
+                      parent passes every question / fails one)
                                                             ("looks good")
   3. normalises rewards within groups (drafts of a prompt / children of a node),
   4. takes a clipped policy-gradient step on the LoRA adapters with a KL penalty
@@ -125,6 +127,11 @@ def parse_args():
                         "imperfect image costs something. 0 disables.")
     p.add_argument("--stop_threshold", type=float, default=1.0,
                    help="Parent score at or above which 'looks good' is free (see --stop_penalty).")
+    p.add_argument("--stop_reward", type=float, default=0.0,
+                   help="If > 0, replaces --stop_penalty: a 'looks good' child is rewarded "
+                        "+stop_reward when its parent passes every question (per_question >= "
+                        "--oracle_fail_threshold) and -stop_reward otherwise, so the critique's "
+                        "stop decision gets an explicit right/wrong signal.")
     p.add_argument("--train_drafts", action=argparse.BooleanOptionalAction, default=True,
                    help="--no-train_drafts drops the round-0 image tokens from the loss. "
                         "With branch[0]=1 a draft's advantage is 0 anyway, but its tokens "
@@ -447,7 +454,8 @@ def make_critique_fn(reward, fail_threshold: float, source: str = "oracle",
 @torch.no_grad()
 def score_tree(batch: RolloutBatch, reward, draft_reward: str = "own",
                stop_penalty: float = 0.0, stop_threshold: float = 1.0,
-               fail_threshold: float = 0.5, break_weight: float = 1.0):
+               fail_threshold: float = 0.5, break_weight: float = 1.0,
+               stop_reward: float = 0.0):
     """Fill node.am / node.gm / node.per_question / node.reward for every node
     (each image scored once; nodes already scored mid-rollout by the oracle
     critique_fn are not re-scored).
@@ -458,7 +466,9 @@ def score_tree(batch: RolloutBatch, reward, draft_reward: str = "own",
     Rewards (see the module docstring): a refined child gets its score minus its
     parent's (the parent score is the within-group baseline; see refine_reward
     for ``break_weight``); a "looks good" child gets
-    ``-stop_penalty * max(0, stop_threshold - parent_score)``; a draft gets its
+    ``-stop_penalty * max(0, stop_threshold - parent_score)``, or with
+    ``stop_reward > 0`` +stop_reward if the parent passes every question
+    (>= fail_threshold) and -stop_reward otherwise; a draft gets its
     own score (``draft_reward="own"``), the mean final score of its leaves
     (``"children"``) or the mean score of its round-1 children (``"children_r1"``;
     a "looks good" child carries the draft's score, a draft with no child keeps
@@ -474,7 +484,11 @@ def score_tree(batch: RolloutBatch, reward, draft_reward: str = "own",
             elif n.looks_good:
                 n.am, n.gm, n.per_question = n.parent.am, n.parent.gm, n.parent.per_question
                 parent_score = reward.combine(n.parent.am, n.parent.gm)
-                n.reward = -stop_penalty * max(0.0, stop_threshold - parent_score)
+                if stop_reward > 0:
+                    ok = all(q >= fail_threshold for q in n.parent.per_question)
+                    n.reward = stop_reward if ok else -stop_reward
+                else:
+                    n.reward = -stop_penalty * max(0.0, stop_threshold - parent_score)
             else:
                 n.reward = refine_reward(n, reward, fail_threshold, break_weight)
     if draft_reward == "children":
@@ -829,7 +843,7 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
     for start in range(0, len(val_rows), bs):
         batch = rollout.run(model, val_rows[start:start + bs], branch=branch, critique_fn=critique_fn)
         score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold,
-                   args.oracle_fail_threshold, args.break_weight)
+                   args.oracle_fail_threshold, args.break_weight, args.stop_reward)
         if args.val_dump_dir:
             dump_validation_nodes(batch, args.val_dump_dir, prefix, step)
         for k, v in tree_stats(batch, prefix, num_rounds, args.oracle_fail_threshold).items():
@@ -1020,7 +1034,7 @@ def main():
     if len(branch) > 1 and args.min_refines > branch[1]:
         rank0_print(f"WARNING: --min_refines {args.min_refines} > branch[1] {branch[1]}; "
                     f"every child is forced to refine.")
-    rank0_print(f"reward: draft_reward={args.draft_reward} stop_penalty={args.stop_penalty} "
+    rank0_print(f"reward: draft_reward={args.draft_reward} stop_penalty={args.stop_penalty} stop_reward={args.stop_reward} "
                 f"stop_threshold={args.stop_threshold} min_refines={args.min_refines} "
                 f"critique_source={args.critique_source} "
                 f"images_per_critique={args.images_per_critique} "
@@ -1144,7 +1158,7 @@ def main():
         t1 = time.time()
         model.eval()
         score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold,
-                   args.oracle_fail_threshold, args.break_weight)
+                   args.oracle_fail_threshold, args.break_weight, args.stop_reward)
         adv_counts = assign_advantages(batch, args, gcfg)
         t2 = time.time()
         train_metrics = train_on_tree(model, rollout, batch, args, gcfg, optimizer, scheduler, device)
