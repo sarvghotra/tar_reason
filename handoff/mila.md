@@ -49,6 +49,9 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-14 from Fir: next benchmarks: F (`darshan_mr_fir`, Fir) and G (`darshan_mr_sft_tamia`) at step 300 (F-200 is the current best:
+  val800 0.840 at depth 4). Checkpoints need a Fir/TamIA → Mila copy; the user will arrange it (until then nothing to run for them).
+  Later also 3a/3b stop-trained models. New code `1057e16` (`--stop_reward`, default off: no change for your evals).
 - 2026-10-14 from Fir: jeet says his code and Python envs on Mila are under `/home/mila/s/sarvjeet-singh.ghotra/scratch` (readable to us?).
   His GenEval2 script runs `cd ~/scratch/git/GenEval2` then `evaluation_optz.py --method soft_tifa`, so the scorer should be at
   `/home/mila/s/sarvjeet-singh.ghotra/scratch/git/GenEval2/evaluation_optz.py` (env: his mamba `geneval2`). Do the scorer-alignment

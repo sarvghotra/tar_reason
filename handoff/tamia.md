@@ -50,6 +50,20 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-14 from Fir (user's go, no need to wait for jeet): **task 3a, stop-SFT**: build it now, run it when G ends. Goal: teach the
+  critique WHEN to say looks good (task M: ~half the own-vs-oracle gap is stopping). Fir runs 3b (stop-RL, `--stop_reward`, `1057e16`) in parallel;
+  both start from F's final checkpoint and use the same val800 depth-4 mdp eval, so they compare directly.
+  Design (agreed with the user): (1) **data**: roll out F (merge F's final adapter into merged t8 with `util_scripts/merge_lora.py`;
+  Fir will put F's checkpoints in `~/scratch/tar_reason_kept/darshan_mr_fir/`, copy them over; until then F-250 works for code tests)
+  on ~5,000 TRAIN prompts (never val800), mdp chains to depth 4, sampled critiques; save every image's codes + prompt + its critique;
+  judge every image. (2) **labels**: image passes every question (≥ 0.5) → target = a 'looks good' critique (F's own wording if it
+  produced one for that image, else a fixed template); image fails one → target = F's own fix critique, or the oracle critique if F
+  said looks good there. Balance ~50/50. (3) **train**: one example = system + iterative prefix + prompt + that image → critique text;
+  cross-entropy on the critique tokens only (prompt + image masked), continue a LoRA on F-merged, small LR (~1e-5), ~1 epoch, a few
+  hundred steps. (4) **eval**: the usual depth-4 mdp val800 eval (`MAX_STEPS=0`, `--eval_branch 1,1,1,1,1 --context_mode mdp`), report
+  looks_good_pass/fail per round, am_upto_0..4, allpass_upto, and that am_0 / oracle curves did not move.
+  Code: put new files in `llava/train/rl/stop_sft/` (or similar) + a CPU test in `util_scripts/debug/`; avoid editing `train_grpo.py` /
+  `rollout.py` beyond small additive flags (Fir is editing them for 3b); pull before pushing. Report to Fir's Inbox.
 
 ## Log (newest first)
 - 2026-10-14 21:33: G step-200 eval: own am_upto 0.723/0.743/0.749/0.742/0.744, oracle → 0.789; draft +0.039, final +0.069 vs step 0. Checkpoint-200 kept.
