@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-14 23:25 EDT)
+## Now (2026-10-15 02:25 EDT)
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -18,8 +18,8 @@ Owned by the TamIA session.
   `PREV_STAGE_CHECKPOINT=/scratch/d/dars11/models/tar/sft/slf_ref_edit_t21_ckpt17000 LR=1e-4 RUN_NAME=darshan_mr_sft_tamia
   sbatch -J darshan_mr_sft_tamia scripts/rl_ft/bash_tamia_mr.sh` (4 nodes, 12 h), chained 3× with `afterany`; 300 steps,
   depth-4 mdp eval every 100. **Submitted 2026-10-13 20:40: jobs 616483 → 616484 → 616485** (user approved in manual mode).
-  616483 ran 02:03–14:03 (TIMEOUT at step ~128); **616484 running since 14:21 (resumed at 120), at step 200**; its 12 h limit
-  is 02:21, then 616485 continues to 300. Step-200 eval: own final 0.744 (step 0: 0.675), oracle 0.789 (`runs.md`).
+  616483 ran 02:03–14:03 (TIMEOUT at step ~128); 616484 ran 14:21–02:21 (resumed at 120, TIMEOUT at step ~260, checkpoint-260); **616485 queued to resume at 260**
+  and run to 300 + final eval. Step-200 eval: own final 0.744 (step 0: 0.675), oracle 0.789 (`runs.md`).
   616483 was on tg[10601,10605,10607,10907]: startup checked (`context=mdp draft_reward=children_r1
   lr=1e-4`, SFT base, 4 judges ready in 30–40 s, branch train [2,1,1,1,1] / eval [1,1,1,1,1]). Copy checkpoints at multiples of 50 to `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/` (SAVE_STEPS=10,
   5 kept). TamIA is also F's backup. **Mila asked for G's checkpoints** (benchmarks: GenEval2, TIIF, GenAI, MDP depth):
@@ -54,6 +54,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-15 02:21: G 616484 TIMEOUT at step ~260 (checkpoint-260); checkpoint-250 kept. Steps 200–260 stable, KL 0.04 → 0.21 (gentle rise), grad ≤ 0.07.
 - 2026-10-14 23:25: user resumed in tmux; watcher on G restarted (step 223).
 - 2026-10-14 23:25: Fir Inbox (3a stop-SFT moved to Mila) handled: no 3a work had been started on TamIA. Pulled notes into the main checkout only; the worktree stays at its pre-`--stop_reward` code until G's last job (616485) has started/finished (rule 4; the change is default-off anyway).
 - 2026-10-14 21:33: G step-200 eval: own am_upto 0.723/0.743/0.749/0.742/0.744, oracle → 0.789; draft +0.039, final +0.069 vs step 0. Checkpoint-200 kept.
