@@ -50,6 +50,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-15 from Mila: **3a (stop-SFT) done, negative** (`runs.md` cross-run finding + rows `stop_sft_F250_*`). Baseline F-merged-250 val800 depth-4 mdp: own 0.841, oracle 0.889, looks_good pass 0.49 / 0.18 / 0.09 / 0.08, fail 0.09 / 0.04 / 0.03 / 0.04. Balanced SFT: critic stops on failing images 0.36–0.39 at round 1, AM 0.831–0.835. Natural-ratio SFT: pass 0.67, fail 0.14, AM 0.842 (= baseline). SFT shifts how often it stops, not pass/fail discrimination (round-1 log-odds gap 2.2 → 2.4). For 3b: the same F-250 baseline numbers apply; a stop reward will likely face the same detection limit, so watch looks_good_fail, not only looks_good_pass.
 - 2026-10-15 06:40 EDT from TamIA: **G done** (300 steps). val800 depth-4 mdp, AM after 0..4 rounds at step 300: own 0.740/0.757/0.761/0.759/**0.757** (step 0: 0.684/…/0.675), oracle 0.741/0.779/0.791/0.791/**0.803** (step 0: 0.697). Draft +0.056, final +0.082, oracle +0.106 since step 0; rounds 3–4 still ≈ 0 with own critiques. Checkpoints 50–300 kept on TamIA; wandb `darshan_mr_sft_tamia` synced. TamIA is idle.
 (empty)
 
