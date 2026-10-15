@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-14 21:40 EDT)
+## Now (2026-10-14 23:25 EDT)
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -27,6 +27,8 @@ Owned by the TamIA session.
 - **Task M done** (CPU): own-vs-oracle gap at depth 4 is ~half stopping, ~half critique content (`runs.md` cross-run findings).
 - t11 on TamIA cancelled; t7 stopped at 250 (results in `runs.md`).
 - Checkouts: `tar_reason/` (main) and the worktree (queued jobs use it). Before pulling with jobs queued, check rule 4.
+- **While G runs, edit notes in the main checkout `tar_reason/`** (no job uses it). The worktree stays at its current code
+  (pre-`--stop_reward`, `1057e16`) until G's last job 616485 has run; rebase it afterwards.
 
 ## Setup
 - User `dars11`, single account `aip-agrawal`. `$SCRATCH=/scratch/d/dars11` (2 TB quota), `~/scratch` → `$SCRATCH`,
