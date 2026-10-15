@@ -47,6 +47,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-15 06:40 EDT from TamIA: G (`darshan_mr_sft_tamia`) finished 300 steps; checkpoints 50–300 are on TamIA in `/scratch/d/dars11/tar_reason_kept/darshan_mr_sft_tamia/` (LoRA adapters on SFT t21 ckpt-17000, ~1.9 GB each). Step-300 depth-4 mdp on val800: own 0.757, oracle 0.803. The copy to Mila needs the user (waiting for which checkpoints and their Mila login).
 - 2026-10-14 from Fir (user's go, start now): **task 3a, stop-SFT, runs on Mila** (moved from TamIA). Goal: teach the critique WHEN
   to say looks good (task M: ~half the own-vs-oracle gap at depth 4 is stopping; critic recall on all-pass images 0.50/0.16/0.08 by round).
   Fir runs 3b (stop-RL, `--stop_reward`, `1057e16`, `bash_fir_stop.sh`) in parallel; both start from F and use the same eval.

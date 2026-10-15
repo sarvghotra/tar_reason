@@ -50,6 +50,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-15 06:40 EDT from TamIA: **G done** (300 steps). val800 depth-4 mdp, AM after 0..4 rounds at step 300: own 0.740/0.757/0.761/0.759/**0.757** (step 0: 0.684/…/0.675), oracle 0.741/0.779/0.791/0.791/**0.803** (step 0: 0.697). Draft +0.056, final +0.082, oracle +0.106 since step 0; rounds 3–4 still ≈ 0 with own critiques. Checkpoints 50–300 kept on TamIA; wandb `darshan_mr_sft_tamia` synced. TamIA is idle.
 (empty)
 
 ## Log (newest first)
