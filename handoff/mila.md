@@ -3,15 +3,15 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-15 13:00 EDT)
-- **Nothing running on Mila.** Task 3a (stop-SFT) done, negative (cross-run finding in `runs.md`, rows `stop_sft_F250_*`,
-  `depth4_F250_mdp_val800_part{1,2}`): balanced SFT makes the critic stop on failing images too (AM −1); natural-ratio SFT ≈ baseline
-  (84.2 vs 84.1). SFT moves the stop rate, not pass/fail discrimination. Told Fir (Inbox). F-300 not tried (no gain to transfer).
-- Reusable: data shards (`$SCRATCH/data/stop_sft/`, dumps in `output_dir/stopsft_data_shard*/val_dump` with image codes + sampled
-  critiques + per-question scores for 6,004 F-250 images), `build_data.py --ratio`, `bash_mila_stop_sft.sh`, F-merged-250 at
-  `$SCRATCH/models/tar/sft/darshan_mr_fir_merged250`.
-- Benchmarks of F/G step 300 and t11: waiting for checkpoint copies. jeet's Mila scratch not readable (told Fir).
-- Watcher: none.
+## Now (2026-10-15 evening EDT)
+- **F-250 benchmarks running** (Inbox, user's go): `bench_mila.sh` `MODEL_NAME=F_merged250 BASE_MODEL=…/darshan_mr_fir_merged250
+  BENCHES="geneval2 tiif genai"` (11273398, short-unkillable); official GenEval2 depth-4 mdp as in task H, split in 4 × 200
+  (`benchmarks/GenEval2/splits/geneval2_q{1..4}.jsonl` = part1 + part2) on 2-GPU jobs `depth4_F250_mdp_geneval2_q{1..4}`
+  (11273399 main, 11273400–02 long, `--no-requeue`). Job ids in `$SCRATCH/tar_reason/F250_bench_jobs.txt`. Compare with t8:
+  GenEval2 76.8 final (1 round), depth MDP 70.8 / 76.1 / 77.5 / 77.3 / 77.9; TIIF 70.5 / 68.6; GenAI 40.7.
+- Then F-300 (best: val800 0.848) and G-300 when copied to Mila (not yet: `kept/darshan_mr_fir/` has only checkpoint-250).
+- 3a done (negative; `runs.md`). jeet's Mila scratch not readable (told Fir).
+- Watcher: background in this session.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -67,6 +67,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-15 evening: started F-250 official benchmarks + depth-4 mdp (Inbox).
 - 2026-10-15 13:00: 3a done (negative): natural-ratio stop-SFT ≈ baseline on val800; deleted the 3a Inbox line; told Fir.
 - 2026-10-15 08:30: stop-SFT LR 1e-5 (part 1) and LR 5e-5 × 2 epochs (full val800) both worse than F-250 (prior shift toward stopping); natural-ratio run started. `tools/watch/depth_curve.py` got `--only <prompts.jsonl>`.
 - 2026-10-15 05:30: 3a: 8 data shards done (shard 5 preempted once on `long`, rerun on `main`), 3,100 examples; stop-SFT trained (193 steps); F-250 baseline done (own 0.841 / oracle 0.889 at depth 4); stop-SFT eval queued.
