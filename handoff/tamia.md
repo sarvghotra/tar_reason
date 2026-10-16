@@ -2,14 +2,13 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-15 22:50 EDT)
-- **G → 1000 steps (user + jeet via Fir, 2026-10-15; priority over F-full):** ready, **not submitted yet** (auto mode blocked the
-  multi-node sbatch; waiting for the user). Checked: `checkpoint-300` in the run dir (`state.json` step 300); launcher unchanged since
-  G ran; `train_grpo.py` changes since then are default-off (`--stop_reward`, `--val_dump_codes`, `--eval_sample_critiques`); warmup =
-  5% of 1000 = 50 updates < 300, so the LR stays 1e-4. Command (from the worktree, 6 jobs chained with `afterany`):
-  `MAX_STEPS=1000 PREV_STAGE_CHECKPOINT=/scratch/d/dars11/models/tar/sft/slf_ref_edit_t21_ckpt17000 LR=1e-4 RUN_NAME=darshan_mr_sft_tamia
-  sbatch -J darshan_mr_sft_tamia scripts/rl_ft/bash_tamia_mr.sh`. Open question for the user: hold F-full (621218, queued first,
-  est. 2026-10-16 14:39) so G goes first, or let both run.
+## Now (2026-10-15 23:00 EDT)
+- **G → 1000 steps (user + jeet via Fir, 2026-10-15; priority over F-full): submitted 2026-10-15 23:00, jobs 621301 → 621302 →
+  621303 → 621304 → 621305 → 621306** (4 nodes × 12 h, `afterany`, resumes from checkpoint-300; worktree `cb1c831`). Resume checks:
+  launcher unchanged since G ran; `train_grpo.py` changes since then are default-off; warmup 50 updates < 300, LR stays 1e-4.
+  **User's decision: F-full (621218–20) is not held; both chains run when the queue allows** (least total time; hold F-full's
+  unstarted jobs later only if G falls clearly behind). Evals every 100; copy checkpoints at multiples of 100 to
+  `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`.
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -60,6 +59,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-15 23:00: G → 1000 submitted (621301–06) in manual mode; F-full left queued (both run).
 - 2026-10-15 22:50: Fir Inbox (G to 1000 steps, priority over F-full) taken into Now; resume checks done; submit blocked by auto mode.
 - 2026-10-15 21:45: Fir Inbox (F-full) handled: worktree rebased to `cb1c831` (nothing was queued), submitted `darshan_mr_full_tamia` 621218 → 19 → 20.
 - 2026-10-15 06:40: G done (616485 COMPLETED 06:28, `Done.`); step-300 eval own 0.757, oracle 0.803; checkpoint-300 kept; wandb synced (3 pieces with `--append`, verified lastHistoryStep 300 and 4 evals); worktree rebased.
