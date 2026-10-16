@@ -42,6 +42,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-15 21:45 EDT from TamIA: **F-full queued**: `darshan_mr_full_tamia` = `bash_tamia_mr.sh` with `CONTEXT_MODE=full` (defaults otherwise: merged t8, LR 5e-5, children_r1, micro-batch 2), jobs 621218 → 621219 → 621220 (4 nodes × 12 h). Will report the step-0/100/200/300 full-history evals and the final mdp eval.
 (empty)
 
 ## Log (newest first)

@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-15 06:40 EDT)
+## Now (2026-10-15 21:45 EDT)
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -18,7 +18,13 @@ Owned by the TamIA session.
   (`runs.md`). Checkpoints 50–300 kept in `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`.
   **Mila asked for G's checkpoints** (GenEval2, TIIF, GenAI, MDP depth): copying TamIA → Mila needs the user's Mila login;
   ask the user which checkpoints (300, maybe 200) and run the copy in tmux.
-- **No jobs running or queued on TamIA.** Worktree rebased to the latest branch (includes `--stop_reward`, stop-SFT code).
+- **Task F-full queued (user's go via Fir, 2026-10-15): `darshan_mr_full_tamia`**, F's recipe with `CONTEXT_MODE=full` (merged t8
+  base, LR 5e-5, `children_r1`, chain mode, micro-batch 2, 300 steps, depth-4 full-history evals every 100). Jobs **621218 → 621219
+  → 621220** (4 nodes × 12 h, `afterany`), worktree at `cb1c831`. Expected step 0 ≈ `t8_depth4_full_tamia` (own 0.795, oracle 0.866);
+  F (mdp) reached 0.848. After step 300: eval the final checkpoint with `--context_mode mdp` (`MAX_STEPS=0`). Report evals to
+  `runs.md` and Fir's Inbox. Copy checkpoints at multiples of 50 to `$SCRATCH/tar_reason_kept/darshan_mr_full_tamia/`.
+  **While F-full runs, edit notes in the main checkout** and don't rebase the worktree onto code changes (rule 4).
+- Optional later: F continued 300 → 500 on TamIA if the user copies F-300 here.
 - **Task M done** (CPU): own-vs-oracle gap at depth 4 is ~half stopping, ~half critique content (`runs.md` cross-run findings).
 - t11 on TamIA cancelled; t7 stopped at 250 (results in `runs.md`).
 - Checkouts: `tar_reason/` (main) and the worktree (queued jobs use it). Before pulling with jobs queued, check rule 4.
@@ -45,16 +51,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-15 from Fir (user's go): **task F-full: F's recipe with full-history context** (ablation of F's MDP choice). Same as F in
-  every setting except `CONTEXT_MODE=full`: `CONTEXT_MODE=full RUN_NAME=darshan_mr_full_tamia sbatch -J darshan_mr_full_tamia
-  scripts/rl_ft/bash_tamia_mr.sh` (base = merged t8, LR 5e-5, `--draft_reward children_r1`, chain mode, 300 steps, depth-4 evals every 100,
-  which use full history too), chained with `afterany` like G. Full-history rows reach ~3.8k tokens at round 4; Fir's full-history
-  smoke (64622474) fit at micro-batch 2, ~4.4–4.8 min/step. Expected step 0 ≈ t8 full history (own am_upto_4 0.795, oracle 0.866, your
-  `t8_depth4_full_tamia`); F (MDP) went 0.835 → 0.848 by step 300, so the question is whether training removes the full-history
-  handicap. After step 300, also eval the final checkpoint with `--context_mode mdp` (eval only, `MAX_STEPS=0`). Report evals to Fir's
-  Inbox + `runs.md` row. Optional later on TamIA: F continued 300 → 500 if the user copies F-300 over.
 
 ## Log (newest first)
+- 2026-10-15 21:45: Fir Inbox (F-full) handled: worktree rebased to `cb1c831` (nothing was queued), submitted `darshan_mr_full_tamia` 621218 → 19 → 20.
 - 2026-10-15 06:40: G done (616485 COMPLETED 06:28, `Done.`); step-300 eval own 0.757, oracle 0.803; checkpoint-300 kept; wandb synced (3 pieces with `--append`, verified lastHistoryStep 300 and 4 evals); worktree rebased.
 - 2026-10-15 02:24: G 616485 started, resumed from checkpoint-260.
 - 2026-10-15 02:21: G 616484 TIMEOUT at step ~260 (checkpoint-260); checkpoint-250 kept. Steps 200–260 stable, KL 0.04 → 0.21 (gentle rise), grad ≤ 0.07.
