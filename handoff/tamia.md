@@ -8,7 +8,8 @@ Owned by the TamIA session.
   launcher unchanged since G ran; `train_grpo.py` changes since then are default-off; warmup 50 updates < 300, LR stays 1e-4.
   **User's decision: F-full (621218–20) is not held; both chains run when the queue allows** (least total time; hold F-full's
   unstarted jobs later only if G falls clearly behind). Evals every 100; copy checkpoints at multiples of 100 to
-  `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`.
+  `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`. Est. starts (squeue, 22:46): F-full 621218 2026-10-16 14:39, G 621301 16:00.
+  Watcher: tmux session (2026-10-15 22:46): background wait for either chain to start or a new Inbox line, then `watch_job.py`.
 - **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
   `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
   Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
@@ -59,6 +60,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-15 22:46: user resumed in tmux (auto mode); background wait on F-full/G start and Inbox started.
 - 2026-10-15 23:00: G → 1000 submitted (621301–06) in manual mode; F-full left queued (both run).
 - 2026-10-15 22:50: Fir Inbox (G to 1000 steps, priority over F-full) taken into Now; resume checks done; submit blocked by auto mode.
 - 2026-10-15 21:45: Fir Inbox (F-full) handled: worktree rebased to `cb1c831` (nothing was queued), submitted `darshan_mr_full_tamia` 621218 → 19 → 20.
