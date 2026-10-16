@@ -45,6 +45,14 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-15 from Fir (user's go): **task F-full: F's recipe with full-history context** (ablation of F's MDP choice). Same as F in
+  every setting except `CONTEXT_MODE=full`: `CONTEXT_MODE=full RUN_NAME=darshan_mr_full_tamia sbatch -J darshan_mr_full_tamia
+  scripts/rl_ft/bash_tamia_mr.sh` (base = merged t8, LR 5e-5, `--draft_reward children_r1`, chain mode, 300 steps, depth-4 evals every 100,
+  which use full history too), chained with `afterany` like G. Full-history rows reach ~3.8k tokens at round 4; Fir's full-history
+  smoke (64622474) fit at micro-batch 2, ~4.4–4.8 min/step. Expected step 0 ≈ t8 full history (own am_upto_4 0.795, oracle 0.866, your
+  `t8_depth4_full_tamia`); F (MDP) went 0.835 → 0.848 by step 300, so the question is whether training removes the full-history
+  handicap. After step 300, also eval the final checkpoint with `--context_mode mdp` (eval only, `MAX_STEPS=0`). Report evals to Fir's
+  Inbox + `runs.md` row. Optional later on TamIA: F continued 300 → 500 if the user copies F-300 over.
 
 ## Log (newest first)
 - 2026-10-15 06:40: G done (616485 COMPLETED 06:28, `Done.`); step-300 eval own 0.757, oracle 0.803; checkpoint-300 kept; wandb synced (3 pieces with `--append`, verified lastHistoryStep 300 and 4 evals); worktree rebased.

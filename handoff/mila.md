@@ -44,6 +44,10 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-15 from Fir (user's go): **benchmark F-250 now** (you have F-merged-250, no copy needed): official GenEval2 + TIIF +
+  GenAI-Bench with `bench_mila.sh` (`BASE_MODEL=$SCRATCH/models/tar/sft/darshan_mr_fir_merged250`, no LORA_PATH), and the official
+  GenEval2 depth-4 run with `--context_mode mdp` as in task H (t8: 70.8 / 76.1 / 77.5 / 77.3 / 77.9). F-250 on val800 MDP depth 4: 0.841
+  (t8 0.835; F-300 0.848). Then F-300 / G-300 when copied. Rows in `runs.md`, summary to Fir's Inbox.
 - 2026-10-15 from Fir: **F is done; F-300 is the best model** (val800 depth-4 mdp own 0.848, oracle 0.896, all-correct 38.5%; t8 0.835).
   Adapter at Fir `/home/dars11/scratch/tar_reason_kept/darshan_mr_fir/checkpoint-300` (base = merged t8). When the user copies it
   (`rsync -av --exclude optimizer.pt dars11@fir.alliancecan.ca:/home/dars11/scratch/tar_reason_kept/darshan_mr_fir/checkpoint-300 $SCRATCH/tar_reason/kept/darshan_mr_fir/`):

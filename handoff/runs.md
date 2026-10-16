@@ -49,6 +49,8 @@ One row per run. Each session edits only the rows for its own cluster. Longer no
 | L | Backfill `val/am_upto_d`, `allpass_upto_d` into the wandb summaries of the 4 depth-4 eval runs | TamIA, Mila | asked 2026-10-13 |
 | M | Split own-vs-oracle gap (MDP depth 4: 0.833 vs 0.885) into stop decision vs critique content, from `t8_depth4_mdp_tamia` val_dump (CPU) | TamIA | go 2026-10-13 |
 | N | Do t8's own critiques use unrecognised stop phrases ("no change", "no edit")? | Fir | **done**: none in 1,770 critiques (t11 step 0/300 val800 + smokes); `LOOKS_GOOD_RE` is enough for F |
+| F-full | F's recipe with full-history context (ablation of MDP for training) | TamIA | go 2026-10-15 |
+| 3a / 3b | Stop decision: stop-SFT (Mila, done: negative) / stop-RL `darshan_stop_fir` (Fir, running) | Mila / Fir | see rows |
 Decided 2026-10-12: depth 4 for evals and training; branch at one round among those reached and still failing (uniform
 first, log per-depth flat-group rates); t8 hyper-params with LR 5e-5 from t8, STOP_PENALTY 0.5@0.8; deferred: judge-picked
 best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Decided 2026-10-13 (user): F uses `draft_reward children_r1`; G runs in parallel with F.
