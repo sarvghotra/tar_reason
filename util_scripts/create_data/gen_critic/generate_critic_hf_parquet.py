@@ -826,6 +826,34 @@ def run_worker(rank: int, world_size: int, gpu_ids: list[int], args: argparse.Na
           flush=True)
 
 
+def run_worker_and_exit(*worker_args) -> None:
+    """`run_worker`, then a hard exit that skips interpreter and multiprocessing clean-up.
+
+    A normal exit first joins the worker's children (the vLLM EngineCore processes) and only then prints the
+    traceback; that join can block forever, which once left a crashed job silent until its time limit. Here the
+    traceback is printed first, the children are killed, and `os._exit` ends the process.
+    """
+    import traceback
+
+    import psutil
+
+    exitcode = 1
+    try:
+        run_worker(*worker_args)
+        exitcode = 0
+    except BaseException:
+        traceback.print_exc()
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        for child in psutil.Process().children(recursive=True):
+            try:
+                child.kill()
+            except psutil.NoSuchProcess:
+                pass
+        os._exit(exitcode)
+
+
 def resolve_replicas(args: argparse.Namespace) -> tuple[int, list[list[int]]]:
     """Return (world_size, per-replica GPU id groups)."""
     num_gpus = args.num_gpus
@@ -881,13 +909,12 @@ def main(args: argparse.Namespace, build_generate_fn=build_hf_generate_fn) -> No
     if world_size == 1:
         # Stay in-process: easier to debug, and CUDA_VISIBLE_DEVICES from the
         # job environment is left untouched.
-        run_worker(0, 1, [], args, sampling, files, selected_rows, build_generate_fn)
-        return
+        run_worker_and_exit(0, 1, [], args, sampling, files, selected_rows, build_generate_fn)
 
     context = mp.get_context("spawn")
     workers = [
         context.Process(
-            target=run_worker,
+            target=run_worker_and_exit,
             args=(rank, world_size, gpu_groups[rank], args, sampling, files, selected_rows,
                   build_generate_fn),
         )
