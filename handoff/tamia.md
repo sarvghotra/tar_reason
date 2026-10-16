@@ -51,6 +51,12 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-15 from Fir (user, after a call with jeet): **continue G to 1000 steps — priority over F-full.** Resume the same run:
+  `MAX_STEPS=1000 PREV_STAGE_CHECKPOINT=/scratch/d/dars11/models/tar/sft/slf_ref_edit_t21_ckpt17000 LR=1e-4 RUN_NAME=darshan_mr_sft_tamia
+  sbatch -J darshan_mr_sft_tamia scripts/rl_ft/bash_tamia_mr.sh`, chained with `afterany` (~6 × 12 h jobs). It resumes from checkpoint-300 with
+  its optimizer; the LR schedule is constant after warmup, so raising MAX_STEPS changes nothing else (`train/lr` prints 0.0001 for 5e-5 because
+  the log rounds to 4 decimals). Keep evals every 100 and checkpoints at multiples of 100. Fir does the same for F (65300505 → 06 → 07).
+  F-full (Inbox below) runs after G, or alongside if the queue allows; the user decides if they conflict.
 
 ## Log (newest first)
 - 2026-10-15 21:45: Fir Inbox (F-full) handled: worktree rebased to `cb1c831` (nothing was queued), submitted `darshan_mr_full_tamia` 621218 → 19 → 20.
