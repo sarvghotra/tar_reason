@@ -3,11 +3,8 @@
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
 ## Now (2026-10-15 01:20 PDT)
-- **Task 3b (stop-RL) running: `darshan_stop_fir`** 65224187 (since 12:00, at step ~70 at 18:00, ~3.8 min/step) → 65224188 (`afterany`; first try 65120761 failed at startup: PREV_STAGE_CHECKPOINT not exported, fell back to the missing F-300 default), 4 nodes × 24 h, 200 steps, depth-4 mdp val800
-  eval every 50. Base + KL ref = **F-250 merged** (`models/tar/sft/darshan_mr_fir_merged250`, same start as Mila's 3a, so they compare
-  directly), fresh LoRA, t11 critic-only setup (K=3 × M=4, image tokens KL-only) + `--stop_reward 0.2` (`1057e16`), launcher
-  `bash_fir_stop.sh`. Smoke 65090165 passed (1 node, 28 min, ~3.5 min/step, looks_good 7–11% of sampled critiques). Baseline
-  (Mila, F-250 val800 depth-4 mdp): own am_upto_4 0.841, looks_good_pass 0.49/0.18/0.09/0.08, fail 0.09/0.04/0.03/0.04.
+- **Task 3b (stop-RL) stopped at step ~105** (negative: step-100 own am_upto_4 0.839 vs 0.838 at step 0; looks_good on passing images
+  0.48 → 0.56 at round 1 only). Checkpoints 50/100 kept. Fir's GPUs go to F-1000.
 - **Task F continued to 1000 steps** (jeet, 2026-10-15): 65300505 → 65300506 → 65300507 (`MAX_STEPS=1000`, resumes from
   checkpoint-300; constant LR 5e-5). At 300 (done): val800 depth-4 mdp own **0.848** (t8 0.835), oracle 0.896, all-correct 38.5% (32.9%); checkpoints
   100–300 kept; wandb synced. F-300 is the best model so far (`runs.md`).
@@ -49,6 +46,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-15 21:45: 3b step-100 eval flat → cancelled 65224187/88 (user's rule). Stop decision: SFT (3a) and RL (3b) both fail to improve discrimination.
 - 2026-10-15 19:00: jeet asked to continue F and G to 1000 steps: F resubmitted here (3 × 24 h chained), G to TamIA's Inbox (priority over F-full).
 - 2026-10-15 18:10: F done (step-300 own 0.848, oracle 0.896), wandb synced (2 pieces, second with --append), checkpoint-300 kept. 3b step 50: no change vs step 0. Watchers restarted after the tmux session ended.
 - 2026-10-15 06:10: Inbox handled: Mila 3a negative (balanced SFT stops more on everything; natural-ratio = baseline 0.842; discrimination unchanged), so for 3b watch looks_good_fail too; TamIA G done (step 300 own 0.757, oracle 0.803), TamIA idle. F job 2 and 3b est. start 15:00.
