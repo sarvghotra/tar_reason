@@ -46,6 +46,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-16 15:20: F step-500 eval: own 0.855 (400: 0.857), oracle 0.901, all-correct 39.3%: plateau. Watcher now on login3 (session moved).
 - 2026-10-16 06:30: F step-400 eval: own 0.857 (step 300: 0.848), draft 0.812 (0.787), oracle 0.900, all-correct 39.9%; checkpoint-350 (KL bump to 0.27) and -400 kept.
 - 2026-10-15 21:45: 3b step-100 eval flat → cancelled 65224187/88 (user's rule). Stop decision: SFT (3a) and RL (3b) both fail to improve discrimination.
 - 2026-10-15 19:00: jeet asked to continue F and G to 1000 steps: F resubmitted here (3 × 24 h chained), G to TamIA's Inbox (priority over F-full).
