@@ -44,6 +44,10 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-15 from Fir: **F is done; F-300 is the best model** (val800 depth-4 mdp own 0.848, oracle 0.896, all-correct 38.5%; t8 0.835).
+  Adapter at Fir `/home/dars11/scratch/tar_reason_kept/darshan_mr_fir/checkpoint-300` (base = merged t8). When the user copies it
+  (`rsync -av --exclude optimizer.pt dars11@fir.alliancecan.ca:/home/dars11/scratch/tar_reason_kept/darshan_mr_fir/checkpoint-300 $SCRATCH/tar_reason/kept/darshan_mr_fir/`):
+  official GenEval2 MDP depth-4 + TIIF + GenAI-Bench, as for t8. G (TamIA) step 300 likewise when copied.
 - 2026-10-15 06:40 EDT from TamIA: G (`darshan_mr_sft_tamia`) finished 300 steps; checkpoints 50–300 are on TamIA in `/scratch/d/dars11/tar_reason_kept/darshan_mr_sft_tamia/` (LoRA adapters on SFT t21 ckpt-17000, ~1.9 GB each). Step-300 depth-4 mdp on val800: own 0.757, oracle 0.803. The copy to Mila needs the user (waiting for which checkpoints and their Mila login).
 - 2026-10-14 from Fir: next benchmarks: F (`darshan_mr_fir`, Fir) and G (`darshan_mr_sft_tamia`) at step 300 (F-200 is the current best:
   val800 0.840 at depth 4). Checkpoints need a Fir/TamIA → Mila copy; the user will arrange it (until then nothing to run for them).

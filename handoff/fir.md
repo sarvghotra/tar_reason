@@ -3,21 +3,13 @@
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
 ## Now (2026-10-15 01:20 PDT)
-- **Task 3b (stop-RL) submitted: `darshan_stop_fir`** 65224187 → 65224188 (`afterany`; first try 65120761 failed at startup: PREV_STAGE_CHECKPOINT not exported, fell back to the missing F-300 default), 4 nodes × 24 h, 200 steps, depth-4 mdp val800
+- **Task 3b (stop-RL) running: `darshan_stop_fir`** 65224187 (since 12:00, at step ~70 at 18:00, ~3.8 min/step) → 65224188 (`afterany`; first try 65120761 failed at startup: PREV_STAGE_CHECKPOINT not exported, fell back to the missing F-300 default), 4 nodes × 24 h, 200 steps, depth-4 mdp val800
   eval every 50. Base + KL ref = **F-250 merged** (`models/tar/sft/darshan_mr_fir_merged250`, same start as Mila's 3a, so they compare
   directly), fresh LoRA, t11 critic-only setup (K=3 × M=4, image tokens KL-only) + `--stop_reward 0.2` (`1057e16`), launcher
   `bash_fir_stop.sh`. Smoke 65090165 passed (1 node, 28 min, ~3.5 min/step, looks_good 7–11% of sampled critiques). Baseline
   (Mila, F-250 val800 depth-4 mdp): own am_upto_4 0.841, looks_good_pass 0.49/0.18/0.09/0.08, fail 0.09/0.04/0.03/0.04.
-- **Task F `darshan_mr_fir`**: job 64862883 hit its 24 h limit 2026-10-14 21:05 at step ~265 (checkpoint-260); **64862884 resumes it, limit
-  cut to 7 h, est. start 2026-10-15 11:00** (300 steps total): N=4 chain-mode MDP training
-  from merged t8, `--draft_reward children_r1` (`d14d6e6`, user-approved; each draft judged after one refinement), LR 5e-5,
-  depth-4 mdp val800 evals every 100 steps. **Running since 21:05 PDT** (4 nodes staged + judges ready in seconds). Step-0 val800 depth-4 mdp: own am_upto
-  0.779/0.825/0.829/0.830/0.835, oracle 0.774/0.844/0.867/0.874/0.882 (= TamIA's t8 mdp eval within noise).
-  **Step-100** val800: own am_upto 0.763/0.813/0.833/0.830/0.834 (final flat vs 0.835; draft −0.016; round-2 gain up: delta_am_2
-  +0.025 vs +0.005, fix_2 0.35 vs 0.27; all-correct after 2 rounds 35.0% vs 32.5%); oracle 0.756/…/0.881 (flat). KL 0.10–0.18. checkpoint-100 kept.
-  **Step-200** val800: own am_upto 0.785/0.840/0.844/**0.845**/0.840 (final +0.005 vs step 0, best depth 3 +0.015; draft recovered to
-  0.785; all-correct 37.2% at depth 3 vs 33.0%); oracle 0.786/0.856/0.873/0.884/**0.890**. Gain is in the draft and round 1 (delta_am_1
-  +0.055); rounds 2–4 ≈ 0 again. KL spike to 0.37 at step 162 recovered in 1 step; checkpoint-150 and -200 kept. Watch for: step time (~5 min/step expected), KL, `train/chain_*`.
+- **Task F done** (300 steps): val800 depth-4 mdp own **0.848** (t8 0.835), oracle 0.896, all-correct 38.5% (32.9%); checkpoints
+  100–300 kept; wandb synced. F-300 is the best model so far (`runs.md`).
 - Plan F–N in `runs.md`: G (from SFT) on TamIA in parallel; H (official GenEval2 depth-4 MDP), I (base Tar), J (GenAI-bench) on
   Mila; L (am_upto backfill) TamIA + Mila; M (stop vs content split) TamIA; N done here (no unrecognised stop phrases).
 - Fir's GPU outage is over. t11 done (results in `runs.md`); kept checkpoints in `~/scratch/tar_reason_kept/`.
@@ -53,6 +45,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-15 18:10: F done (step-300 own 0.848, oracle 0.896), wandb synced (2 pieces, second with --append), checkpoint-300 kept. 3b step 50: no change vs step 0. Watchers restarted after the tmux session ended.
 - 2026-10-15 06:10: Inbox handled: Mila 3a negative (balanced SFT stops more on everything; natural-ratio = baseline 0.842; discrimination unchanged), so for 3b watch looks_good_fail too; TamIA G done (step 300 own 0.757, oracle 0.803), TamIA idle. F job 2 and 3b est. start 15:00.
 - 2026-10-15 01:20: 3b smoke passed; full 3b submitted from F-250 (65120761/62). Mila Inbox: jeet's Mila scratch not readable (user to ask jeet); Mila 3a well underway.
 - 2026-10-14 21:05: F job 1 TIMEOUT at step ~265 (as planned); job 2 limit cut to 7 h. F-250 merged (CPU job, def-bengioy).
