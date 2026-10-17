@@ -46,6 +46,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-17 17:40: F step-800 eval: best so far (own 0.858 at 4, 0.866 at 3, all-correct 44.1% at 3, draft 0.816); the 500–700 dip was noise. Checkpoint-800 kept.
 - 2026-10-17 09:40: F step-700 eval: own 0.854, oracle 0.902, draft 0.792: plateau since 400 (draft slowly down); checkpoint-700 kept. Best checkpoint so far: 400 (0.857, draft 0.812).
 - 2026-10-17 00:30: F step-600 eval: own 0.855 at depth 4 (0.862 at 3), oracle 0.905: plateau; job 65300505 TIMEOUT at ~585, 65300506 resumed from 580.
 - 2026-10-16 15:20: F step-500 eval: own 0.855 (400: 0.857), oracle 0.901, all-correct 39.3%: plateau. Watcher now on login3 (session moved).
