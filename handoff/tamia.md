@@ -60,6 +60,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-17 12:57: F-full step-0 eval (full history) reproduces t8: own am_upto 0.778/0.821/0.820/0.811/0.796, oracle → 0.863.
 - 2026-10-17 12:45: G-1000 621301 started on tg[10701,10802,10805-10806], resumed from checkpoint-300. Both chains running.
 - 2026-10-17 12:05: F-full 621218 started on tg[10606,10808,10908,11302]; startup checks pass.
 - 2026-10-15 22:46: user resumed in tmux (auto mode); background wait on F-full/G start and Inbox started.
