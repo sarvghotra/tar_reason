@@ -87,6 +87,12 @@ class TextAlignedTokenizer(nn.Module):
         sd = ckpt["model"]["sd"]
         if not load_teacher:
             sd = {k: v for k, v in sd.items() if not k.startswith('teacher')}
+        if not hasattr(model.decoder, 'vision_model'):
+            # transformers>=5 flattens Siglip2VisionModel (no `.vision_model`
+            # wrapper); checkpoints were saved with transformers 4.x.
+            sd = {k.replace('decoder.vision_model.', 'decoder.', 1)
+                  if k.startswith('decoder.vision_model.') else k: v
+                  for k, v in sd.items()}
         model.load_state_dict(sd, strict=True)
         return model
 
