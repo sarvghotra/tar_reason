@@ -2,39 +2,27 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-17 12:10 EDT)
-- **G → 1000 steps (user + jeet via Fir, 2026-10-15; priority over F-full): submitted 2026-10-15 23:00, jobs 621301 → 621302 →
-  621303 → 621304 → 621305 → 621306** (4 nodes × 12 h, `afterany`, resumes from checkpoint-300; worktree `cb1c831`). Resume checks:
-  launcher unchanged since G ran; `train_grpo.py` changes since then are default-off; warmup 50 updates < 300, LR stays 1e-4.
-  **User's decision: F-full (621218–20) is not held; both chains run when the queue allows** (least total time; hold F-full's
-  unstarted jobs later only if G falls clearly behind). Evals every 100; copy checkpoints at multiples of 100 to
-  `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`. **F-full 621218 running since 2026-10-17 12:05** (startup checked: context=full, lr 5e-5, merged t8, 4 judges in 30 s); **G 621301 running since 12:45** (resumed at 300; context=mdp, lr 1e-4, SFT base).
-  Watcher: tmux session (2026-10-15 22:46): background wait for either chain to start or a new Inbox line, then `watch_job.py`.
-- **Plan A–G** (`runs.md` "Plan"). Code is written by the Fir session; TamIA pulls it into the worktree
-  `/scratch/d/dars11/git/tar_reason_t11` (at `16f2cf1`+, includes `--context_mode` and `--chain_siblings`).
-  Fir's GPUs go down 2026-10-13 10:00 PDT, so **task F (N=4 multi-round training from t8) will likely run on TamIA**;
-  it waits for the user's go (and jeet's input on `draft_reward`). Don't submit F before that.
-- **Task B done:** `t8_depth4_full_tamia` (614114). With full history, own critique is best at depth 1 (final AM 0.827 →
-  0.795 at depth 4), oracle best at depth 3 (0.867). Mila's official GenEval2 run: own critique best at depth 2
-  (76.4), also declining after. Details in `runs.md`.
-- **Task C done:** `t8_depth4_mdp_tamia` (614753). With MDP context t8 does not get worse with depth: own critique
-  final AM 0.826 (depth 1) → 0.833 (depth 4), oracle 0.848 → 0.885; full history at depth 4 was 0.795 / 0.866. Details in `runs.md`.
-- **Multi-round smoke `mr_smoke_tamia` passed** (614754, 30 min, ~4.2 min/step on 1 node): TamIA is ready for task F.
-- **Task G done** (`darshan_mr_sft_tamia`, 616483–85, finished 2026-10-15 06:28, 300 steps, wandb synced). Depth-4 mdp eval,
-  final AM own 0.675 → **0.757** (best depth 2: 0.761), oracle 0.697 → **0.803**, draft 0.684 → 0.740; still below t8/F
-  (`runs.md`). Checkpoints 50–300 kept in `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`.
-  **Mila asked for G's checkpoints** (GenEval2, TIIF, GenAI, MDP depth): copying TamIA → Mila needs the user's Mila login;
-  ask the user which checkpoints (300, maybe 200) and run the copy in tmux.
-- **Task F-full queued (user's go via Fir, 2026-10-15): `darshan_mr_full_tamia`**, F's recipe with `CONTEXT_MODE=full` (merged t8
-  base, LR 5e-5, `children_r1`, chain mode, micro-batch 2, 300 steps, depth-4 full-history evals every 100). Jobs **621218 → 621219
-  → 621220** (4 nodes × 12 h, `afterany`), worktree at `cb1c831`. Expected step 0 ≈ `t8_depth4_full_tamia` (own 0.795, oracle 0.866);
-  F (mdp) reached 0.848. After step 300: eval the final checkpoint with `--context_mode mdp` (`MAX_STEPS=0`). Report evals to
-  `runs.md` and Fir's Inbox. Copy checkpoints at multiples of 50 to `$SCRATCH/tar_reason_kept/darshan_mr_full_tamia/`.
-  **While F-full runs, edit notes in the main checkout** and don't rebase the worktree onto code changes (rule 4).
-- Optional later: F continued 300 → 500 on TamIA if the user copies F-300 here.
-- **Task M done** (CPU): own-vs-oracle gap at depth 4 is ~half stopping, ~half critique content (`runs.md` cross-run findings).
-- t11 on TamIA cancelled; t7 stopped at 250 (results in `runs.md`).
-- Checkouts: `tar_reason/` (main) and the worktree (queued jobs use it). Before pulling with jobs queued, check rule 4.
+## Now (2026-10-18 00:20 EDT)
+- **G stopped** (user, via Fir 2026-10-17, after the meeting with jeet): `darshan_mr_sft_tamia` cancelled at step ~433 (621301
+  cancelled 2026-10-18 00:15; 621302–06 cancelled before starting). Last eval, step 400 (depth-4 mdp, val800): own am_upto
+  0.734/0.748/0.762/0.759/**0.757**, oracle **0.791** — flat vs step 300 (0.757 / 0.803). Kept: checkpoints 50–400 in
+  `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`; 390–430 still in the run dir. wandb: last piece synced with `--append`.
+- **F-full running/queued** (user: keep it): `darshan_mr_full_tamia`, 621218 ran 2026-10-17 12:05–00:05 (TIMEOUT at step ~133,
+  checkpoint-130); **621219 pending (est. 2026-10-19 11:15)** → 621220. Step-100 full-history eval: own am_upto
+  0.785/0.826/0.833/0.820/**0.817** (step 0: …/0.796), oracle **0.882** (0.863); the depth-1 → depth-4 drop shrank from
+  −0.025 to −0.009. Checkpoints 50/100 kept in `$SCRATCH/tar_reason_kept/darshan_mr_full_tamia/`. After step 300: mdp eval
+  of the final checkpoint (`MAX_STEPS=0`, `--context_mode mdp`).
+- **New: promptmix t1 full-history depth-4 eval** (Fir Inbox 2026-10-17): **waiting for the user's copy from Fir** (2FA):
+  `rsync -av --exclude optimizer.pt dars11@fir.alliancecan.ca:/home/dars11/scratch/tar_reason_kept/jeet_promptmix_t1/rl_ft_promptsmix_oracle_t1_500 $SCRATCH/tar_reason_kept/jeet_promptmix_t1/`
+  and `rsync -av dars11@fir.alliancecan.ca:/home/dars11/scratch/data/promptmix $SCRATCH/data/` (md5 train_17K 5a7d8259…,
+  val_800 90eb656a…). Then: merge the LoRA onto SFT t21 (`util_scripts/merge_lora.py`), pre-create `output_dir/<run>/val.yaml`
+  with GenEval2 val800 (`logname: val`) + promptmix `val_800.jsonl` (`logname: promptmix`), run as task B (`MAX_STEPS=0`,
+  `--eval_branch 1,1,1,1,1 --context_mode full --val_dump_dir …`, own + oracle, 2 nodes). Fir's `darshan_mr_pm_fir` gives the
+  mdp side. Results → `runs.md` + Fir's Inbox. Needs code ≥ `8377344` (pull the worktree only once F-full's queued jobs don't
+  care: they read code at start; check what changed first, rule 4).
+- **Notes are edited in the main checkout** while F-full has jobs queued on the worktree.
+- Earlier tasks (B, C, M, G-300, smoke tests, t7, t11): see Log and `runs.md`.
+- Mila asked for G's checkpoints (benchmarks); the TamIA → Mila copy needs the user (suggested: checkpoint-300 or -400).
 
 ## Setup
 - User `dars11`, single account `aip-agrawal`. `$SCRATCH=/scratch/d/dars11` (2 TB quota), `~/scratch` → `$SCRATCH`,
@@ -58,21 +46,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-17 from Fir (user): **keep F-full running** (user's decision; not covered by jeet's stop). G still to stop (line below).
-  **New, queue after/alongside F-full (2 nodes is enough): full-history depth-4 eval-only of jeet's promptmix t1 ckpt-500** (his t8
-  recipe from SFT t21 on the new promptmix prompts; LoRA r64 on SFT t21 → merge onto your SFT t21 with `util_scripts/merge_lora.py`).
-  Purpose: check MDP still beats full history on the new model/data (Fir's run `darshan_mr_pm_fir` gives the MDP step-0 eval of the
-  same checkpoint, so only full history is needed). Val = two sets in one `val.yaml` (pre-create it in `output_dir/<run>/` before submit):
-  GenEval2 val800 (`logname: val`) + promptmix `val_800.jsonl` (`logname: promptmix`, all 800, as jeet). The user copies (Fir 2FA):
-  `rsync -av --exclude optimizer.pt dars11@fir.alliancecan.ca:/home/dars11/scratch/tar_reason_kept/jeet_promptmix_t1/rl_ft_promptsmix_oracle_t1_500 $SCRATCH/tar_reason_kept/jeet_promptmix_t1/`
-  `rsync -av dars11@fir.alliancecan.ca:/home/dars11/scratch/data/promptmix $SCRATCH/data/` (md5 train_17K 5a7d8259…, val_800 90eb656a…).
-  Run as task B (`MAX_STEPS=0`, `--eval_branch 1,1,1,1,1 --context_mode full --val_dump_dir …`), own + oracle. Results to `runs.md` + Fir's Inbox.
-- 2026-10-17 from Fir (user, after a meeting with jeet): **stop G now** (`darshan_mr_sft_tamia`, the continuation to 1000): cancel its running
-  and queued jobs, keep its latest checkpoints, sync wandb. F on Fir was stopped at step ~855 (best: F-800). Also hold F-full
-  (full-history ablation): not to be submitted unless the user asks again. jeet's new direction: train on his **promptmix** prompt set
-  (Fir runs it first: `bash_fir_promptmix.sh`, `8377344`). Report G's last eval to Fir's Inbox.
 
 ## Log (newest first)
+- 2026-10-18 00:20: Fir Inbox handled: G stopped (621301–06 cancelled, last eval step 400 flat vs 300; checkpoint-400 kept; wandb piece synced); F-full kept (step-100 eval: own 0.817 vs 0.796 at step 0; checkpoint-100 kept); promptmix full-history eval waits for the user's copy from Fir.
 - 2026-10-17 12:57: F-full step-0 eval (full history) reproduces t8: own am_upto 0.778/0.821/0.820/0.811/0.796, oracle → 0.863.
 - 2026-10-17 12:45: G-1000 621301 started on tg[10701,10802,10805-10806], resumed from checkpoint-300. Both chains running.
 - 2026-10-17 12:05: F-full 621218 started on tg[10606,10808,10908,11302]; startup checks pass.
