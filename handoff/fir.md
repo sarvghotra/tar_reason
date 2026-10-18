@@ -10,7 +10,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   `~/scratch/tar_reason_kept/jeet_promptmix_t1/`). Merge → `models/tar/sft/rl_ft_promptsmix_t1_merged500` (CPU job 65708081), then
   `bash_fir_mr.sh` unchanged (chain mode N=4, MDP, children_r1, LR 5e-5, merged base + KL ref, fresh LoRA) with RUN dirs pre-seeded:
   `output_dir/<run>/data.yaml` = promptmix train_17K (jeet's data.yaml: same file), `val.yaml` = GenEval2 val800 (`val/`) + promptmix
-  val800 (`val_promptmix/`, jeet uses all 800; his GenEval2 val800 = ours, md5 1d3feb3f…). **Smoke `mrpm_smoke_fir` 65708082** (afterok merge); full run `darshan_mr_pm_fir` after it passes.
+  val800 (`val_promptmix/`, jeet uses all 800; his GenEval2 val800 = ours, md5 1d3feb3f…). Merge done (10 min); smoke 65708082 passed (53 min, both val sets logged). **Full run `darshan_mr_pm_fir` submitted 2026-10-18 ~00:30: 65732293 → 94 → 95** (`MAX_STEPS=500 EVAL_STEPS=100`, 4 nodes, job name `darshan_mr_fir`, so logs are `slurm_logs/darshan_mr_fir_<job>.*`). Watcher: scratchpad `mrpm/watch.sh` (self-terminating).
   Data: `~/scratch/data/promptmix/` (train_17K md5 5a7d8259…, val_800 md5 90eb656a…, 0 overlap).
   `bash_fir_promptmix.sh` (jeet's one-round t1 recipe from SFT) exists but is not needed now (his checkpoint replaces it).
 - Stop decision: 3a (stop-SFT, Mila) and 3b (stop-RL, here) both negative (`runs.md`).
@@ -50,6 +50,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-18 00:30: promptmix smoke passed; `darshan_mr_pm_fir` submitted (65732293–95, 500 steps).
 - 2026-10-17 22:20: user: 500 steps for `darshan_mr_pm_fir`; keep TamIA's F-full; Mila: official benchmarks of jeet's promptmix t1 + F-800; TamIA: full-history depth-4 eval of promptmix t1 (copies by the user, commands in their Inboxes).
 - 2026-10-17 21:50: plan changed: run F's recipe from jeet's promptmix t1 ckpt-500 (not his t1 recipe); cancelled smoke 65708006; merge 65708081 + smoke 65708082.
 - 2026-10-17 21:30: jeet: stop F and G, switch to promptmix. Cancelled F's last job (65300507; F ended at ~855); TamIA Inbox: stop G. Promptmix launcher + smoke 65708006.
