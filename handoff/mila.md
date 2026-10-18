@@ -3,15 +3,15 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-18 00:20 EDT)
-- **Official benchmarks of promptmix t1 ckpt-500 and F-800 running** (Inbox 2026-10-17). Both adapters copied (user) to
-  `kept/jeet_promptmix_t1/rl_ft_promptsmix_oracle_t1_500` (LoRA on SFT t21) and `kept/darshan_mr_fir/checkpoint-800` (LoRA on merged t8).
-  Merges → `models/tar/sft/jeet_promptmix_t1_merged500`, `darshan_mr_fir_merged800` (CPU jobs); then, `afterok` on its merge:
-  `bench_mila.sh BENCHES="geneval2 tiif genai"` (promptmix first, F-800 after it, short-unkillable) and official GenEval2 depth-4 mdp
-  in 4 × 200 on `long` (`depth4_{promptmix500,F800}_mdp_geneval2_q{1..4}`), all `--exclude=cn-g029`. Job ids:
-  `$SCRATCH/tar_reason/pm_F800_jobs.txt`. Compare to t8 and F-250 (GenEval2 72.5 → 77.4, MDP depth-4 78.4, TIIF 69.8 / 66.0, GenAI 41.8).
-- F-300 / G-300 Inbox lines superseded by F-800 / G (G stopped by jeet).
-- jeet's Mila scratch not readable (told Fir). Watcher: background in this session.
+## Now (2026-10-18 05:00 EDT)
+- **Nothing running on Mila.** promptmix-500 and F-800 official benchmarks done (rows in `runs.md`). **F-800 is the best model on
+  every benchmark**: GenEval2 75.5 → 79.2 (1 round), depth-4 MDP 80.1; TIIF 70.7 / 68.2; GenAI 42.8. Promptmix-500 refines better on
+  TIIF long (+2.0) but is ~7 pts lower on GenEval2 (70.3 / depth-4 70.9). Told Fir.
+- Models merged on Mila: `models/tar/sft/{rl_ft_oracle_t8_merged500, darshan_mr_fir_merged250, darshan_mr_fir_merged800,
+  jeet_promptmix_t1_merged500}`. Recipe for a new checkpoint: merge (CPU job) → `bench_mila.sh BENCHES="geneval2 tiif genai"` +
+  depth-4 mdp 4 × 200 (`benchmarks/GenEval2/splits/geneval2_q{1..4}.jsonl`, 2-GPU `long` jobs, `--no-requeue --exclude=cn-g029`).
+- Waiting: jeet's scorer / GenAI-800 (not readable); t11 checkpoints (copy).
+- Watcher: none.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -44,14 +44,6 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-17 from Fir (user's go): **official benchmarks of (1) jeet's promptmix t1 ckpt-500 and (2) F-800.** (1) = jeet's t8 recipe
-  trained from SFT t21 on his new **promptmix** prompts (17,259 train; Fir now runs F's multi-round MDP recipe from it). It is a LoRA r64
-  on SFT t21 → merge onto your SFT t21. (2) = F (`darshan_mr_fir`) step 800, the best F checkpoint (val800 depth-4 mdp own 0.858, 0.866
-  after 3 rounds, all-correct 44.1%; F-250 was 0.841); LoRA on merged t8 → merge onto your merged t8. The user copies both (Fir 2FA):
-  `rsync -av --exclude optimizer.pt dars11@fir.alliancecan.ca:/home/dars11/scratch/tar_reason_kept/jeet_promptmix_t1/rl_ft_promptsmix_oracle_t1_500 $SCRATCH/tar_reason/kept/jeet_promptmix_t1/`
-  `rsync -av --exclude optimizer.pt dars11@fir.alliancecan.ca:/home/dars11/scratch/tar_reason_kept/darshan_mr_fir/checkpoint-800 $SCRATCH/tar_reason/kept/darshan_mr_fir/`
-  For each: `bench_mila.sh BENCHES="geneval2 tiif genai"` + official GenEval2 depth-4 mdp (4 × 200), as for F-250. Compare to t8 and
-  F-250 (GenEval2 72.5 → 77.4, MDP depth-4 78.4, TIIF 69.8 / 66.0, GenAI 41.8): does promptmix fix F's TIIF drop? Promptmix t1 first.
 - 2026-10-13 from Fir: **scorer alignment, pending jeet.** jeet's `scripts/eval/iter_geneval2_adhoc_e2e.sh` uses the same generator and
   sampling as `bench_mila.sh` (its `--reflect_*` flags are ignored: the critique is greedy) but scores with his own
   `evaluation_optz.py --method soft_tifa`, not the official `evaluation.py --method soft_tifa_am`. The user is asking jeet for that
@@ -62,6 +54,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-18 05:00: promptmix-500 + F-800 benchmarks done (rows in `runs.md`); deleted that Inbox line; told Fir.
 - 2026-10-18 00:20: started promptmix-500 + F-800 benchmarks (Inbox). Dropped the superseded F-300 / G-300 / older F-G Inbox lines (F-800 replaces F-300; G stopped).
 - 2026-10-16 00:30: F-250 benchmarks done (see Now); deleted that Inbox line; told Fir.
 - 2026-10-15 evening: started F-250 official benchmarks + depth-4 mdp (Inbox).
