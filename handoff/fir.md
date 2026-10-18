@@ -2,17 +2,17 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-15 01:20 PDT)
-- **Task 3b (stop-RL) stopped at step ~105** (negative: step-100 own am_upto_4 0.839 vs 0.838 at step 0; looks_good on passing images
-  0.48 → 0.56 at round 1 only). Checkpoints 50/100 kept. Fir's GPUs go to F-1000.
-- **Task F continued to 1000 steps** (jeet, 2026-10-15): 65300505 → 65300506 → 65300507 (`MAX_STEPS=1000`, resumes from
-  checkpoint-300; constant LR 5e-5). At 300 (done): val800 depth-4 mdp own **0.848** (t8 0.835), oracle 0.896, all-correct 38.5% (32.9%); checkpoints
-  100–300 kept; wandb synced. F-300 is the best model so far (`runs.md`).
-- Plan F–N in `runs.md`: G (from SFT) on TamIA in parallel; H (official GenEval2 depth-4 MDP), I (base Tar), J (GenAI-bench) on
-  Mila; L (am_upto backfill) TamIA + Mila; M (stop vs content split) TamIA; N done here (no unrecognised stop phrases).
-- Fir's GPU outage is over. t11 done (results in `runs.md`); kept checkpoints in `~/scratch/tar_reason_kept/`.
-- Hardened launcher (`STAGE_LOCAL=1`) in `bash_fir_t11.sh` and `bash_fir_mr.sh`; rebuild the env archive after any env change.
-- Watcher: Monitor on `darshan_mr_fir` (scratchpad `mr/watch.sh`, state in `mr/state`), started 2026-10-13 19:40 (tmux, login2), moved to the VSCode session on login1 2026-10-14 19:30 (scripts copied, /tmp is per login node); re-armed every 30 min; keeps checkpoint-100/200/300.
+## Now (2026-10-17 21:30 PDT)
+- **F stopped** (jeet, 2026-10-17) at step ~855 (job 65300507 cancelled). Best checkpoint **F-800**: val800 depth-4 mdp own 0.858
+  (0.866 after 3 rounds), all-correct 44.1% at 3, oracle 0.905. Checkpoints 100–800 kept in `~/scratch/tar_reason_kept/darshan_mr_fir/`.
+- **New: jeet's promptmix run** (`rl_ft_promptsmix_oracle_t1` recipe): t8 recipe from SFT t21, one round (BRANCH 2,4), hybrid critiques,
+  LR 1e-4, 500 steps, eval every 50 on GenEval2 val800 (`val/`) + promptmix val400 (`val_promptmix/`). Data copied to
+  `~/scratch/data/promptmix/` (train_17K 17,259 rows md5 5a7d8259…, val_800 md5 90eb656a…, val_400 = first 400 of val_800;
+  0 overlap with each other and with GenEval2 val800). Launcher `bash_fir_promptmix.sh` (`8377344`). **Smoke 65708006 submitted**;
+  full run (4 nodes, 2 chained 24 h jobs, RUN_NAME `darshan_pm_fir`) after it passes and the user says go.
+  Open with jeet: his notes say train_18K (17.7K) and val 400; the shared folder has train_17K and val_800.
+- Stop decision: 3a (stop-SFT, Mila) and 3b (stop-RL, here) both negative (`runs.md`).
+- Watcher: `mr/watch2.sh` pattern (self-terminating, 29 min); none running for F now.
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
@@ -46,6 +46,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-17 21:30: jeet: stop F and G, switch to promptmix. Cancelled F's last job (65300507; F ended at ~855); TamIA Inbox: stop G. Promptmix launcher + smoke 65708006.
 - 2026-10-17 17:40: F step-800 eval: best so far (own 0.858 at 4, 0.866 at 3, all-correct 44.1% at 3, draft 0.816); the 500–700 dip was noise. Checkpoint-800 kept.
 - 2026-10-17 09:40: F step-700 eval: own 0.854, oracle 0.902, draft 0.792: plateau since 400 (draft slowly down); checkpoint-700 kept. Best checkpoint so far: 400 (0.857, draft 0.812).
 - 2026-10-17 00:30: F step-600 eval: own 0.855 at depth 4 (0.862 at 3), oracle 0.905: plateau; job 65300505 TIMEOUT at ~585, 65300506 resumed from 580.

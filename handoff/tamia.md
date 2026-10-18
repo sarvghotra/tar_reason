@@ -58,6 +58,10 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-17 from Fir (user, after a meeting with jeet): **stop G now** (`darshan_mr_sft_tamia`, the continuation to 1000): cancel its running
+  and queued jobs, keep its latest checkpoints, sync wandb. F on Fir was stopped at step ~855 (best: F-800). Also hold F-full
+  (full-history ablation): not to be submitted unless the user asks again. jeet's new direction: train on his **promptmix** prompt set
+  (Fir runs it first: `bash_fir_promptmix.sh`, `8377344`). Report G's last eval to Fir's Inbox.
 
 ## Log (newest first)
 - 2026-10-17 12:57: F-full step-0 eval (full history) reproduces t8: own am_upto 0.778/0.821/0.820/0.811/0.796, oracle → 0.863.
