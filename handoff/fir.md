@@ -50,6 +50,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-18 05:40: `darshan_mr_pm_fir` step-0 eval (= promptmix t1): val800 own 0.761 / oracle 0.809; promptmix val own 0.721 / oracle 0.778.
 - 2026-10-18 00:30: promptmix smoke passed; `darshan_mr_pm_fir` submitted (65732293–95, 500 steps).
 - 2026-10-17 22:20: user: 500 steps for `darshan_mr_pm_fir`; keep TamIA's F-full; Mila: official benchmarks of jeet's promptmix t1 + F-800; TamIA: full-history depth-4 eval of promptmix t1 (copies by the user, commands in their Inboxes).
 - 2026-10-17 21:50: plan changed: run F's recipe from jeet's promptmix t1 ckpt-500 (not his t1 recipe); cancelled smoke 65708006; merge 65708081 + smoke 65708082.
