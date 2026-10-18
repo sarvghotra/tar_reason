@@ -5,12 +5,14 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 ## Now (2026-10-17 21:30 PDT)
 - **F stopped** (jeet, 2026-10-17) at step ~855 (job 65300507 cancelled). Best checkpoint **F-800**: val800 depth-4 mdp own 0.858
   (0.866 after 3 rounds), all-correct 44.1% at 3, oracle 0.905. Checkpoints 100–800 kept in `~/scratch/tar_reason_kept/darshan_mr_fir/`.
-- **New: jeet's promptmix run** (`rl_ft_promptsmix_oracle_t1` recipe): t8 recipe from SFT t21, one round (BRANCH 2,4), hybrid critiques,
-  LR 1e-4, 500 steps, eval every 50 on GenEval2 val800 (`val/`) + promptmix val400 (`val_promptmix/`). Data copied to
-  `~/scratch/data/promptmix/` (train_17K 17,259 rows md5 5a7d8259…, val_800 md5 90eb656a…, val_400 = first 400 of val_800;
-  0 overlap with each other and with GenEval2 val800). Launcher `bash_fir_promptmix.sh` (`8377344`). **Smoke 65708006 submitted**;
-  full run (4 nodes, 2 chained 24 h jobs, RUN_NAME `darshan_pm_fir`) after it passes and the user says go.
-  Open with jeet: his notes say train_18K (17.7K) and val 400; the shared folder has train_17K and val_800.
+- **New (jeet, 2026-10-17): F's multi-round MDP recipe on promptmix, from jeet's promptmix t1 step 500** (his t8 recipe from SFT on
+  promptmix: `/scratch/jeet/tmp/models/sft_ckpt/rl_ft_promptsmix_oracle_t1_500`, LoRA r64 on SFT t21; copied to
+  `~/scratch/tar_reason_kept/jeet_promptmix_t1/`). Merge → `models/tar/sft/rl_ft_promptsmix_t1_merged500` (CPU job 65708081), then
+  `bash_fir_mr.sh` unchanged (chain mode N=4, MDP, children_r1, LR 5e-5, merged base + KL ref, fresh LoRA) with RUN dirs pre-seeded:
+  `output_dir/<run>/data.yaml` = promptmix train_17K (jeet's data.yaml: same file), `val.yaml` = GenEval2 val800 (`val/`) + promptmix
+  val400 (`val_promptmix/`). **Smoke `mrpm_smoke_fir` 65708082** (afterok merge); full run `darshan_mr_pm_fir` after it passes.
+  Data: `~/scratch/data/promptmix/` (train_17K md5 5a7d8259…, val_800 md5 90eb656a…, val_400 = first 400 of val_800; 0 overlap).
+  `bash_fir_promptmix.sh` (jeet's one-round t1 recipe from SFT) exists but is not needed now (his checkpoint replaces it).
 - Stop decision: 3a (stop-SFT, Mila) and 3b (stop-RL, here) both negative (`runs.md`).
 - Watcher: `mr/watch2.sh` pattern (self-terminating, 29 min); none running for F now.
 
@@ -46,6 +48,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-17 21:50: plan changed: run F's recipe from jeet's promptmix t1 ckpt-500 (not his t1 recipe); cancelled smoke 65708006; merge 65708081 + smoke 65708082.
 - 2026-10-17 21:30: jeet: stop F and G, switch to promptmix. Cancelled F's last job (65300507; F ended at ~855); TamIA Inbox: stop G. Promptmix launcher + smoke 65708006.
 - 2026-10-17 17:40: F step-800 eval: best so far (own 0.858 at 4, 0.866 at 3, all-correct 44.1% at 3, draft 0.816); the 500–700 dip was noise. Checkpoint-800 kept.
 - 2026-10-17 09:40: F step-700 eval: own 0.854, oracle 0.902, draft 0.792: plateau since 400 (draft slowly down); checkpoint-700 kept. Best checkpoint so far: 400 (0.857, draft 0.812).
