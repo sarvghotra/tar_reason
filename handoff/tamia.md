@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-18 00:20 EDT)
+## Now (2026-10-18 00:30 EDT)
 - **G stopped** (user, via Fir 2026-10-17, after the meeting with jeet): `darshan_mr_sft_tamia` cancelled at step ~433 (621301
   cancelled 2026-10-18 00:15; 621302–06 cancelled before starting). Last eval, step 400 (depth-4 mdp, val800): own am_upto
   0.734/0.748/0.762/0.759/**0.757**, oracle **0.791** — flat vs step 300 (0.757 / 0.803). Kept: checkpoints 50–400 in
@@ -12,14 +12,13 @@ Owned by the TamIA session.
   0.785/0.826/0.833/0.820/**0.817** (step 0: …/0.796), oracle **0.882** (0.863); the depth-1 → depth-4 drop shrank from
   −0.025 to −0.009. Checkpoints 50/100 kept in `$SCRATCH/tar_reason_kept/darshan_mr_full_tamia/`. After step 300: mdp eval
   of the final checkpoint (`MAX_STEPS=0`, `--context_mode mdp`).
-- **New: promptmix t1 full-history depth-4 eval** (Fir Inbox 2026-10-17): **waiting for the user's copy from Fir** (2FA):
-  `rsync -av --exclude optimizer.pt dars11@fir.alliancecan.ca:/home/dars11/scratch/tar_reason_kept/jeet_promptmix_t1/rl_ft_promptsmix_oracle_t1_500 $SCRATCH/tar_reason_kept/jeet_promptmix_t1/`
-  and `rsync -av dars11@fir.alliancecan.ca:/home/dars11/scratch/data/promptmix $SCRATCH/data/` (md5 train_17K 5a7d8259…,
-  val_800 90eb656a…). Then: merge the LoRA onto SFT t21 (`util_scripts/merge_lora.py`), pre-create `output_dir/<run>/val.yaml`
-  with GenEval2 val800 (`logname: val`) + promptmix `val_800.jsonl` (`logname: promptmix`), run as task B (`MAX_STEPS=0`,
-  `--eval_branch 1,1,1,1,1 --context_mode full --val_dump_dir …`, own + oracle, 2 nodes). Fir's `darshan_mr_pm_fir` gives the
-  mdp side. Results → `runs.md` + Fir's Inbox. Needs code ≥ `8377344` (pull the worktree only once F-full's queued jobs don't
-  care: they read code at start; check what changed first, rule 4).
+- **Promptmix t1 full-history depth-4 eval queued: `pm_t1_depth4_full_tamia`, job 626099** (2 nodes × 8 h, eval only).
+  User copied the adapter + data from Fir (md5 train_17K 5a7d8259, val_800 90eb656a: match). LoRA r64 merged onto SFT t21 →
+  `$SCRATCH/models/tar/sft/promptmix_t1_merged500` (CPU job 626094, 2 min). `output_dir/pm_t1_depth4_full_tamia/val.yaml` =
+  GenEval2 val800 (`logname: val`) + promptmix `val_800.jsonl` (`logname: promptmix`). Launcher `bash_tamia_t11.sh` with
+  `MAX_STEPS=0 PREV_STAGE_CHECKPOINT=…/promptmix_t1_merged500 EXTRA_ARGS="--eval_branch 1,1,1,1,1 --context_mode full"`
+  (eval_oracle + val_dump on). Worktree code `cb1c831` already supports per-set val (`logname`); no pull needed.
+  Compare with Fir's `darshan_mr_pm_fir` step 0 (mdp, same checkpoint). Results → `runs.md` + Fir's Inbox.
 - **Notes are edited in the main checkout** while F-full has jobs queued on the worktree.
 - Earlier tasks (B, C, M, G-300, smoke tests, t7, t11): see Log and `runs.md`.
 - Mila asked for G's checkpoints (benchmarks); the TamIA → Mila copy needs the user (suggested: checkpoint-300 or -400).
@@ -48,6 +47,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-18 00:30: promptmix files verified; LoRA merged (626094); full-history depth-4 eval submitted (626099).
 - 2026-10-18 00:20: Fir Inbox handled: G stopped (621301–06 cancelled, last eval step 400 flat vs 300; checkpoint-400 kept; wandb piece synced); F-full kept (step-100 eval: own 0.817 vs 0.796 at step 0; checkpoint-100 kept); promptmix full-history eval waits for the user's copy from Fir.
 - 2026-10-17 12:57: F-full step-0 eval (full history) reproduces t8: own am_upto 0.778/0.821/0.820/0.811/0.796, oracle → 0.863.
 - 2026-10-17 12:45: G-1000 621301 started on tg[10701,10802,10805-10806], resumed from checkpoint-300. Both chains running.
