@@ -10,8 +10,8 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   `~/scratch/tar_reason_kept/jeet_promptmix_t1/`). Merge → `models/tar/sft/rl_ft_promptsmix_t1_merged500` (CPU job 65708081), then
   `bash_fir_mr.sh` unchanged (chain mode N=4, MDP, children_r1, LR 5e-5, merged base + KL ref, fresh LoRA) with RUN dirs pre-seeded:
   `output_dir/<run>/data.yaml` = promptmix train_17K (jeet's data.yaml: same file), `val.yaml` = GenEval2 val800 (`val/`) + promptmix
-  val400 (`val_promptmix/`). **Smoke `mrpm_smoke_fir` 65708082** (afterok merge); full run `darshan_mr_pm_fir` after it passes.
-  Data: `~/scratch/data/promptmix/` (train_17K md5 5a7d8259…, val_800 md5 90eb656a…, val_400 = first 400 of val_800; 0 overlap).
+  val800 (`val_promptmix/`, jeet uses all 800; his GenEval2 val800 = ours, md5 1d3feb3f…). **Smoke `mrpm_smoke_fir` 65708082** (afterok merge); full run `darshan_mr_pm_fir` after it passes.
+  Data: `~/scratch/data/promptmix/` (train_17K md5 5a7d8259…, val_800 md5 90eb656a…, 0 overlap).
   `bash_fir_promptmix.sh` (jeet's one-round t1 recipe from SFT) exists but is not needed now (his checkpoint replaces it).
 - Stop decision: 3a (stop-SFT, Mila) and 3b (stop-RL, here) both negative (`runs.md`).
 - Watcher: `mr/watch2.sh` pattern (self-terminating, 29 min); none running for F now.
