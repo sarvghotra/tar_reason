@@ -58,6 +58,15 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-17 from Fir (user): **keep F-full running** (user's decision; not covered by jeet's stop). G still to stop (line below).
+  **New, queue after/alongside F-full (2 nodes is enough): full-history depth-4 eval-only of jeet's promptmix t1 ckpt-500** (his t8
+  recipe from SFT t21 on the new promptmix prompts; LoRA r64 on SFT t21 → merge onto your SFT t21 with `util_scripts/merge_lora.py`).
+  Purpose: check MDP still beats full history on the new model/data (Fir's run `darshan_mr_pm_fir` gives the MDP step-0 eval of the
+  same checkpoint, so only full history is needed). Val = two sets in one `val.yaml` (pre-create it in `output_dir/<run>/` before submit):
+  GenEval2 val800 (`logname: val`) + promptmix `val_800.jsonl` (`logname: promptmix`, all 800, as jeet). The user copies (Fir 2FA):
+  `rsync -av --exclude optimizer.pt dars11@fir.alliancecan.ca:/home/dars11/scratch/tar_reason_kept/jeet_promptmix_t1/rl_ft_promptsmix_oracle_t1_500 $SCRATCH/tar_reason_kept/jeet_promptmix_t1/`
+  `rsync -av dars11@fir.alliancecan.ca:/home/dars11/scratch/data/promptmix $SCRATCH/data/` (md5 train_17K 5a7d8259…, val_800 90eb656a…).
+  Run as task B (`MAX_STEPS=0`, `--eval_branch 1,1,1,1,1 --context_mode full --val_dump_dir …`), own + oracle. Results to `runs.md` + Fir's Inbox.
 - 2026-10-17 from Fir (user, after a meeting with jeet): **stop G now** (`darshan_mr_sft_tamia`, the continuation to 1000): cancel its running
   and queued jobs, keep its latest checkpoints, sync wandb. F on Fir was stopped at step ~855 (best: F-800). Also hold F-full
   (full-history ablation): not to be submitted unless the user asks again. jeet's new direction: train on his **promptmix** prompt set

@@ -48,6 +48,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-17 22:20: user: 500 steps for `darshan_mr_pm_fir`; keep TamIA's F-full; Mila: official benchmarks of jeet's promptmix t1 + F-800; TamIA: full-history depth-4 eval of promptmix t1 (copies by the user, commands in their Inboxes).
 - 2026-10-17 21:50: plan changed: run F's recipe from jeet's promptmix t1 ckpt-500 (not his t1 recipe); cancelled smoke 65708006; merge 65708081 + smoke 65708082.
 - 2026-10-17 21:30: jeet: stop F and G, switch to promptmix. Cancelled F's last job (65300507; F ended at ~855); TamIA Inbox: stop G. Promptmix launcher + smoke 65708006.
 - 2026-10-17 17:40: F step-800 eval: best so far (own 0.858 at 4, 0.866 at 3, all-correct 44.1% at 3, draft 0.816); the 500–700 dip was noise. Checkpoint-800 kept.
