@@ -121,6 +121,15 @@ def parse_args():
                         "imperfect image costs something. 0 disables.")
     p.add_argument("--stop_threshold", type=float, default=1.0,
                    help="Parent score at or above which 'looks good' is free (see --stop_penalty).")
+    p.add_argument("--stop_reward", default="penalty", choices=["penalty", "sibling"],
+                   help="penalty: a 'looks good' child is rewarded by --stop_penalty (0 by "
+                        "default). sibling: that MINUS the mean reward of the parent's "
+                        "refining children (per level, so the critique-level copy uses "
+                        "--critique_break_weight), i.e. stopping wins exactly when "
+                        "refining this parent has negative expected value; just the "
+                        "penalty term when every sibling also stopped. Cures the t2 "
+                        "collapse where a free 0 beat break-weighted refines on most "
+                        "failing drafts.")
     p.add_argument("--train_drafts", action=argparse.BooleanOptionalAction, default=True,
                    help="--no-train_drafts drops the round-0 image tokens from the loss. "
                         "With branch[0]=1 a draft's advantage is 0 anyway, but its tokens "
@@ -173,6 +182,17 @@ def parse_args():
                         "per-question split, so it is unweighted). 1.0 is exactly "
                         "score(child) - score(parent); >1 makes breaking a passed atom cost "
                         "more than fixing a failed one earns.")
+    p.add_argument("--critique_break_weight", type=float, default=None,
+                   help="--break_weight for the CRITIQUE-level reward (the mean over a "
+                        "critique's M images that drives its reflection tokens, "
+                        "node.reward_txt). Default: same as --break_weight. 1.0 makes the "
+                        "critic optimise the plain delta that am_final measures while the "
+                        "image tokens keep --break_weight.")
+    p.add_argument("--eval_sampled", action=argparse.BooleanOptionalAction, default=False,
+                   help="Also validate with the policy critic SAMPLED at --reflect_temperature "
+                        "(val_sampled/*), next to the greedy val/*: what the training signal "
+                        "sees vs what the benchmark deploys. The two diverging (greedy "
+                        "looks_good far above sampled) is the early sign of a stop collapse.")
     p.add_argument("--eval_oracle", action=argparse.BooleanOptionalAction, default=False,
                    help="Also validate with oracle critiques (val_oracle/*): the refiner's "
                         "fix/break rates under a correct critique, independent of the critic.")
@@ -202,6 +222,11 @@ def parse_args():
     p.add_argument("--output_dir", required=True)
     p.add_argument("--eval_steps", type=int, default=25)
     p.add_argument("--eval_on_start", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--eval_at_resume_step", type=int, default=-1,
+                   help="Also validate once right after resuming when the resumed step equals "
+                        "this (baseline for a continuation run whose val sets changed). Only "
+                        "that exact step fires, so later auto-resumes of the same run don't "
+                        "re-evaluate.")
     p.add_argument("--eval_max_prompts", type=int, default=None)
     p.add_argument("--eval_branch", default=None,
                    help="Fan-out per round for validation, e.g. '1,1,1,1' for a 3-round chain. "
@@ -428,8 +453,11 @@ def make_critique_fn(reward, fail_threshold: float, source: str = "oracle",
 @torch.no_grad()
 def score_tree(batch: RolloutBatch, reward, draft_reward: str = "own",
                stop_penalty: float = 0.0, stop_threshold: float = 1.0,
-               fail_threshold: float = 0.5, break_weight: float = 1.0):
-    """Fill node.am / node.gm / node.per_question / node.reward for every node
+               fail_threshold: float = 0.5, break_weight: float = 1.0,
+               stop_reward: str = "penalty", critique_break_weight: Optional[float] = None):
+    """Fill node.am / node.gm / node.per_question / node.reward (and
+    node.reward_txt, the critique-level copy under ``critique_break_weight``)
+    for every node
     (each image scored once; nodes already scored mid-rollout by the oracle
     critique_fn are not re-scored).
 
@@ -439,23 +467,46 @@ def score_tree(batch: RolloutBatch, reward, draft_reward: str = "own",
     Rewards (see the module docstring): a refined child gets its score minus its
     parent's (the parent score is the within-group baseline; see refine_reward
     for ``break_weight``); a "looks good" child gets
-    ``-stop_penalty * max(0, stop_threshold - parent_score)``; a draft gets its
-    own score (``draft_reward="own"``) or the mean final score of its leaves
+    ``-stop_penalty * max(0, stop_threshold - parent_score)`` (``stop_reward=
+    "penalty"``) or that minus the mean reward of the parent's refining
+    children (``"sibling"``: just the penalty term if there are none); a
+    draft gets its own score
+    (``draft_reward="own"``) or the mean final score of its leaves
     (``"children"``). Intermediate rounds of deeper trees keep the
     parent-relative delta.
     """
+    if critique_break_weight is None:
+        critique_break_weight = break_weight
+    if stop_reward not in ("penalty", "sibling"):
+        raise ValueError(f"Unknown stop_reward {stop_reward}")
     score_nodes([n for level in batch.nodes_by_round for n in level
                  if n.round == 0 or not n.looks_good], batch.prompts, reward)
     for level in batch.nodes_by_round:
         for n in level:
             if n.round == 0:
-                n.reward = reward.combine(n.am, n.gm)
+                n.reward = n.reward_txt = reward.combine(n.am, n.gm)
             elif n.looks_good:
                 n.am, n.gm, n.per_question = n.parent.am, n.parent.gm, n.parent.per_question
                 parent_score = reward.combine(n.parent.am, n.parent.gm)
-                n.reward = -stop_penalty * max(0.0, stop_threshold - parent_score)
+                n.reward = n.reward_txt = -stop_penalty * max(0.0, stop_threshold - parent_score)
             else:
                 n.reward = refine_reward(n, reward, fail_threshold, break_weight)
+                n.reward_txt = (n.reward if critique_break_weight == break_weight else
+                                refine_reward(n, reward, fail_threshold, critique_break_weight))
+        if stop_reward == "sibling" and level and level[0].round > 0:
+            # Second pass: a stop is worth the negative of what refining this
+            # parent earned on average (image level and critique level each
+            # from their own reward), so it is only advantaged when the
+            # refines lost. All-stop parents keep 0 (zero-variance group).
+            refines: Dict[int, List[Node]] = {}
+            for n in level:
+                if not n.looks_good:
+                    refines.setdefault(id(n.parent), []).append(n)
+            for n in level:
+                sib = refines.get(id(n.parent)) if n.looks_good else None
+                if sib:   # added to the --stop_penalty term already in place
+                    n.reward -= sum(m.reward for m in sib) / len(sib)
+                    n.reward_txt -= sum(m.reward_txt for m in sib) / len(sib)
     if draft_reward == "children":
         # Leaves' am/gm are final at this point (inherited for "looks good").
         for root in batch.roots:
@@ -471,7 +522,7 @@ def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig) -> Dict[str, 
     Drafts are normalised per prompt; refined nodes per parent (``--group``).
     With ``--images_per_critique M > 1`` the two levels separate: an image is
     normalised among the M images of its own critique, and a critique's
-    reflection gets the mean reward of its images normalised among the
+    reflection gets the mean ``reward_txt`` of its images normalised among the
     parent's critiques (a "looks good" critique is its own single-image
     critique, reward = the stop reward). Returns the zero-variance / total
     group counts of both levels for logging.
@@ -499,7 +550,7 @@ def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig) -> Dict[str, 
         for n in level:
             by_crit.setdefault((id(n.parent), n.critique_idx), []).append(n)
         crit_keys = list(by_crit)
-        crit_reward = [sum(n.reward for n in by_crit[k]) / len(by_crit[k]) for k in crit_keys]
+        crit_reward = [sum(n.reward_txt for n in by_crit[k]) / len(by_crit[k]) for k in crit_keys]
         parent_keys = [by_crit[k][0].prompt_idx if args.group == "prompt" else k[0] for k in crit_keys]
         adv_c, zvc = normalize_groups(crit_reward, parent_keys, gcfg)
         for k, a in zip(crit_keys, adv_c):
@@ -549,6 +600,7 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
         s[f"{prefix}am_{r}"] = sum(n.am for n in level)
         s[f"{prefix}gm_{r}"] = sum(n.gm for n in level)
         s[f"{prefix}reward_{r}"] = sum(n.reward for n in level)
+        s[f"{prefix}reward_txt_{r}"] = sum(n.reward_txt for n in level)
         s[f"{prefix}n_{r}"] = len(level)
         pass_rates(str(r), level)
         if r > 0:
@@ -623,6 +675,7 @@ def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
         out[f"{prefix}am_{r}"] = s[f"{prefix}am_{r}"] / n
         out[f"{prefix}gm_{r}"] = s[f"{prefix}gm_{r}"] / n
         out[f"{prefix}reward_{r}"] = s[f"{prefix}reward_{r}"] / n
+        out[f"{prefix}reward_txt_{r}"] = s[f"{prefix}reward_txt_{r}"] / n
         if r > 0:
             out[f"{prefix}looks_good_{r}"] = s[f"{prefix}looks_good_{r}"] / n
             out[f"{prefix}forced_refine_{r}"] = s[f"{prefix}forced_refine_{r}"] / n
@@ -725,16 +778,18 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
 
 @torch.no_grad()
 def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, step, decoder=None,
-                   critique_fn=None, prefix: str = "val/"):
+                   critique_fn=None, prefix: str = "val/", sample_critic: bool = False):
     """Greedy-critic validation of the loop as deployed; with ``critique_fn``
-    (oracle critiques) it measures the refiner alone, under ``prefix``."""
+    (oracle critiques) it measures the refiner alone, under ``prefix``; with
+    ``sample_critic`` the policy critic is sampled as in training (one
+    sample per draft) instead of decoded greedily."""
     if not val_rows:
         return {}
     torch.manual_seed(args.seed * 7919 + 17)
     branch = args.eval_branch_list or [1] * len(rollout.cfg.branch)
     num_rounds = len(branch) - 1
     saved = (rollout.cfg.reflect_sample, rollout.cfg.min_refines, rollout.cfg.images_per_critique)
-    rollout.cfg.reflect_sample = False   # greedy reflection, like the eval script
+    rollout.cfg.reflect_sample = sample_critic   # greedy reflection by default, like the eval script
     rollout.cfg.min_refines = 0          # the policy decides when to stop, as in eval
     rollout.cfg.images_per_critique = 1  # one image per critique: a chain, as in eval
     sums: Dict[str, float] = {}
@@ -743,7 +798,8 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
     for start in range(0, len(val_rows), bs):
         batch = rollout.run(model, val_rows[start:start + bs], branch=branch, critique_fn=critique_fn)
         score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold,
-                   args.oracle_fail_threshold, args.break_weight)
+                   args.oracle_fail_threshold, args.break_weight,
+                   stop_reward=args.stop_reward, critique_break_weight=args.critique_break_weight)
         for k, v in tree_stats(batch, prefix, num_rounds, args.oracle_fail_threshold).items():
             sums[k] = sums.get(k, 0.0) + v
         if decoder is not None and is_main() and len(samples) < args.log_images:
@@ -934,6 +990,7 @@ def main():
                 f"critique_source={args.critique_source} "
                 f"images_per_critique={args.images_per_critique} "
                 f"hybrid_oracle_frac={args.hybrid_oracle_frac} break_weight={args.break_weight} "
+                f"critique_break_weight={args.critique_break_weight} stop_reward={args.stop_reward} "
                 f"fail_threshold={args.oracle_fail_threshold}")
 
     base = model.get_base_model()
@@ -1012,12 +1069,16 @@ def main():
 
     def validate(step):
         # Always the loop as deployed (policy critic, greedy); optionally the
-        # refiner alone under oracle critiques.
+        # same loop with the critic sampled, and the refiner alone under
+        # oracle critiques.
         out = {}
         for name, rows in val_sets.items():
             tag = "" if len(val_sets) == 1 or name == "val" else f"_{name}"
             out.update(run_validation(model, rollout, reward, rows, args, device, step, decoder,
                                       prefix=f"val{tag}/"))
+            if args.eval_sampled:
+                out.update(run_validation(model, rollout, reward, rows, args, device, step, None,
+                                          prefix=f"val_sampled{tag}/", sample_critic=True))
             if args.eval_oracle:
                 out.update(run_validation(model, rollout, reward, rows, args, device, step, None,
                                           critique_fn=oracle_fn, prefix=f"val_oracle{tag}/"))
@@ -1025,6 +1086,8 @@ def main():
 
     if args.eval_on_start and start_step == 0 and val_sets:
         log(validate(0), 0)
+    elif val_sets and start_step > 0 and start_step == args.eval_at_resume_step:
+        log(validate(start_step), start_step)
 
     prompt_iter = train_ds.iterate(args.prompts_per_gpu, skip_batches=start_step)
     for step in range(start_step + 1, args.max_steps + 1):
@@ -1037,7 +1100,8 @@ def main():
         t1 = time.time()
         model.eval()
         score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold,
-                   args.oracle_fail_threshold, args.break_weight)
+                   args.oracle_fail_threshold, args.break_weight,
+                   stop_reward=args.stop_reward, critique_break_weight=args.critique_break_weight)
         adv_counts = assign_advantages(batch, args, gcfg)
         t2 = time.time()
         train_metrics = train_on_tree(model, rollout, batch, args, gcfg, optimizer, scheduler, device)

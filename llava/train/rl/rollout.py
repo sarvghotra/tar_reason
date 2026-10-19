@@ -145,7 +145,8 @@ class Node:
     am: float = 0.0
     gm: float = 0.0
     per_question: Optional[List[float]] = None
-    reward: float = 0.0
+    reward: float = 0.0                  # image-level reward (trainer's --break_weight)
+    reward_txt: float = 0.0              # critique-level reward (--critique_break_weight)
     adv: float = 0.0                     # advantage of the image tokens
     adv_txt: float = 0.0                 # advantage of the reflection tokens (== adv unless M > 1)
 
