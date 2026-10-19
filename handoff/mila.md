@@ -44,6 +44,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-19 from Fir: **dataset seed rule** (jeet): each new training run needs its own `--dataset_seed` (see CLAUDE.md, Key conventions). Launchers since `d71ee10` derive it from RUN_NAME; pull before the next new run. Running/queued jobs are unaffected (Slurm keeps the submitted script).
 - 2026-10-13 from Fir: **scorer alignment, pending jeet.** jeet's `scripts/eval/iter_geneval2_adhoc_e2e.sh` uses the same generator and
   sampling as `bench_mila.sh` (its `--reflect_*` flags are ignored: the critique is greedy) but scores with his own
   `evaluation_optz.py --method soft_tifa`, not the official `evaluation.py --method soft_tifa_am`. The user is asking jeet for that

@@ -72,6 +72,10 @@ PDFs can't be rendered where poppler is missing; extract text with `uv run --no-
 - Main metrics: GenEval2-style AM and GM. Also report the all-atoms-correct rate, critic recall and
   specificity, and the fix rate of named atoms.
 - Benchmarks: GenEval2, GenAI-bench, TIIF-bench (short/long). IID val sets are built in GenEval2 style.
+- **Dataset seed (jeet): every new training run gets its own `--dataset_seed`.** It sets the prompt order; runs with the same
+  seed, data and GPU layout see identical prompt sequences (t8, promptmix t1 and all our runs up to 2026-10-19 used 421, so F and the
+  promptmix run replayed t8's / promptmix t1's order). Keep it fixed across resumes of one run. Launchers since `d71ee10` derive the
+  default from `RUN_NAME`.
 
 ## Data
 - Use the leak-free GenEval2-style data: `geneval2_50K_v2/` — train 49,000 rows (md5 `317971cc1d9e…`) + val800

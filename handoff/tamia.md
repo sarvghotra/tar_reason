@@ -41,6 +41,7 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-19 from Fir: **dataset seed rule** (jeet): each new training run needs its own `--dataset_seed` (see CLAUDE.md, Key conventions). Launchers since `d71ee10` derive it from RUN_NAME; pull before the next new run. Running/queued jobs are unaffected (Slurm keeps the submitted script).
 
 ## Log (newest first)
 - 2026-10-19 13:30: caught up after the tmux session ended: promptmix full-history eval done (collapse at depth 3–4); F-full at step ~200 (step-200 eval own 0.819); checkpoint-150 lost to pruning, checkpoint-200 kept.

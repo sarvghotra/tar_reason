@@ -45,6 +45,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-19 11:30: dataset seed (jeet's rule): all runs so far used 421 (= t8 / promptmix t1); launchers now derive it from RUN_NAME (`d71ee10`), rule in CLAUDE.md. The running promptmix run keeps 421 (queued job holds the old script).
 - 2026-10-19 10:40: Inbox handled: Mila F-800 official (best everywhere: GenEval2 79.2, MDP depth-4 80.1, TIIF 70.7/68.2, GenAI 42.8), promptmix-500 official (GenEval2 70.3, TIIF 69.2/68.0, GenAI 40.9); TamIA G stopped at ~433 (step-400 own 0.757), F-full step 200 own 0.819 (< F-mdp 0.848), promptmix t1 full-history eval collapses at depth 3–4 (0.577 on val800).
 - 2026-10-19 04:00: `darshan_mr_pm_fir` step-200 eval: val800 own 0.762 (≈ step 0), promptmix own 0.737 (+0.016), promptmix oracle 0.794 (+0.016); checkpoint-200 kept.
 - 2026-10-18 17:00: `darshan_mr_pm_fir` step-100 eval: val800 own 0.771 (+0.010), promptmix own 0.735 (+0.014); checkpoint-100 kept.
