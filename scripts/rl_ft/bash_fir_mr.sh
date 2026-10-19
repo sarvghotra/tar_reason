@@ -109,7 +109,10 @@ EVAL_MAX_PROMPTS=${EVAL_MAX_PROMPTS:-}     # empty = full val set
 WARMUP_RATIO=0.05
 LOG_IMAGES=8
 SEED=421
-DATASET_SEED=$(( ${DATASET_SEED:-421} + ${SLURM_ARRAY_TASK_ID:-0} ))
+# Prompt order: a different seed per training run (jeet: never reuse a previous run's order; runs with the same seed,
+# data and GPU layout see identical prompt sequences), the same across resumes of one run (resume skips the batches
+# already consumed). Default derived from RUN_NAME; override with DATASET_SEED=<n>.
+DATASET_SEED=$(( ${DATASET_SEED:-$(( $(printf "%s" "$RUN_NAME" | cksum | cut -d" " -f1) % 100000 ))} + ${SLURM_ARRAY_TASK_ID:-0} ))
 # ===================== Config params END =====================
 
 cd ${REPO}
