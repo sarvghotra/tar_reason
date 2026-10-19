@@ -223,10 +223,15 @@ class Attention(nn.Module):
 
         if self.kv_cache is not None:
             keys, values = self.kv_cache.update(input_pos, xk, xv)
+            if mask is not None:
+                # Attend only to the filled part of the cache; the mask is already cut to it.
+                keys, values = keys[:, :, :mask.shape[-1]], values[:, :, :mask.shape[-1]]
         else:
             keys, values = xk, xv
-        keys = keys.repeat_interleave(self.n_head // self.n_kv_head, dim=1)
-        values = values.repeat_interleave(self.n_head // self.n_kv_head, dim=1)
+        if self.n_head != self.n_kv_head:
+            # repeat_interleave copies even with a factor of 1, i.e. the whole cache per step.
+            keys = keys.repeat_interleave(self.n_head // self.n_kv_head, dim=1)
+            values = values.repeat_interleave(self.n_head // self.n_kv_head, dim=1)
 
         output = F.scaled_dot_product_attention(
             xq, keys, values, 
@@ -409,6 +414,7 @@ class ARModel(nn.Module):
         targets: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
         valid: Optional[torch.Tensor] = None,
+        kv_len: Optional[int] = None,  # inference: number of filled cache positions
     ):
         if idx is not None and cond_idx is not None: # training or naive inference
             if self.model_type == 'class_cond':
@@ -429,6 +435,8 @@ class ARModel(nn.Module):
             
             bs = token_embeddings.shape[0]
             mask = self.causal_mask[:bs, None, input_pos]
+            if kv_len is not None:
+                mask = mask[..., :kv_len]
             h = self.tok_dropout(token_embeddings)
         
         if self.is_sampling:

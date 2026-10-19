@@ -75,22 +75,23 @@ def logits_to_probs(logits, temperature: float = 1.0, top_p: float=1.0, top_k: i
 
 
 def prefill(model, cond_idx: torch.Tensor, input_pos: torch.Tensor, cfg_scale: float, **sampling_kwargs):
+    kv_len = input_pos.shape[0]  # input_pos is arange(T)
     if cfg_scale > 1.0:
-        logits, _ = model(None, cond_idx, input_pos)
+        logits, _ = model(None, cond_idx, input_pos, kv_len=kv_len)
         logits_combined = logits
         cond_logits, uncond_logits = torch.split(logits_combined, len(logits_combined) // 2, dim=0)
         logits = uncond_logits + (cond_logits - uncond_logits) * cfg_scale
     else:
-        logits, _ = model(None, cond_idx, input_pos)
+        logits, _ = model(None, cond_idx, input_pos, kv_len=kv_len)
 
     return sample(logits, **sampling_kwargs)[0]
 
 
-def decode_one_token(model, x: torch.Tensor, input_pos: torch.Tensor, cfg_scale: float, cfg_flag: bool, **sampling_kwargs):
+def decode_one_token(model, x: torch.Tensor, input_pos: torch.Tensor, cfg_scale: float, cfg_flag: bool, kv_len: int = None, **sampling_kwargs):
     assert input_pos.shape[-1] == 1
     if cfg_scale > 1.0:
         x_combined = torch.cat([x, x])
-        logits, _ = model(x_combined, cond_idx=None, input_pos=input_pos)
+        logits, _ = model(x_combined, cond_idx=None, input_pos=input_pos, kv_len=kv_len)
         logits_combined = logits
         cond_logits, uncond_logits = torch.split(logits_combined, len(logits_combined) // 2, dim=0) 
         if cfg_flag:
@@ -98,7 +99,7 @@ def decode_one_token(model, x: torch.Tensor, input_pos: torch.Tensor, cfg_scale:
         else:
             logits = cond_logits
     else:
-        logits, _ = model(x, cond_idx=None, input_pos=input_pos)
+        logits, _ = model(x, cond_idx=None, input_pos=input_pos, kv_len=kv_len)
     return sample(logits, **sampling_kwargs)
 
 
@@ -111,12 +112,14 @@ def decode_n_tokens(
     # usable decode batch size for no benefit.
     new_tokens = []
     cfg_flag = True
+    # Track the position on the host so cutting the cache to the filled length needs no sync.
+    pos = int(input_pos[0])
     with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True): # Actually better for Inductor to codegen attention here
         for i in range(num_new_tokens):
             if cfg_interval > -1 and i > cfg_interval:
                 cfg_flag = False
             next_token, _ = decode_one_token(
-                model, cur_token, input_pos, cfg_scale, cfg_flag, **sampling_kwargs
+                model, cur_token, input_pos, cfg_scale, cfg_flag, kv_len=pos + i + 1, **sampling_kwargs
             )
             input_pos += 1
             new_tokens.append(next_token)
