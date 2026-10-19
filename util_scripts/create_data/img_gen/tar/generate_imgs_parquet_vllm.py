@@ -4,13 +4,24 @@ The image-token LM runs under vLLM instead of HF `generate`; everything else
 (prompt template, TA-Tok/LlamaGen decoding, parquet schema, shard naming,
 resume-by-skipping-existing-shards, --samples, per-row seeding) is imported from
 `generate_imgs_parquet.py`, so the two scripts write interchangeable shards. With
-the same --chunk_rows and the same number of ranks (= GPU groups here, torchrun
-processes there) a shard left unfinished by one can be finished by the other.
+the same --chunk_rows and the same number of ranks (--logical_world_size here,
+torchrun processes there) a shard left unfinished by one can be finished by the
+other.
+
+Shard layout vs. workers: the shard layout is fixed by --logical_world_size
+(rows `all_rows[r::L]`, cut into --chunk_rows groups, written to
+`shard_{group}.rank{r}.parquet`). Each (logical rank, group) shard is a unit of
+work that any GPU can render, since rows and seeds do not depend on who renders
+them. Units are dealt out first across --num_tasks (e.g. a SLURM job array, one
+node per task) and then across this task's vLLM replicas. So a run can be
+resumed with any number of nodes/GPUs as long as --logical_world_size,
+--chunk_rows, --images_per_prompt, --samples, --seed and the prompts are kept.
 
 Differences from the HF script:
   * Multi-GPU is NOT torchrun. One process per GPU group is spawned from this
     script (--num_gpus / --tensor_parallel_size), each with its own vLLM engine
-    and its own visual decoder on the group's first GPU.
+    and its own visual decoder on the group's first GPU. Multi-node is
+    independent tasks (--num_tasks / --task_id), no inter-node communication.
   * --batch_size is the number of rows handed to one `llm.generate` call (vLLM's
     scheduler batches inside it, up to --max_num_seqs); the visual decoder runs
     in chunks of --decode_batch_size.
@@ -31,7 +42,7 @@ Usage:
         --prompts_file <path-to-prompts> \\
         --output_dir <out> \\
         --ar_path ... --encoder_path ... --decoder_path ... \\
-        --num_gpus 4
+        --num_gpus 4 [--logical_world_size 4 --num_tasks 2 --task_id 0]
 """
 
 import multiprocessing as mp
@@ -74,10 +85,22 @@ def parse_args():
                         "generate uses), else 1.0.")
     p.add_argument("--restrict_to_image_tokens", action="store_true",
                    help="Only sample image-codebook tokens (no out-of-range drops).")
+    p.add_argument("--logical_world_size", type=int, default=0,
+                   help="Ranks in the shard layout (default: this task's replica "
+                        "count). Keep it fixed across relaunches to resume with a "
+                        "different number of nodes/GPUs.")
+    p.add_argument("--num_tasks", type=int, default=1,
+                   help="Independent tasks (e.g. job-array tasks) sharing the work.")
+    p.add_argument("--task_id", type=int, default=0,
+                   help="This task's index in [0, --num_tasks).")
     args = p.parse_args()
     base.check_args(p, args)
     if args.decode_batch_size < 1 or args.tensor_parallel_size < 1:
         p.error("--decode_batch_size and --tensor_parallel_size must be at least 1")
+    if args.logical_world_size < 0 or args.num_tasks < 1:
+        p.error("--logical_world_size must be >= 0 and --num_tasks >= 1")
+    if not 0 <= args.task_id < args.num_tasks:
+        p.error(f"--task_id ({args.task_id}) must be in [0, --num_tasks={args.num_tasks})")
     return args
 
 
@@ -85,7 +108,7 @@ def parse_args():
 
 @dataclass
 class Shard:
-    group: int
+    unit: tuple[int, int]  # (logical rank, group)
     destination: Path
     writer: base.ShardWriter
     temporary: Path
@@ -113,6 +136,44 @@ class Shard:
             self.temporary.unlink()
         except FileNotFoundError:
             pass
+
+
+# ── planning ───────────────────────────────────────────────────────────────────
+
+def plan_units(prompts: list[dict], args, worker: int, num_workers: int,
+               output_dir: Path, device):
+    """([(unit, rows)] this worker still has to render, rows to render, units in
+    the whole layout). A unit is a (logical rank, group) shard of the layout
+    `base.plan_shards` would produce for --logical_world_size ranks."""
+    L = args.logical_world_size
+    all_rows = base.build_rows(prompts, args.images_per_prompt)
+    units = []
+    for r in range(L):
+        rows = all_rows[r::L]
+        units += [((r, g), rows[start : start + args.chunk_rows])
+                  for g, start in enumerate(range(0, len(rows), args.chunk_rows))]
+    # Group-major order, so finished-prefix resumes leave every task/worker an
+    # even share. Dealt out BEFORE checking which shards exist: other tasks are
+    # writing shards concurrently, so the assignment must not depend on them.
+    units.sort(key=lambda u: (u[0][1], u[0][0]))
+    mine = units[args.task_id::args.num_tasks][worker::num_workers]
+    todo = [
+        (unit, rows) for unit, rows in mine
+        if args.overwrite
+        or not base.shard_path_for(output_dir, unit[1], unit[0], L).exists()
+    ]
+    todo_rows = sum(len(rows) for _, rows in todo)
+    print(
+        f"Task {args.task_id}/{args.num_tasks} worker {worker}/{num_workers} on "
+        f"{device}: {len(prompts)} prompts x {args.images_per_prompt} = "
+        f"{len(all_rows)} images in {len(units)} shards over {L} logical ranks; "
+        f"{len(mine)} shards assigned here ({len(mine) - len(todo)} already done, "
+        f"{todo_rows} images to render), batch_size={args.batch_size}, "
+        f"gen_seq_len={args.gen_seq_len}, scale={args.scale}, "
+        f"cfg_scale={args.cfg_scale}",
+        flush=True,
+    )
+    return todo, todo_rows, len(units)
 
 
 # ── worker ─────────────────────────────────────────────────────────────────────
@@ -219,10 +280,11 @@ def render(rank: int, world_size: int, gpu_ids: list[int], args, results,
 
     prompts, extra_columns = prompts_future.result()
     input_pool.shutdown()
-    prompts = base.subsample_prompts(prompts, args, rank)
+    # rank/world_size here are this task's replica index/count, not the layout's.
+    prompts = base.subsample_prompts(prompts, args, rank + args.task_id)
     schema = base.build_schema(extra_columns)
-    groups, todo, todo_rows = base.plan_shards(prompts, extra_columns, args, rank,
-                                               world_size, output_dir, device)
+    todo, todo_rows, num_units = plan_units(prompts, args, rank, world_size,
+                                            output_dir, device)
     D = args.gen_seq_len
 
     def sampling_params(row: dict) -> SamplingParams:
@@ -289,28 +351,31 @@ def render(rank: int, world_size: int, gpu_ids: list[int], args, results,
     # Every (shard, batch) in order, so the pipeline keeps flowing across shard
     # boundaries; a shard is finalized when its last batch clears the last stage.
     work = []
-    for group, group_rows in todo:
-        starts = range(0, len(group_rows), args.batch_size)
+    for unit, unit_rows in todo:
+        starts = range(0, len(unit_rows), args.batch_size)
         for start in starts:
-            work.append((group, group_rows[start : start + args.batch_size],
+            work.append((unit, unit_rows[start : start + args.batch_size],
                          start == starts[-1]))
 
-    shards: dict[int, Shard] = {}
+    shards: dict[tuple[int, int], Shard] = {}
+    finished_units = 0
     total = 0
     total_failed = 0
     started = time.monotonic()
 
-    def open_shard(group: int) -> Shard:
-        destination = base.shard_path_for(output_dir, group, rank, world_size)
+    def open_shard(unit: tuple[int, int]) -> Shard:
+        logical_rank, group = unit
+        destination = base.shard_path_for(output_dir, group, logical_rank,
+                                          args.logical_world_size)
         temporary = destination.with_name(f".{destination.name}.tmp-{os.getpid()}")
-        return Shard(group, destination, base.ShardWriter(temporary, schema,
-                                                          args.row_group_size), temporary)
+        return Shard(unit, destination, base.ShardWriter(temporary, schema,
+                                                         args.row_group_size), temporary)
 
     def finish_stage(item) -> None:
         """Last stage: wait for encoding, buffer/write, finalize a done shard."""
-        nonlocal total, total_failed
-        group, is_last, (rows, futures, image_tokens, dropped) = item
-        shard = shards[group]
+        nonlocal total, total_failed, finished_units
+        unit, is_last, (rows, futures, image_tokens, dropped) = item
+        shard = shards[unit]
         shard.failed_rows += dropped
         table = (base.build_table(rows, [f.result() for f in futures], image_tokens,
                                   schema, extra_columns) if rows else None)
@@ -318,38 +383,40 @@ def render(rank: int, world_size: int, gpu_ids: list[int], args, results,
         if not is_last:
             return
         written = shard.finish()
-        del shards[group]
+        del shards[unit]
         total += written
         total_failed += shard.failed_rows
+        finished_units += 1
         elapsed = time.monotonic() - started
         progress.write(
-            f"[rank {rank}: shard {group + 1}/{len(groups)}] {shard.destination.name}: "
+            f"[task {args.task_id} worker {rank}: shard {finished_units}/{len(todo)} "
+            f"of {num_units}] {shard.destination.name}: "
             f"{written} rows written, {shard.failed_rows} dropped on generation failure "
             f"({total / elapsed if elapsed > 0 else 0.0:.2f} img/s, {total} total)"
         )
 
     decoder = ThreadPoolExecutor(max_workers=1)
     encoder = ThreadPoolExecutor(max_workers=args.encode_workers)
-    # (group, is_last, Future) waiting on the decoder; (group, is_last, result)
+    # (unit, is_last, Future) waiting on the decoder; (unit, is_last, result)
     # whose image encodes are in flight.
-    decoding: tuple[int, bool, Future] | None = None
+    decoding: tuple[tuple[int, int], bool, Future] | None = None
     encoding: tuple | None = None
     try:
-        with tqdm(total=todo_rows, unit="img", desc=f"rank {rank}", smoothing=0,
+        with tqdm(total=todo_rows, unit="img", desc=f"task {args.task_id}", smoothing=0,
                   disable=rank != 0, dynamic_ncols=True) as progress:
-            for group, batch, is_last in work:
-                if group not in shards:
-                    shards[group] = open_shard(group)
-                    progress.set_postfix_str(shards[group].destination.name, refresh=False)
+            for unit, batch, is_last in work:
+                if unit not in shards:
+                    shards[unit] = open_shard(unit)
+                    progress.set_postfix_str(shards[unit].destination.name, refresh=False)
                 rows, tokens = generate(batch)
-                shards[group].failed_rows += len(batch) - len(rows)
+                shards[unit].failed_rows += len(batch) - len(rows)
                 progress.update(len(batch))
 
                 decoded = None
                 if decoding is not None:
                     g, last, future = decoding
                     decoded = (g, last, future.result())
-                decoding = (group, is_last, decoder.submit(decode, rows, tokens))
+                decoding = (unit, is_last, decoder.submit(decode, rows, tokens))
                 if encoding is not None:
                     finish_stage(encoding)
                 encoding = decoded
@@ -396,6 +463,12 @@ def main() -> None:
     gpu_groups = [physical[start : start + args.tensor_parallel_size]
                   for start in range(0, total_gpus, args.tensor_parallel_size)]
     world_size = len(gpu_groups)
+    if not args.logical_world_size:
+        args.logical_world_size = world_size
+    if args.task_id == 0:
+        print(f"Shard layout: --logical_world_size {args.logical_world_size}, "
+              f"--chunk_rows {args.chunk_rows}; keep both when relaunching to resume.",
+              flush=True)
 
     output_dir = Path(os.path.expanduser(args.output_dir))
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -416,6 +489,7 @@ def main() -> None:
     while not results.empty():
         counts.append(results.get())
     failed_ranks = [rank for rank, proc in enumerate(procs) if proc.exitcode != 0]
+    print(f"[task {args.task_id}/{args.num_tasks}]", end=" ")
     base.report_run(world_size, sum(c[1] for c in counts), sum(c[2] for c in counts),
                     output_dir)
     if failed_ranks:

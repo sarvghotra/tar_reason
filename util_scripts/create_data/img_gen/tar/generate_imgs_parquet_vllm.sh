@@ -7,6 +7,7 @@
 #SBATCH --mem=0G
 #SBATCH --account=rrg-bengioy-ad_gpu
 #SBATCH --job-name=genimgs_13K_2
+#SBATCH --array=0-1            # one 4-GPU node per task; any count resumes any other
 #SBATCH -o /home/jeet/scratch/data/syn_data_critique/conceptmix/prompts_13K_vqa_unverif_2/%j_%t_MN.out
 #SBATCH -e /home/jeet/scratch/data/syn_data_critique/conceptmix/prompts_13K_vqa_unverif_2/%j_%t_MN.err
 
@@ -33,6 +34,15 @@ PROMPT_FILE=/home/jeet/scratch/data/syn_data_critique/conceptmix/prompts_38K.jso
 # /home/jeet/scratch/data/syn_data_critique/conceptmix/prompts_13K_vqa_unverif_2.jsonl
 OUTPUT_DIR=/home/jeet/scratch/data/syn_data_critique/conceptmix/prompts_38K
 
+# Fixed shard layout: keep LOGICAL_WORLD_SIZE (and --chunk_rows, --seed,
+# --samples, prompts) unchanged across relaunches so finished shards are skipped,
+# whatever the number of array tasks or GPUs. 4 matches earlier 1x4-GPU runs.
+LOGICAL_WORLD_SIZE=4
+# Without --array these fall back to a single task (the whole input). Override
+# NUM_TASKS when resubmitting only some indices (e.g. --array=1 of 0-1).
+NUM_TASKS=${NUM_TASKS:-${SLURM_ARRAY_TASK_COUNT:-1}}
+TASK_ID=${TASK_ID:-${SLURM_ARRAY_TASK_ID:-0}}
+
 
 python util_scripts/create_data/img_gen/tar/generate_imgs_parquet_vllm.py \
         --ar_path /scratch/jeet/models/pre_train/tar/ar_dtok_lp_512px.pth \
@@ -45,7 +55,10 @@ python util_scripts/create_data/img_gen/tar/generate_imgs_parquet_vllm.py \
         --model $MODEL \
         --prompts_file $PROMPT_FILE \
         --output_dir $OUTPUT_DIR \
-        --gpu_memory_utilization 0.5
+        --gpu_memory_utilization 0.5 \
+        --logical_world_size $LOGICAL_WORLD_SIZE \
+        --num_tasks $NUM_TASKS \
+        --task_id $TASK_ID
 
 
 # --samples 16
