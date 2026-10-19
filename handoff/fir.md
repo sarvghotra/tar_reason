@@ -50,6 +50,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-19 04:00: `darshan_mr_pm_fir` step-200 eval: val800 own 0.762 (≈ step 0), promptmix own 0.737 (+0.016), promptmix oracle 0.794 (+0.016); checkpoint-200 kept.
 - 2026-10-18 17:00: `darshan_mr_pm_fir` step-100 eval: val800 own 0.771 (+0.010), promptmix own 0.735 (+0.014); checkpoint-100 kept.
 - 2026-10-18 05:40: `darshan_mr_pm_fir` step-0 eval (= promptmix t1): val800 own 0.761 / oracle 0.809; promptmix val own 0.721 / oracle 0.778.
 - 2026-10-18 00:30: promptmix smoke passed; `darshan_mr_pm_fir` submitted (65732293–95, 500 steps).
