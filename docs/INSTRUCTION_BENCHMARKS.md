@@ -9,6 +9,13 @@ Only the final complete image is rendered. No optimizer or reward-based image
 selection runs. This differs from upstream's forced draft/reflection/revision
 generation; generation provenance is recorded explicitly.
 
+Full SFT checkpoints are also supported with `--checkpoint_type sft` in the
+generator, or `CHECKPOINT_TYPE=sft` in the launcher. This explicitly bypasses
+adapter loading while preserving the same EOS-driven generation, rendering and
+judge settings. Weight shards and tokenizer/configuration files are hashed into
+the generation manifest; RL adapters still require their saved reward objective
+and recorded base model. Both policy types remain frozen during evaluation.
+
 ## Benchmarks and judges
 
 - **TIIF-Bench testmini:** 277 cases, each with short and long wording, for

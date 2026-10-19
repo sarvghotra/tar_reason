@@ -15,6 +15,19 @@ from llava.train.rl.geneval2_eval_io import (
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--checkpoint', required=True)
+    p.add_argument('--checkpoint_type', choices=['rl_adapter', 'sft'], default='rl_adapter')
+    p.add_argument('--reset_context_per_turn', action=argparse.BooleanOptionalAction, default=None,
+                   help='Full SFT only: opt into reset context. RL adapters use (and must match) '
+                        'their checkpoint metadata.')
+    p.add_argument('--protocol', choices=['native', 'main_adhoc', 'looks_good'], default='native',
+                   help='native: the trained EOS policy. main_adhoc: the main branch\'s forced '
+                        'one-refinement protocol (llava/train/rl/main_protocol.py). looks_good: '
+                        'up to --max_refinements reflect->refine rounds, stopping on a "looks good" '
+                        'verdict (EpisodeRollout.run_looks_good); needs an explicit context flag.')
+    p.add_argument('--decoding', choices=['sample', 'greedy'], default='sample',
+                   help='looks_good only: greedy = argmax image tokens and reflections.')
+    p.add_argument('--verdict_rule', choices=['correction', 'anywhere'], default='correction',
+                   help='looks_good only: where "looks good" must appear.')
     p.add_argument('--benchmark', required=True)
     p.add_argument('--output_dir', required=True)
     p.add_argument('--ar_path', required=True)
@@ -36,6 +49,12 @@ def parse_args():
     args = p.parse_args()
     if min(args.gen_batch_size, args.reflect_tokens, args.max_seq_len) <= 0 or args.max_refinements < 0:
         p.error('Invalid generation limits')
+    if args.protocol == 'main_adhoc' and (args.max_refinements != 1 or args.reset_context_per_turn is not None):
+        p.error('main_adhoc requires --max_refinements 1 and no context-mode flag (one refinement, full history)')
+    if args.protocol == 'looks_good' and args.reset_context_per_turn is None:
+        p.error('looks_good requires an explicit --reset_context_per_turn or --no-reset_context_per_turn')
+    if args.protocol != 'looks_good' and (args.decoding != 'sample' or args.verdict_rule != 'correction'):
+        p.error('--decoding and --verdict_rule apply only to --protocol looks_good')
     return args
 
 
@@ -43,8 +62,8 @@ def main():
     args = parse_args()
     import torch
     import torch.distributed as dist
-    from peft import PeftModel
-    from transformers import AutoTokenizer, Qwen2ForCausalLM
+    from transformers import AutoTokenizer
+    from llava.train.rl.evaluation_policy import checkpoint_metadata, load_evaluation_policy, evaluation_resets_context
     from llava.train.rl.rollout import EpisodeRollout, RolloutConfig
     from llava.train.rl.pixel_reward import QwenPixelReward
     from llava.train.rl.train_grpo import ImageDecoder, RL_OBJECTIVE
@@ -54,20 +73,20 @@ def main():
     torch.cuda.set_device(device)
     if world > 1:
         dist.init_process_group('nccl', timeout=timedelta(minutes=60))
-    checkpoint = Path(args.checkpoint).resolve()
-    state = json.loads((checkpoint/'state.json').read_text())
-    if state.get('objective') != RL_OBJECTIVE:
-        raise ValueError('Checkpoint is not from the final-pixel RL objective')
-    adapter_config = json.loads((checkpoint/'adapter_config.json').read_text())
-    # Load the base recorded with this adapter, never the current sft_model link.
-    base_path = Path(adapter_config['base_model_name_or_path']).resolve(strict=True)
-    rows = load_benchmark(args.benchmark)
-    hashes = [sha256_file(checkpoint/'adapter_model.safetensors') if rank == 0 else None]
+    metadata = [checkpoint_metadata(args.checkpoint, args.checkpoint_type, RL_OBJECTIVE)
+                if rank == 0 else None]
     if world > 1:
-        dist.broadcast_object_list(hashes, src=0)
-    manifest = dict(protocol='geneval2_full_final_pixel_v1', checkpoint=str(checkpoint),
-                    checkpoint_step=state['step'], checkpoint_state=state, adapter_sha256=hashes[0],
-                    base_model=str(base_path), base_config_sha256=sha256_file(base_path/'config.json'),
+        dist.broadcast_object_list(metadata, src=0)
+    metadata = metadata[0]
+    # The main protocol has one refinement on the full history; context mode does not apply.
+    # looks_good is an evaluation protocol in its own right: its context mode is
+    # chosen explicitly (recorded below) rather than inherited from training.
+    reset_context = (False if args.protocol == 'main_adhoc'
+                     else args.reset_context_per_turn if args.protocol == 'looks_good'
+                     else evaluation_resets_context(metadata, args.reset_context_per_turn))
+    base_path = Path(metadata['base_model'])
+    rows = load_benchmark(args.benchmark)
+    manifest = dict(protocol='geneval2_full_final_pixel_v1', **metadata,
                     benchmark=str(Path(args.benchmark).resolve()), benchmark_sha256=sha256_file(args.benchmark),
                     code_sha256=sha256_file(args.code_manifest), n_prompts=len(rows),
                     seed=args.seed, world_size=world, batch_size=args.gen_batch_size,
@@ -80,6 +99,20 @@ def main():
                                   decoder=str(Path(args.decoder_path).resolve())),
                     reward_model=str(Path(args.reward_model).resolve()), reward='official_soft_tifa_am_and_gm')
     directory = Path(args.output_dir)
+    if reset_context:
+        manifest['reset_context_per_turn'] = True
+    if args.protocol == 'main_adhoc':
+        from llava.train.rl.main_protocol import SETTINGS
+        manifest['generation_protocol'] = SETTINGS
+        manifest['first_ar'] = dict(temperature=SETTINGS['image_temperature'], top_k=SETTINGS['image_top_k'],
+                                    top_p=SETTINGS['image_top_p'], reflection='greedy')
+    if args.protocol == 'looks_good':
+        manifest['generation_protocol'] = dict(
+            protocol='looks_good_v1', max_refinements=args.max_refinements, verdict_rule=args.verdict_rule,
+            decoding=args.decoding, reset_context_per_turn=reset_context,
+            stop='"looks good" verdict; otherwise a forced refinement up to max_refinements; EOS does not stop')
+        if args.decoding == 'greedy':
+            manifest['first_ar'] = dict(images='greedy', reflections='greedy')
     directory.mkdir(parents=True, exist_ok=True)
     if rank == 0:
         ensure_manifest(directory, manifest)
@@ -99,17 +132,21 @@ def main():
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = 'left'
-    model = Qwen2ForCausalLM.from_pretrained(base_path, torch_dtype=torch.bfloat16,
-                                            attn_implementation=args.attn_implementation)
-    model = PeftModel.from_pretrained(model, checkpoint, is_trainable=False).to(device).eval()
-    model.requires_grad_(False)
+    model = load_evaluation_policy(metadata, device, args.attn_implementation)
     assert not any(p.requires_grad for p in model.parameters())
     image_start = tokenizer.convert_tokens_to_ids('<I0>')
     count = sum(t.startswith('<I') and t[2:-1].isdigit() for t in tokenizer.get_vocab())
     cfg = RolloutConfig(num_rollouts=1, max_refinements=args.max_refinements,
+                        reset_context_per_turn=reset_context,
                         max_seq_len=args.max_seq_len, reflect_tokens=args.reflect_tokens,
-                        gen_batch_size=args.gen_batch_size)
+                        gen_batch_size=args.gen_batch_size,
+                        img_sample=args.decoding == 'sample', reflect_sample=args.decoding == 'sample')
     rollout = EpisodeRollout(tokenizer, cfg, image_start, count, device)
+    if args.protocol == 'main_adhoc':
+        from llava.train.rl.main_protocol import MainAdhocRollout
+        if hasattr(model, 'merge_and_unload'):
+            model = model.merge_and_unload()  # main merges LoRA adapters before generating
+        rollout = MainAdhocRollout(tokenizer, device, reflect_tokens=args.reflect_tokens)
     # The existing renderer checkpoints contain EasyDict configuration objects.
     # Allow that specific class with PyTorch >=2.6's weights-only loader.
     from easydict import EasyDict
@@ -132,7 +169,10 @@ def main():
             if all(existing.values()):
                 continue
             torch.manual_seed(args.seed * 1000003 + start)
-            batch = rollout.run(model, [rows[i] for i in indices], num_rollouts=1)
+            batch = (rollout.run_looks_good(model, [rows[i] for i in indices], num_rollouts=1,
+                                            verdict_rule=args.verdict_rule)
+                     if args.protocol == 'looks_good'
+                     else rollout.run(model, [rows[i] for i in indices], num_rollouts=1))
             if (len(batch.trajectories) != len(indices) or
                     any(t.prompt_idx != i for i, t in enumerate(batch.trajectories))):
                 raise RuntimeError('Expected exactly one ordered episode per benchmark prompt')
@@ -153,7 +193,11 @@ def main():
                               question_scores=scores[0], reflections=trajectory.reflections,
                               stop_reason=trajectory.stop_reason, semantic_codes=trajectory.images,
                               sampled_sequence=trajectory.seq, position_kinds=trajectory.kinds,
+                              context_segments=[dict(input_ids=s.seq, position_kinds=s.kinds)
+                                                for s in trajectory.segments],
                               image=filename, image_sha256=sha256_file(image_path))
+                if args.protocol == 'looks_good':
+                    record['verdicts'] = trajectory.verdicts
                 atomic_json(directory/f'prompt-{index:04d}.json', record)
                 print(json.dumps(dict(rank=rank, prompt_index=index, am=am[0], gm=gm[0],
                                       stop=trajectory.stop_reason)), flush=True)

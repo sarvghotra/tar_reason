@@ -1,3 +1,24 @@
+# Continuing training across allocations
+
+Resume requires the adapter, `state.json`, `optimizer.pt` and `scheduler.pt`.
+The trainer restores the optimizer and original cosine schedule; `--max_steps`
+is the total target, so resuming step 200 with `--max_steps 500` adds 300 updates.
+Method flags must match the saved checkpoint. Use a copied checkpoint in a new
+output directory when the original run must remain intact.
+
+`--stop_at_unix` and `--stop_file` request a coordinated stop at an optimizer
+boundary. Complete checkpoints are published atomically, and a final
+`training_status_<job>.json` records the saved step and target. The prepared Fir
+continuation wrapper stops 45 minutes before each 24-hour allocation expires.
+After a successful segment, `resubmit_until_complete.py` submits at most one
+successor with an `afterok` dependency on its parent. It stops at the target or
+on errors/no progress; ambiguous submissions require checking Slurm before retrying.
+
+The current concrete script is
+`results/launches/rl_continue_corrected_lr1e4_ck200_to500_20260916/resume.sbatch`.
+Its `launch.json` records the initial job; successor ledgers and per-job training
+status files are under the corresponding `results/models/` run directory.
+
 # Full GenEval2 evaluation
 
 `eval_geneval2.py` evaluates a frozen RL adapter on all **800 official GenEval2
@@ -6,6 +27,14 @@ samples one complete episode per prompt, renders its final complete image once,
 and scores those pixels with the existing frozen Qwen3-VL judge. There are no
 optimizer updates. All models must use the same seed, generation batch size,
 GPU count, backend and sampling settings for a comparable run.
+
+To evaluate a full SFT checkpoint directly, pass `--checkpoint_type sft`
+(`CHECKPOINT_TYPE=sft` for either evaluation launcher). The default remains
+`rl_adapter`, which requires valid final-pixel RL metadata. SFT mode loads no
+adapter and hashes the full weight shards, model configuration and tokenizer
+files into the evaluation manifest. Both modes freeze the policy and use the
+same episode/rendering protocol. SFT evaluation can run independently while
+RL trains a new adapter from that checkpoint.
 
 The September 15 comparison uses benchmark revision
 `a6e82d2289e8d418f27f0adee77908b07060eea3` from
@@ -91,6 +120,96 @@ checkpoints without this metadata resume with legacy defaults. A method change
 requires a fresh run name/output directory, which starts from the chosen SFT
 checkpoint; the flags do not implicitly migrate old adapters or optimizer state.
 
+# Tree credit and reflection-text policy gradient
+
+Two further opt-ins; empty/`all` defaults run the unchanged episode code path.
+
+| CLI | Launcher environment | Default |
+|---|---|---|
+| `--tree_branch "R[xM],..."` | `TREE_BRANCH` | empty (independent episodes) |
+| `--max_tree_leaves_per_prompt N` | `MAX_TREE_LEAVES_PER_PROMPT` | `64` |
+| `--text_policy_gradient all\|transitions` | `TEXT_POLICY_GRADIENT` | `all` |
+
+**Tree rollouts.** Entry k applies after image k (image 0 is the draft): sample R
+reflections per image, and M images for each reflection that samples
+`<im_start>` and passes the caps. Unlisted rounds do not branch, so depth is
+still set by `MAX_REFINEMENTS` and sampled EOS. `NUM_ROLLOUTS` drafts per prompt;
+at most `NUM_ROLLOUTS x prod(R*M)` leaves, fewer when branches stop early. With
+`NUM_ROLLOUTS=4`: `2` -> 8, `2,2` -> 16, `2,2,2` -> 32, `2x2` -> 16. More rounds
+than `MAX_REFINEMENTS` are rejected (the last reflection can only stop).
+
+Only final images are rendered and scored, once per distinct final image (a
+child that emits EOS reuses its parent's exact pixels). value(leaf) = final
+reward, value(node) = mean of its children; advantage = value minus the mean of
+its siblings (drafts: the prompt's drafts). An only child shares its nearest
+branch point's advantage, so unbranched trees reproduce episode advantages.
+`ADV_NORM=std` divides a prompt's advantages by the mass-weighted std of its leaf
+rewards. Drafts have mass 1 and children split their parent's mass; token
+weights are kind weight x sum over leaves under the node of mass/episode length
+(`episode`) or kind weight x mass / `MAX_SEQ_LEN` (`constant`). Weighting by
+descendant counts would bias the stop/refine gradient (a CPU exact-expectation
+test checks this). Each node's actions train once; the denominator counts drafts.
+Sibling means include the node itself, shrinking each level by (K-1)/K as in
+standard GRPO. Validation and benchmark evaluation still use single chains.
+New `train/tree_*` metrics report leaves/nodes per prompt, mean |advantage| of
+drafts, reflections and refined images, and the mean advantage of stopping vs
+continuing reflections that have siblings.
+
+**Text policy gradient.** `transitions` zeroes the policy-gradient term of
+reflection prose (sampled text other than EOS/`<im_start>`), keeping its KL
+term and its normalization weight; EOS, `<im_start>` and image tokens keep their
+policy gradient. This is a deliberate partial gradient: prose is still sampled
+from the shared LoRA policy and anchored only by KL.
+
+Main-branch-like first run (4 GPUs; 8 leaves per prompt, 16 per rank):
+
+```bash
+NUM_ROLLOUTS=4 TREE_BRANCH=2 PROMPTS_PER_GPU=2 RESET_CONTEXT_PER_TURN=1 \
+TEXT_POLICY_GRADIENT=transitions RUN_NAME=rl_tree2_transitions \
+  bash scripts/clusters/fir/submit_rl.sh
+```
+
+Unlike main, leaves continue as chains up to `MAX_REFINEMENTS` and stop on
+sampled EOS. Both settings are checkpoint method metadata; old checkpoints mean
+`[]` / `all`, and mismatches refuse to resume.
+
+# One-iteration Janus-style objective
+
+`--objective janus_one_iteration --max_refinements 1` (`OBJECTIVE`, `VERDICT_RULE`,
+`ADV_STD_FLOOR` in the launcher): draft -> reflection -> one refinement unless the
+Correction says "looks good". Rewards, each group-normalized (unbiased std):
+
+| Segment (tokens) | Reward |
+|---|---|
+| draft image | AM(draft) |
+| reflection text (incl. stop token) | `all_pass` (default): 1[looks good == every draft question >= 0.5]; `soft_am`: 1 - abs(AM(draft) - 1[looks good]) |
+| final image (refined image, or the draft again when kept) | AM(final) |
+
+Loss = mean over the three segments of per-sequence token means (KL in each), as
+Janus-Pro-R1 `grpo_trainer_t2iv1.py`. Differences: exact log-probs (T=1, no CFG),
+sampled draft tokens kept in context, optional PPO epochs, corrected KL. If the
+reflection did not end with a sampled `<im_start>` but must refine, a trailing EOS is
+dropped and `<im_start><S0>` spliced (newline-aware); a stop token that disagrees with
+the verdict keeps KL but no PG. Stats: `train/val am_draft, am_final, looks_good_rate,
+delta_am_refined, looks_good_on_pass/fail, mismatch_*_rate, rule_disagreement_rate`,
+per-segment `pg_/kl_{draft,reflection,final}`. Cost: every draft and refined image is
+rendered and judged (about 1.8 per episode); use `RENDER_BATCH_SIZE=24` (12.6 -> 1.07 s/image
+in `check_batched_reward.py`, job 64727589). Keep `REWARD_QUESTION_BATCH_SIZE=1`: batched judging
+saved only 0.28 -> 0.20 s/image and moved per-question scores by up to 0.108 (left-padded bf16). The
+`soft_am` target collapsed in run `..._janus1iter_g8p8_..._20261012`: "looks good" rose
+from 22% to 92% (90% on failing drafts) in 37 steps, because it pays whenever soft AM > 0.5.
+
+# Benchmark generation protocols
+
+`eval_geneval2` / `generate_instruction_benchmarks` default to `--protocol
+native` (the trained EOS policy: temperature 1, no truncation, up to
+`--max_refinements` 3, context mode from checkpoint metadata).
+`--protocol main_adhoc --max_refinements 1` reproduces the main branch's
+`eval/iterative_generation_adhoc.py` generation: one forced refinement unless the
+greedy reflection says "looks good", image top-k 1200 / top-p 0.95, reflection
+re-encoded as text, full history, LoRA merged. Use it for cross-branch numbers;
+judges and scoring are shared. Outputs record the protocol in their manifest.
+
 # Fixed periodic validation subset
 
 `val.yaml` selects `val32.jsonl`: 32 unchanged rows from the original validation
@@ -143,3 +262,28 @@ comparing scores. Sampling, reward, episode limits and interval are unchanged.
 | 29 | 8 | a sparkling monkey chasing four sparkling turtles, and three backpacks |
 | 30 | 8 | a brown bird in front of five trucks, and two yellow cars |
 | 31 | 8 | a pink flamingo behind seven plastic croissants, and three giraffes |
+
+# Teacher-guided tree (`teacher_tree`)
+
+`OBJECTIVE=teacher_tree TREE_BRANCH=1x2 MAX_REFINEMENTS=3 RESET_CONTEXT_PER_TURN=1 ADV_NORM=std`
+(plus `SHADOW_REFLECTIONS`, `SHADOW_COEF`, `TEACHER_CE_COEF`, `TEACHER_MAX_TOKENS`,
+`TEACHER_BATCH_SIZE`). Each rollout round samples images from the policy, renders them, and
+asks the judge model (Qwen3-VL-8B, same worker process; image + prompt only) for a reflection
+(`llava/train/rl/teacher.py`). The reply is rewritten into the policy's reflection format and
+spliced: "looks good" stops the episode; a correction is followed by M policy images
+(`TREE_BRANCH` entries `1xM`; R must be 1), until `MAX_REFINEMENTS`.
+
+| Tokens | Credit | Loss |
+|---|---|---|
+| draft / refined images | tree value = mean final AM of the subtree, minus siblings' mean | PG + KL, episode weights per draft subtree |
+| teacher reflection (incl. EOS / `<im_start>`) | none (not a policy sample) | `TEACHER_CE_COEF` x mean per-token NLL |
+| shadow reflections (`SHADOW_REFLECTIONS` per image, not continued) | 1[verdict == all judge questions >= 0.5], prompt groups, unbiased std | `SHADOW_COEF` x mean of per-shadow token means, PG + KL |
+
+Stats (`train/`): `am_draft`, `am_final`, `delta_am_refined`, `stop_*_rate`,
+`teacher_verdict_accuracy/precision/recall`, `teacher_looks_good_on_fail`,
+`teacher_malformed_reply_rate`, `shadow_verdict_accuracy`, `shadow_looks_good_on_pass/fail`,
+`shadow_mismatch_rate`, `ce_loss`, `teacher_nll`, `pg_/kl_{draft,shadow,refined}`, and
+`time/teacher_render`, `time/teacher_generate` (both inside `time/rollout`). Validation runs
+the teacher-free looks_good protocol (the policy's own reflections; `val/am_upto_k`,
+`verdict_accuracy`, `looks_good_on_fail`). `check_teacher_reflections.py` checks the teacher's
+format compliance and agreement with the judge on saved SFT drafts before a run.

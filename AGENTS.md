@@ -56,6 +56,30 @@ Do not silently alter it while claiming benchmark parity.
 
 ## Entry points
 
+Opt-in `--reset_context_per_turn` (`RESET_CONTEXT_PER_TURN=1` in the launcher)
+rebuilds each subsequent refinement context from the prompt and latest image.
+All exact-context segments are trained with final episode advantage; copied
+images are masked, and normalization/optimizer averaging remain per episode.
+The logical episode budget is not reset. This flag is checkpoint method
+metadata; missing means false, and standalone evaluation inherits it.
+
+Opt-in `--tree_branch "R[xM],..."` (`TREE_BRANCH`) samples the episodes as a
+tree: after image k, R reflections per image and M images per reflection that
+requests one; unlisted rounds do not branch. Rewards remain final images only
+(one render/score per distinct final image). A node's value is the mean final
+reward of its subtree; its advantage is value minus its siblings' mean, and an
+only child shares its nearest branch point's advantage. Drafts have mass 1 and
+children split it equally; weights use mass (not descendant counts) and the
+denominator counts drafts. Opt-in `--text_policy_gradient transitions`
+removes reflection prose from the policy gradient but keeps its KL; EOS,
+`<im_start>` and image tokens keep it. Both are checkpoint method metadata
+(missing means `[]` / `all`); validation and evaluation stay single-chain.
+
+Evaluation-only `--protocol looks_good` (`eval_geneval2`,
+`generate_instruction_benchmarks`) runs a draft plus up to `--max_refinements`
+reflect -> refine rounds, stopping on a "looks good" verdict (otherwise forcing a
+refinement); it needs an explicit context flag and supports `--decoding greedy`.
+
 - `llava/train/rl/rollout.py`: episodes, termination, action masks and row weights.
 - `llava/train/rl/train_grpo.py`: final-pixel scoring, advantages, training, logs.
 - `llava/train/rl/grpo.py`: restricted log-probabilities and clipped objective.
@@ -64,6 +88,48 @@ Do not silently alter it while claiming benchmark parity.
 - `scripts/rl_ft/bash.sh`: shared RL launcher.
 - `scripts/clusters/fir/`: configured cluster profile, setup and submission.
 - `scripts/clusters/generic/`: unconfigured other-cluster placeholder.
+
+Opt-in `--objective janus_one_iteration` (requires `--max_refinements 1`) follows
+Janus-Pro-R1: draft -> reflection -> one refinement unless the Correction says
+"looks good" (`--verdict_rule correction|anywhere`). Rewards AM(draft), the
+verdict reward and AM(final) train the draft, reflection and final image (the
+draft again when kept) as three segments. Verdict reward `--verdict_target
+all_pass` (default): 1[verdict == every draft question >= 0.5]; `soft_am` is
+the Janus formula `1 - |AM(draft) - verdict|`, which collapsed to "looks good"
+(soft AM > 0.5 on most failing drafts) and is kept only to reproduce that run; each is normalized per
+prompt group with the unbiased std, and the loss averages the three per-sequence
+token means. Every draft and refined image is rendered and judged once. A stop
+token that disagrees with the verdict keeps KL but no PG. Default objective
+remains `final_episode`; both are checkpoint method metadata.
+`--render_batch_size` (renderer rows sample independently) and
+`--reward_question_batch_size` (left-padded judge forwards, same variant sums)
+only change throughput; default 1 is the legacy path, and benchmark evaluation
+keeps batch 1. Batched judging failed the GPU equivalence check (per-question
+diffs up to 0.108 for a 1.4x speedup), so keep the judge at 1.
+
+Opt-in `--objective teacher_tree` (`llava/train/rl/teacher.py`,
+`EpisodeRollout.run_teacher_tree`): after each image the judge model, acting
+as a teacher that sees only the prompt and the rendered image, writes the
+reflection. It is parsed into the policy's own format (a leading space,
+`<critique>\nCorrection: <instruction>\n` + `<im_start>`, or exactly
+`no issues, it matches the prompt.\nCorrection: looks good.` + EOS) and spliced:
+"looks good" stops, otherwise `--tree_branch` gives M policy images per teacher
+reflection (every entry needs R = 1), up to `--max_refinements`. Teacher tokens
+are off-policy: no PG and no KL, only cross-entropy (`--teacher_ce_coef` x the
+mean per-token NLL over teacher reflections). Image tokens get final-reward tree
+credit (an intermediate image is credited with the final rewards it led to). After
+every image the policy samples `--shadow_reflections` reflections from the teacher
+reflection's context; they are never continued, and their reward is verdict
+correctness against the judge's all_pass target (prompt groups, unbiased std;
+`--shadow_coef` x the mean of per-shadow token means; stop-token mismatch keeps
+KL, no PG). Each image is rendered once; the judge scores those exact pixels.
+Validation is the teacher-free looks_good protocol. Unparseable teacher replies
+stop the episode (`teacher_malformed`). All settings are checkpoint method metadata.
+
+Benchmark scripts default to `--protocol native` (the trained policy). Opt-in
+`--protocol main_adhoc` reproduces origin/main's forced one-refinement generation
+(`llava/train/rl/main_protocol.py`) for cross-branch comparison; keep it
+byte-faithful to main and label results by protocol.
 
 Only LoRA on the first model trains. The renderer and judge remain frozen.
 Evaluation exemplars must reuse the exact final image scored by Qwen; rendering

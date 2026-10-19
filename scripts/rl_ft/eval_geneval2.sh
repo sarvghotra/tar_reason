@@ -5,13 +5,14 @@ source "${TAR_REPO_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pw
 : "${GENEVAL2_BENCHMARK:?Set the official benchmark JSONL}"
 : "${EVAL_CODE_ROOT:?Set the verified evaluation code snapshot}"
 tar_init_run geneval2_full
-tar_require_paths "$RL_CHECKPOINT/adapter_model.safetensors" "$RL_CHECKPOINT/state.json" \
+tar_require_paths "$RL_CHECKPOINT" \
     "$GENEVAL2_BENCHMARK" "$AR_MODEL" "$VISION_MODEL" "$DECODER" \
     "$REWARD_MODEL_PATH/config.json" "$REWARD_PYTHON" "$EVAL_CODE_ROOT/manifest.json"
 export PYTHONPATH="$EVAL_CODE_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 tar_launch "${EVAL_PYTHON:-python}" -m torch.distributed.run --standalone --nproc_per_node="${N_GPUS:-4}" \
     "$EVAL_CODE_ROOT/llava/train/rl/eval_geneval2.py" \
-    --checkpoint "$RL_CHECKPOINT" --benchmark "$GENEVAL2_BENCHMARK" \
+    --checkpoint "$RL_CHECKPOINT" --checkpoint_type "${CHECKPOINT_TYPE:-rl_adapter}" \
+    --benchmark "$GENEVAL2_BENCHMARK" \
     --output_dir "$EVAL_DIR" --code_manifest "$EVAL_CODE_ROOT/manifest.json" \
     --ar_path "$AR_MODEL" --encoder_path "$VISION_MODEL" --decoder_path "$DECODER" \
     --reward_model "$REWARD_MODEL_PATH" --reward_python "$REWARD_PYTHON" \

@@ -29,6 +29,9 @@ class GRPOConfig:
     kl_coef: float = 0.01
     adv_norm: str = "mean"       # "std": (r - mean) / (std + eps); "mean": r - mean
     adv_eps: float = 1e-4
+    # "std" divides by max(std, adv_std_floor): a group whose rewards differ by
+    # less than the floor (e.g. renderer noise) is not blown up to unit scale.
+    adv_std_floor: float = 0.0
     reflect_token_weight: float = 1.0
     length_normalization: str = "episode"  # legacy episode mean | fixed max_seq_len
     kl_gradient_correction: bool = False
@@ -107,12 +110,13 @@ def masked_token_logprobs(model, input_ids: torch.Tensor, attention_mask: torch.
 # Advantages
 # ---------------------------------------------------------------------------
 
-def normalize_groups(rewards: List[float], groups: List[int], cfg: GRPOConfig
-                     ) -> Tuple[List[float], int]:
+def normalize_groups(rewards: List[float], groups: List[int], cfg: GRPOConfig,
+                     unbiased: bool = False) -> Tuple[List[float], int]:
     """Group-relative advantages. ``groups[i]`` is the group key of reward i.
 
     Returns (advantages, number_of_zero_variance_groups). A group whose
-    rewards are all identical (or of size 1) gets advantage 0.
+    rewards are all identical (or of size 1) gets advantage 0. ``unbiased``
+    uses the sample std (as Janus-Pro-R1's ``Tensor.std()``) in std mode.
     """
     by_group: Dict[int, List[int]] = {}
     for i, g in enumerate(groups):
@@ -130,7 +134,10 @@ def normalize_groups(rewards: List[float], groups: List[int], cfg: GRPOConfig
             zero_var += 1
             continue
         if cfg.adv_norm == "std":
-            centered = centered / (std + cfg.adv_eps)
+            scale = vals.std(unbiased=True) if unbiased else std
+            if cfg.adv_std_floor > 0:
+                scale = torch.clamp(scale, min=cfg.adv_std_floor)
+            centered = centered / (scale + cfg.adv_eps)
         elif cfg.adv_norm != "mean":
             raise ValueError(f"Unknown adv_norm {cfg.adv_norm}")
         for i, a in zip(members, centered.tolist()):
@@ -142,20 +149,32 @@ def normalize_groups(rewards: List[float], groups: List[int], cfg: GRPOConfig
 # Loss
 # ---------------------------------------------------------------------------
 
+SEGMENT_NAMES = ((1, "draft"), (2, "reflection"), (3, "final"))
+
+
 def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor,
               adv: torch.Tensor, weight: torch.Tensor, kinds: torch.Tensor,
-              denom: float, cfg: GRPOConfig):
+              denom: float, cfg: GRPOConfig, pg_mask: Optional[torch.Tensor] = None,
+              segments: Optional[torch.Tensor] = None, ce_weight: Optional[torch.Tensor] = None,
+              segment_names=SEGMENT_NAMES):
     """Token-level clipped surrogate + KL(policy || ref) estimator.
 
     All inputs are flat (N,) over the trainable tokens of one micro-batch.
     ``denom`` is the number of episodes in the whole optimizer step. Token
     weights already include the selected episode or constant normalization.
+    ``pg_mask`` (0/1) drops the policy-gradient term of masked tokens while
+    keeping their KL term; None leaves every token's policy gradient.
+    ``ce_weight`` (teacher_tree) adds ``ce_weight * -logp`` (supervised
+    distillation of spliced teacher tokens, which should carry weight 0);
+    None leaves the loss unchanged. ``segment_names`` labels ``segments``.
     """
     log_ratio = logp - old_logp
     ratio = log_ratio.exp()
     pg1 = ratio * adv
     pg2 = ratio.clamp(1.0 - cfg.clip_eps, 1.0 + cfg.clip_eps) * adv
     pg = -torch.min(pg1, pg2)
+    if pg_mask is not None:
+        pg = pg * pg_mask
 
     d = ref_logp - logp
     kl = d.exp() - d - 1.0
@@ -165,24 +184,42 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
         kl = ratio * kl
 
     tok = weight * (pg + cfg.kl_coef * kl)
+    teacher = None
+    if ce_weight is not None:
+        tok = tok + ce_weight * -logp
+        teacher = ce_weight > 0
     loss = tok.sum() / denom
 
     with torch.no_grad():
         w = weight
-        # Constant-normalized short episodes can have total weight below one.
-        # Preserve the historical metric formula in legacy mode.
-        wsum = w.sum().clamp(min=1.0 if cfg.length_normalization == "episode"
-                            else torch.finfo(w.dtype).tiny)
+        # A segment can contain only part of an episode's normalized weight.
+        wsum = w.sum().clamp(min=torch.finfo(w.dtype).tiny)
         img = kinds == KIND_IMG
         txt = kinds == KIND_TXT
+        if teacher is not None:
+            txt = txt & ~teacher  # text phase metrics cover policy-sampled tokens only
+        # Phase PG means cover only tokens that are in the policy-gradient loss.
+        pg_img = img if pg_mask is None else img & (pg_mask > 0)
+        pg_txt = txt if pg_mask is None else txt & (pg_mask > 0)
         metrics = {
             "pg_loss": float((w * pg).sum() / wsum),
             "kl": float((w * kl).sum() / wsum),
             "clip_frac": float((w * ((ratio - 1.0).abs() > cfg.clip_eps)).sum() / wsum),
             "approx_kl_old": float((w * (-log_ratio)).sum() / wsum),
-            "pg_img": float((pg[img]).mean()) if img.any() else 0.0,
-            "pg_txt": float((pg[txt]).mean()) if txt.any() else 0.0,
+            "pg_img": float((pg[pg_img]).mean()) if pg_img.any() else 0.0,
+            "pg_txt": float((pg[pg_txt]).mean()) if pg_txt.any() else 0.0,
             "kl_txt": float((kl[txt]).mean()) if txt.any() else 0.0,
             "kl_img": float((kl[img]).mean()) if img.any() else 0.0,
         }
+        if segments is not None:
+            # Weighted shares of the objective's PG / KL per segment (sum = pg_loss / kl).
+            for k, name in segment_names:
+                sel = (segments == k).to(w.dtype)
+                metrics[f"pg_{name}"] = float((w * pg * sel).sum() / wsum)
+                metrics[f"kl_{name}"] = float((w * kl * sel).sum() / wsum)
+        if teacher is not None:
+            # Plain sums: train_on_rollouts adds these across micro-batches.
+            metrics["sum_ce_loss"] = float((ce_weight * -logp).sum())
+            metrics["sum_teacher_nll"] = float((-logp)[teacher].sum())
+            metrics["sum_teacher_tokens"] = float(teacher.sum())
     return loss, metrics

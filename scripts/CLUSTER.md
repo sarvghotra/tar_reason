@@ -138,6 +138,54 @@ replace a GPU smoke test with the actual SFT checkpoint.
 
 ## Final-image episode objective
 
+### Optional context reset between refinements
+
+Set `RESET_CONTEXT_PER_TURN=1` for `scripts/rl_ft/bash.sh`, or pass
+`--reset_context_per_turn` directly to the trainer. Default is off; explicit
+disable is `--no-reset_context_per_turn`. Use a fresh run name when changing
+this setting: it is part of checkpoint method metadata, and missing metadata
+means the historical full-context policy. In-training validation follows the
+same setting; standalone GenEval2, TIIF and GenAI generation automatically
+read it from the RL checkpoint and fingerprint it in the evaluation manifest.
+
+When enabled, after each corrected image the next reflection sees only the
+original system/user prompt, the latest semantic image, and `Self-reflect:`.
+The correction is generated conditioned on that reflection and current image.
+Earlier reflections/images are omitted from the next input. Each generation
+call builds a fresh KV cache. The initial draft and first correction can share
+a training segment because their contexts are unchanged by this reset rule.
+
+All segments remain in the rollout buffer with their exact sampling contexts.
+Only newly sampled actions receive loss; the copied image, prompt and forced
+prefixes have zero loss weight. Every segment receives its episode's final
+pixel-reward advantage. Episode normalization spans all segments together;
+constant normalization still uses `MAX_SEQ_LEN`. Optimizer averaging counts
+episodes, not segments, and `TRAIN_MICRO_BATCH` bounds segment rows on GPU.
+
+The logical episode token budget (original prompt plus generated actions and
+forced splices) remains capped by `min(MAX_SEQ_LEN, model context limit)`.
+Copying the latest image into a fresh context does not replenish that budget
+or count the copied tokens a second time. The three-refinement, reflection
+token and EOS rules are unchanged. This conservatively preserves the prior
+safety limits even though individual contexts can now be shorter.
+
+Example opt-in for a new run, retaining the corrected LR 1e-4 setup:
+
+```bash
+RUN_NAME=rl_reset_context_trial RESET_CONTEXT_PER_TURN=1 LR=1e-4 \
+LENGTH_NORMALIZATION=constant KL_GRADIENT_CORRECTION=1 \
+bash scripts/clusters/fir/submit_rl.sh
+```
+
+This command uses the configured SFT model; set `PREV_STAGE_CHECKPOINT` to
+select another base. Existing submitted frozen code snapshots are unaffected.
+
+Tree credit (`TREE_BRANCH`) and reflection-prose masking
+(`TEXT_POLICY_GRADIENT=transitions`) are further opt-ins described in
+`scripts/rl_ft/README.md`. Tree mode multiplies episodes per prompt (up to
+`NUM_ROLLOUTS x prod(R*M)` leaves); lower `PROMPTS_PER_GPU` to keep the
+per-rank rollout/judge budget. GPU memory/runtime in tree mode are unvalidated.
+
 The RL launcher now defaults to `RUN_NAME=rl_pixel_qwen`. Every prompt gets
 `NUM_ROLLOUTS=4` independent episodes, without shared drafts or correction
 branches. Tar generates a complete semantic image, then reflection text.

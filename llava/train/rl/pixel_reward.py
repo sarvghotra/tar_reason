@@ -7,18 +7,26 @@ import os
 import select
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 
 class QwenPixelReward:
-    def __init__(self, python, model_path, device, timeout=1800):
+    def __init__(self, python, model_path, device, timeout=1800, question_batch_size=1):
         worker = Path(__file__).with_name("qwen_reward_worker.py")
         self.timeout = timeout
+        if question_batch_size < 1:
+            raise ValueError("question_batch_size must be positive.")
+        command = [python, "-u", str(worker), "--model", model_path, "--device", str(device)]
+        if question_batch_size > 1:  # batch 1 keeps the exact legacy worker command
+            command += ["--question_batch_size", str(question_batch_size)]
         self.process = subprocess.Popen(
-            [python, "-u", str(worker), "--model", model_path, "--device", str(device)],
+            command,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+        self._response_buffer = bytearray()
         atexit.register(self.close)
         try:
+            os.set_blocking(self.process.stdout.fileno(), False)
             if self._read() != {"ready": True}:
                 raise RuntimeError("Unexpected Qwen reward worker startup response.")
         except BaseException:
@@ -26,12 +34,25 @@ class QwenPixelReward:
             raise
 
     def _read(self):
-        if not select.select([self.process.stdout], [], [], self.timeout)[0]:
-            self.close()
-            raise TimeoutError("Qwen reward worker timed out; no substitute reward was used.")
-        line = self.process.stdout.readline()
-        if not line:
-            raise RuntimeError("Qwen reward worker exited. Check its stderr and REWARD_PYTHON/model path.")
+        deadline = time.monotonic() + self.timeout
+        # Never mix TextIOWrapper reads with these raw reads: its read-ahead
+        # buffer is invisible to select(). Keep trailing bytes for the next line.
+        while b"\n" not in self._response_buffer:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
+                self.close()
+                raise TimeoutError("Qwen reward worker timed out; no substitute reward was used.")
+            try:
+                chunk = os.read(self.process.stdout.fileno(), 65536)
+            except BlockingIOError:
+                continue
+            if not chunk:
+                raise RuntimeError("Qwen reward worker exited before a complete response. "
+                                   "Check its stderr and REWARD_PYTHON/model path.")
+            self._response_buffer.extend(chunk)
+        end = self._response_buffer.index(b"\n") + 1
+        line = bytes(self._response_buffer[:end])
+        del self._response_buffer[:end]
         result = json.loads(line)
         if "error" in result:
             raise RuntimeError(f"Qwen reward worker failed: {result['error']}")
@@ -69,3 +90,24 @@ class QwenPixelReward:
         gm = [0.0 if any(v == 0 for v in row) else
               math.exp(sum(math.log(v) for v in row) / len(row)) for row in per_question]
         return am, gm, per_question
+
+    def generate_texts(self, images, texts, max_new_tokens, batch_size=8):
+        """Greedy judge-model replies to one (image, text) user turn each."""
+        if len(images) != len(texts) or not all(isinstance(t, str) and t for t in texts):
+            raise ValueError("Each image needs one nonempty text.")
+        if not images:
+            return []
+        with tempfile.TemporaryDirectory(prefix="tar-qwen-teacher-") as directory:
+            paths = []
+            for index, image in enumerate(images):
+                path = os.path.join(directory, f"{index}.png")
+                image.save(path)
+                paths.append(path)
+            self.process.stdin.write(json.dumps(dict(op="generate", images=paths, texts=list(texts),
+                                                     max_new_tokens=int(max_new_tokens),
+                                                     batch_size=int(batch_size))) + "\n")
+            self.process.stdin.flush()
+            replies = self._read()["texts"]
+        if len(replies) != len(images) or not all(isinstance(r, str) for r in replies):
+            raise ValueError("Invalid Qwen generate response.")
+        return replies

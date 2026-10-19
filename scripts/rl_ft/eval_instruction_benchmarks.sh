@@ -3,7 +3,7 @@
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
-: "${CHECKPOINT:?Set CHECKPOINT to the RL adapter}"
+: "${CHECKPOINT:?Set CHECKPOINT to the policy checkpoint}"
 : "${BENCHMARK:?Set BENCHMARK to the prepared benchmark JSON}"
 : "${OUTPUT_DIR:?Set OUTPUT_DIR to a fresh evaluation directory}"
 : "${JUDGE_MODEL:?Set JUDGE_MODEL to the benchmark judge snapshot}"
@@ -23,7 +23,8 @@ export HF_HUB_OFFLINE=1
 if [[ "$STAGE" == all || "$STAGE" == generate ]]; then
     PYTHONPATH="$REPO_ROOT:$GEN_PYTHONPATH" "$GEN_PYTHON" -m torch.distributed.run \
         --standalone --nproc_per_node="$N_GPUS" -m llava.train.rl.generate_instruction_benchmarks \
-        --checkpoint "$CHECKPOINT" --benchmark "$BENCHMARK" --output_dir "$OUTPUT_DIR" \
+        --checkpoint "$CHECKPOINT" --checkpoint_type "${CHECKPOINT_TYPE:-rl_adapter}" \
+        --benchmark "$BENCHMARK" --output_dir "$OUTPUT_DIR" \
         --code_manifest "$REPO_ROOT/manifest.json" --ar_path "$AR_PATH" \
         --encoder_path "$ENCODER_PATH" --decoder_path "$DECODER_PATH" \
         --seed "$SEED" --gen_batch_size "${GEN_BATCH_SIZE:-16}" \

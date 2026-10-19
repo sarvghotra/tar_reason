@@ -25,6 +25,17 @@ PROMPTS_PER_GPU="${PROMPTS_PER_GPU:-4}"
 NUM_ROLLOUTS="${NUM_ROLLOUTS:-4}"
 MAX_REFINEMENTS="${MAX_REFINEMENTS:-3}"
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-4096}"
+RESET_CONTEXT_PER_TURN="${RESET_CONTEXT_PER_TURN:-0}"
+case "$RESET_CONTEXT_PER_TURN" in
+    1|true) CONTEXT_ARGS=(--reset_context_per_turn) ;;
+    0|false) CONTEXT_ARGS=(--no-reset_context_per_turn) ;;
+    *) echo 'RESET_CONTEXT_PER_TURN must be 0, 1, false, or true.' >&2; exit 1 ;;
+esac
+# Opt-in tree rollouts: comma list "R[xM]" per refinement round (after image k),
+# e.g. TREE_BRANCH=2 (main-like: 4 drafts x 2 continuations) or 2,2x2. Empty:
+# independent episodes. Leaves/prompt <= NUM_ROLLOUTS x prod(R*M).
+TREE_BRANCH="${TREE_BRANCH:-}"
+MAX_TREE_LEAVES_PER_PROMPT="${MAX_TREE_LEAVES_PER_PROMPT:-64}"
 GEN_BATCH_SIZE="${GEN_BATCH_SIZE:-16}"
 TRAIN_MICRO_BATCH="${TRAIN_MICRO_BATCH:-2}"
 
@@ -35,6 +46,27 @@ KL_COEF="${KL_COEF:-0.01}"
 CLIP_EPS="${CLIP_EPS:-0.2}"
 NUM_PPO_EPOCHS="${NUM_PPO_EPOCHS:-1}"
 REFLECT_TOKEN_WEIGHT="${REFLECT_TOKEN_WEIGHT:-1.0}"
+TEXT_POLICY_GRADIENT="${TEXT_POLICY_GRADIENT:-all}"  # all | transitions (prose: KL only)
+# final_episode | janus_one_iteration (one refinement; draft / verdict / final rewards;
+# requires MAX_REFINEMENTS=1; ADV_NORM=std matches Janus-Pro-R1) | teacher_tree
+# (judge-model reflections drive a tree of policy images, e.g. TREE_BRANCH=1x2;
+# teacher tokens distilled, shadow reflections rewarded for verdict correctness).
+OBJECTIVE="${OBJECTIVE:-final_episode}"
+VERDICT_RULE="${VERDICT_RULE:-correction}"   # correction | anywhere ("looks good" location)
+ADV_STD_FLOOR="${ADV_STD_FLOOR:-0}"
+VERDICT_TARGET="${VERDICT_TARGET:-all_pass}"        # all_pass | soft_am (Janus formula)
+VERDICT_PASS_THRESHOLD="${VERDICT_PASS_THRESHOLD:-0.5}"
+SHADOW_REFLECTIONS="${SHADOW_REFLECTIONS:-1}"   # teacher_tree: policy reflections per image (not continued)
+SHADOW_COEF="${SHADOW_COEF:-1.0}"               # teacher_tree: mean shadow-reflection loss weight
+TEACHER_CE_COEF="${TEACHER_CE_COEF:-0.1}"       # teacher_tree: mean teacher-reflection NLL weight
+TEACHER_MAX_TOKENS="${TEACHER_MAX_TOKENS:-96}"  # teacher_tree: teacher reply cap (judge tokens)
+TEACHER_BATCH_SIZE="${TEACHER_BATCH_SIZE:-16}"  # teacher_tree: images per teacher generate call
+RENDER_BATCH_SIZE="${RENDER_BATCH_SIZE:-1}"           # images per renderer call
+REWARD_QUESTION_BATCH_SIZE="${REWARD_QUESTION_BATCH_SIZE:-1}"  # judge rows per forward
+case "$TEXT_POLICY_GRADIENT" in
+    all|transitions) ;;
+    *) echo 'TEXT_POLICY_GRADIENT must be all or transitions.' >&2; exit 1 ;;
+esac
 ADV_NORM="${ADV_NORM:-mean}"           # std | mean
 LENGTH_NORMALIZATION="${LENGTH_NORMALIZATION:-episode}"  # episode | constant (MAX_SEQ_LEN)
 KL_GRADIENT_CORRECTION="${KL_GRADIENT_CORRECTION:-0}"
@@ -58,6 +90,7 @@ SEED="${SEED:-421}"
 echo "PREV_STAGE_CHECKPOINT: ${PREV_STAGE_CHECKPOINT}"
 echo "REWARD_MODEL_PATH: ${REWARD_MODEL_PATH}"
 echo "RUN_NAME: ${RUN_NAME}  GPUs: ${N_GPUS}  prompts/gpu: ${PROMPTS_PER_GPU}  rollouts/prompt: ${NUM_ROLLOUTS}  max refinements: ${MAX_REFINEMENTS}"
+echo "tree branch: '${TREE_BRANCH}'  text policy gradient: ${TEXT_POLICY_GRADIENT}  objective: ${OBJECTIVE} (${VERDICT_RULE})"
 
 export WANDB_RUN_ID="${WANDB_RUN_ID:-$RUN_NAME}"
 ENCODER="$VISION_MODEL"
@@ -76,6 +109,9 @@ tar_launch torchrun --standalone --nproc_per_node=${N_GPUS} \
     --num_rollouts "${NUM_ROLLOUTS}" \
     --max_refinements "${MAX_REFINEMENTS}" \
     --max_seq_len "${MAX_SEQ_LEN}" \
+    "${CONTEXT_ARGS[@]}" \
+    --tree_branch "${TREE_BRANCH}" \
+    --max_tree_leaves_per_prompt "${MAX_TREE_LEAVES_PER_PROMPT}" \
     --scale 0 \
     --gen_seq_len 729 \
     --img_temperature 1.0 \
@@ -92,6 +128,19 @@ tar_launch torchrun --standalone --nproc_per_node=${N_GPUS} \
     --clip_eps "${CLIP_EPS}" \
     --kl_coef "${KL_COEF}" \
     --reflect_token_weight "${REFLECT_TOKEN_WEIGHT}" \
+    --text_policy_gradient "${TEXT_POLICY_GRADIENT}" \
+    --objective "${OBJECTIVE}" \
+    --verdict_rule "${VERDICT_RULE}" \
+    --adv_std_floor "${ADV_STD_FLOOR}" \
+    --verdict_target "${VERDICT_TARGET}" \
+    --verdict_pass_threshold "${VERDICT_PASS_THRESHOLD}" \
+    --shadow_reflections "${SHADOW_REFLECTIONS}" \
+    --shadow_coef "${SHADOW_COEF}" \
+    --teacher_ce_coef "${TEACHER_CE_COEF}" \
+    --teacher_max_tokens "${TEACHER_MAX_TOKENS}" \
+    --teacher_batch_size "${TEACHER_BATCH_SIZE}" \
+    --render_batch_size "${RENDER_BATCH_SIZE}" \
+    --reward_question_batch_size "${REWARD_QUESTION_BATCH_SIZE}" \
     --length_normalization "${LENGTH_NORMALIZATION}" \
     "${KL_GRADIENT_ARGS[@]}" \
     --num_ppo_epochs "${NUM_PPO_EPOCHS}" \
