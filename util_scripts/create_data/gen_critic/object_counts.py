@@ -104,8 +104,56 @@ def head(noun: str) -> str:
 
 # ------------------------------------------------------------------------------------------------- targets
 
-def count_targets(row: dict, caption: str) -> list[dict]:
-    """[{"noun", "target"}] for the objects the caption counts, from vqa_list when the row has it."""
+# Words that end a noun phrase when walking back from its head: determiners, numbers, prepositions, verbs. Comparatives
+# are relations to another object, not properties SAM 3 can see ("smaller anteater").
+_PHRASE_STOP = set("""a an the some several many few lone single with and or of in on at to by near beside behind above
+below under over from into onto than while where that which who is are was were sits sit stands stand rests rest lies
+lie hangs hang no without not each both all its their his her this these those around across through along against
+between among inside outside atop beneath underneath alongside next nearby there here as taller shorter bigger smaller
+larger higher lower longer wider same equal other another""".split())
+
+
+def noun_phrase(caption: str, noun: str, max_extra: int = 3) -> str:
+    """The noun as the caption writes it ("cake" for "cakes" in "a crimson cake") plus up to `max_extra` preceding
+    modifiers ("crimson cake" with max_extra >= 1), stopping at a number, determiner, preposition or verb. The noun
+    itself when the caption does not contain it (a VQA paraphrase)."""
+    tokens = [token.lower() for token in _WORD_RE.findall(caption)]
+    words = noun.lower().split()
+    head_word = singular(words[-1])
+    for j, token in enumerate(tokens):
+        if singular(token) != head_word:
+            continue
+        start = j - len(words) + 1
+        if start < 0 or any(singular(tokens[start + i]) != singular(words[i]) for i in range(len(words) - 1)):
+            if len(words) > 1:
+                continue
+            start = j
+        extra = 0
+        while start > 0 and extra < max_extra:
+            before = tokens[start - 1]
+            if not before[0].isalpha() or before in _PHRASE_STOP or before in NUMBERS or before.endswith("ing"):
+                break
+            start -= 1
+            extra += 1
+        return " ".join(tokens[start:j + 1])
+    return noun
+
+
+def count_targets(row: dict, caption: str, query_modifiers: int = 0) -> list[dict]:
+    """[{"noun", "target", "query"}] for the objects the caption counts, from vqa_list when the row has it. "noun" is
+    the name the critic's reply is matched against (the VQA question's, usually a bare plural: "cakes"); "query" is
+    what SAM 3 is asked for: the noun as the caption writes it ("cake" for "a cake"), with up to `query_modifiers` of
+    the caption's modifiers ("crimson cakes").
+
+    Measured 2026-10-18 on the 100 audited exact-count disagreements (right / wrong / unmeasured) and on 1161 targets
+    of 400 random rows (measured, i.e. not "unmeasured"):
+        VQA noun                81 / 19 / 0    51% measured
+        caption-form noun       81 / 17 / 2    60% measured   <- default (query_modifiers=0)
+        full phrase (3 mods)    77 / 16 / 7    60% measured
+    The caption's number form is what matters: SAM 3 often finds nothing for "farmers" in an image of one farmer and
+    finds it for "farmer". Modifiers cost recall ("small kings", "glass gift boxes", "navy blue pitchforks" all went
+    unmeasured) and do not buy precision beyond that: most lookalike errors (sheep counted as opossums) are
+    cross-category and the modifier does not help, and one of them already used the full phrase and still failed."""
     vqa = row.get("vqa_list")
     targets, seen = [], set()
     if vqa:
@@ -115,8 +163,9 @@ def count_targets(row: dict, caption: str) -> list[dict]:
             match = HOW_MANY_RE.match(question.strip())
             value = to_number(str(answer))
             if match and value is not None and match.group(1).lower() not in seen:
-                seen.add(match.group(1).lower())
-                targets.append({"noun": match.group(1).lower(), "target": value})
+                noun = match.group(1).lower()
+                seen.add(noun)
+                targets.append({"noun": noun, "target": value, "query": noun_phrase(caption, noun, query_modifiers)})
         return targets
     tokens = [token.lower() for token in _WORD_RE.findall(caption)]
     for k, token in enumerate(tokens):
@@ -131,7 +180,7 @@ def count_targets(row: dict, caption: str) -> list[dict]:
         noun = " ".join(words[:end + 1])
         if noun not in seen:
             seen.add(noun)
-            targets.append({"noun": noun, "target": NUMBERS[token]})
+            targets.append({"noun": noun, "target": NUMBERS[token], "query": noun})
     return targets
 
 
@@ -196,7 +245,8 @@ class ObjectCounter:
 
     def _evidence(self, found: list[dict], target: dict, shared: bool, image: Image.Image) -> dict:
         noun, value = target["noun"], target["target"]
-        evidence = {"noun": noun, "target": value, "state": "unmeasured", "lo": None, "hi": None}
+        evidence = {"noun": noun, "query": target.get("query", noun), "target": value, "state": "unmeasured",
+                    "lo": None, "hi": None}
         if shared or head(noun) in UNIQUE_OBJECTS:
             return evidence
         min_area = self.args.count_min_box_frac * image.width * image.height
@@ -225,7 +275,7 @@ class ObjectCounter:
         return evidence
 
     def _measure(self, images: list[Image.Image], targets: list[list[dict]]) -> list[list[dict]]:
-        pairs = [(i, t["noun"]) for i, row in enumerate(targets) for t in row]
+        pairs = [(i, t.get("query", t["noun"])) for i, row in enumerate(targets) for t in row]
         if not pairs:
             return [[] for _ in images]
         found = iter(self._instances(images, pairs))

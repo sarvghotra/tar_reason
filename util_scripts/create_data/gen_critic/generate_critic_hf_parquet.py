@@ -205,6 +205,79 @@ NOT_ASKED_RE = re.compile(
     r"(?i)\bnot (?:mentioned|specified|requested|asked for|described|included)\b|\bnot in the (?:caption|prompt)\b"
     r"|\b(?:caption|prompt) does not (?:mention|ask|specify|request)"
 )
+# Caption grounding (2026-10-18 audit of all_97K: 4.3% of rows had an item of one of these two kinds, and 27 of 30
+# sampled "instead of" rejects and 30 of 30 "should not be present" rejects were real over-criticism).
+#  - "<object> should not be present": the critic asks to remove something the caption never excluded ("A planet
+#    should not be present"). Allowed only when the caption negates something ("no bench", "without a lid",
+#    "headless") and the item shares a content word with that negated phrase.
+#  - "<shows X> instead of <Y>": Y is what the caption asks for, so Y must share a content word with the caption. "The
+#    cauliflower is yellow instead of white" when the caption gives no colour, "the dishwasher is open instead of
+#    closed", "black and white instead of colour" are the critic inventing requirements. Spatial / comparative words
+#    are matched as a family ("shorter" against a caption that says "taller"), and quoted text is matched verbatim.
+SHOULD_NOT_RE = re.compile(
+    r"(?i)\bshould not (?:be )?(?:present|there|appear|exist|be (?:in|visible|included))\b|\bshould ?n[o']t be\b"
+    r"|\bshould be absent\b|\bnot supposed to\b|\bunwanted\b|\bextraneous\b|\bshould be removed\b|\bshould not have\b"
+)
+_CAPTION_NEGATION_RE = re.compile(
+    r"(?i)\b(?:no|without|not|lacking|lacks|devoid of|free of|absent|missing|except|minus|nor|none|empty|bare"
+    r"|headless|tailless|wingless|handleless)\b((?:\s+[\w'-]+){0,5})"
+)
+_INSTEAD_OF_RE = re.compile(r"(?i)\binstead of\b(.*?)(?:[.;]|$)")
+_QUOTED_RE = re.compile(r"[\"'\u2018\u2019\u201c\u201d]([^\"'\u2018\u2019\u201c\u201d]{1,40})[\"'\u2018\u2019\u201c\u201d]")
+_GROUND_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9']*")
+_GROUND_STOP = set("""a an the of in on at to for with and or but is are was were be being been it its this that these
+those there here as by from into onto than then so just only very more most less least some any all each every both
+either neither one single pair such other another same different also rather instead not no nor which who whose whom
+what where when while how do does did have has had having make makes made get gets got lot lots kind sort type part
+parts way ways object objects item items thing things scene image picture caption prompt visible shown appears appear
+seems seem present them they their he she his her him us we our you your i me my directly entirely completely clearly
+should would could can may might must shall will positioned placed located shaped shape""".split())
+_SPATIAL_WORDS = set("""taller shorter bigger smaller larger higher lower longer wider narrower above below left right
+behind front top bottom under over beside inside outside near far up down between beneath atop underneath next adjacent
+side foreground background center middle ahead""".split())
+
+
+def _stem(word: str) -> str:
+    word = object_counts.singular(word)
+    if word.isdigit():
+        return word
+    for suffix in ("ing", "ed", "ly", "er", "est"):
+        if word.endswith(suffix) and len(word) > len(suffix) + 3:
+            return word[:-len(suffix)]
+    return word
+
+
+def _content_words(text: str) -> set[str]:
+    return {_stem(t) for t in _GROUND_TOKEN_RE.findall(text.lower()) if t not in _GROUND_STOP and (len(t) > 2 or t.isdigit())}
+
+
+def _words_match(a: set[str], b: set[str]) -> bool:
+    """A shared stem, or one stem a prefix of the other ("wood" / "wooden", "jogg" / "jogger")."""
+    return any(x == y or (len(x) >= 4 and len(y) >= 4 and (x.startswith(y) or y.startswith(x))) for x in a for y in b)
+
+
+def ungrounded(item: str, caption: str) -> str | None:
+    """Why a Self-reflect item faults something the caption does not ask for, or None."""
+    if SHOULD_NOT_RE.search(item):
+        excluded = set()
+        for match in _CAPTION_NEGATION_RE.finditer(caption):
+            excluded |= _content_words(match.group(0))
+        if not _words_match(_content_words(item), excluded):
+            return "asks to remove something the caption does not exclude"
+    match = _INSTEAD_OF_RE.search(item)
+    if match:
+        wanted = match.group(1)
+        if any(q.lower() in caption.lower() for q in _QUOTED_RE.findall(wanted)):
+            return None
+        want, have = _content_words(wanted), _content_words(caption)
+        # Spatial and comparative words are one family: "shorter" is grounded by a caption that says "taller".
+        spatial = (set(_GROUND_TOKEN_RE.findall(wanted.lower())) & _SPATIAL_WORDS
+                   and set(_GROUND_TOKEN_RE.findall(caption.lower())) & _SPATIAL_WORDS)
+        if want and not _words_match(want, have) and not spatial:
+            return "says what the caption asks for, but the caption asks for nothing of the kind"
+    return None
+
+
 # First words of 98% of the correction steps in the decomposed hqedt train shards.
 ACTION_VERBS = ("Add", "Remove", "Replace", "Move", "Change")
 # An add / remove / replace step that lists several objects ("Replace the erasers and the dish with four marble erasers,
@@ -421,6 +494,12 @@ def build_messages(image: Image.Image, description: str, counts: str = "") -> li
     ]
 
 
+def caption_of(messages: list[dict]) -> str:
+    """The caption `build_messages` put in the user turn (without the detector counts)."""
+    text = messages[1]["content"][1]["text"]
+    return text.removeprefix("Caption: ").split("\nDetector counts:")[0]
+
+
 def retry_messages(messages: list[dict], answer: str, reason: str) -> list[dict]:
     """The conversation plus the rejected answer and why it was rejected, as in the decompose script."""
     return messages + [
@@ -437,10 +516,11 @@ def strip_thinking(text: str) -> str:
 
 
 def parse_reply(text: str, max_steps: int, max_item_words: int,
-                evidence: list[dict] | None = None) -> tuple[dict | None, str | None]:
+                evidence: list[dict] | None = None, caption: str = "") -> tuple[dict | None, str | None]:
     """({"self_reflect": [...], "correction": [...]}, None), or (None, why the reply was rejected).
 
-    Both lists empty means the image is faithful. The reason is sent back to the model on the retry.
+    Both lists empty means the image is faithful. The reason is sent back to the model on the retry. With the caption,
+    Self-reflect items are also checked against it (see `ungrounded`).
     """
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
@@ -492,6 +572,10 @@ def parse_reply(text: str, max_steps: int, max_item_words: int,
         if NOT_ASKED_RE.search(step):
             return None, (f'Self_reflect item {number} ("{step}") faults a detail the caption does not mention. Extra '
                           f"details are fine unless the caption excludes them; drop that item and its correction step.")
+        if caption and (why := ungrounded(step, caption)):
+            return None, (f'Self_reflect item {number} ("{step}") {why}. Report only discrepancies with what the '
+                          f"caption asks for; extra details are fine unless the caption excludes them. Drop that item "
+                          f"and its correction step.")
         if step.split(maxsplit=1)[0] in ACTION_VERBS:
             return None, (f'Self_reflect item {number} ("{step}") is an instruction. Describe what the image shows '
                           f'against the caption, and put the edit in "correction".')
@@ -539,7 +623,8 @@ def critique_batch(batch_messages: list[list[dict]], generate_fn, args, stats: C
                 result, reason, messages_next = None, "thinking truncated", messages
             else:
                 answer = strip_thinking(response)
-                result, reason = parse_reply(answer, args.max_steps, args.max_item_words, evidences[index])
+                result, reason = parse_reply(answer, args.max_steps, args.max_item_words, evidences[index],
+                                             caption_of(batch_messages[index]))
                 messages_next = retry_messages(messages, answer, reason) if result is None else None
                 if result is None and args.rejections_log:
                     with open(args.rejections_log, "a") as handle:
@@ -633,7 +718,7 @@ def prepare_batch(table_rows: dict, start: int, stop: int, counter, args) -> tup
         captions.append(extract_prompt(table_rows["conversations"][row]))
         if counter is not None:
             fields = {"vqa_list": table_rows["vqa_list"][row]} if "vqa_list" in table_rows else {}
-            targets.append(object_counts.count_targets(fields, captions[-1]))
+            targets.append(object_counts.count_targets(fields, captions[-1], args.count_query_modifiers))
     # SAM 3 sees the full-resolution image; only the VLM's copy is downscaled.
     evidences = counter(images, targets) if counter is not None else [[] for _ in images]
     messages = [build_messages(resize_to_max_pixels(image, args.max_pixels), caption, object_counts.evidence_text(evidence))
@@ -995,6 +1080,10 @@ def parse_args(argv: list[str] | None = None, add_arguments=None,
     parser.add_argument("--no_count_objects", dest="count_objects", action="store_false",
                         help="Do not count the caption's counted objects with SAM 3 (see object_counts.py).")
     parser.add_argument("--counter_path", default=DEFAULT_COUNTER, help="SAM 3 checkpoint.")
+    parser.add_argument("--count_query_modifiers", type=int, default=0,
+                        help="How many of the caption's modifiers to put in the SAM 3 query besides the noun in the "
+                             "caption's own form (0: \"cake\"; 2: \"crimson cake\"). See object_counts.count_targets "
+                             "for the measurements behind the default.")
     parser.add_argument("--count_low", type=float, default=0.3,
                         help="SAM 3 instances below this score are ignored (enrich_captions' sam3_low).")
     parser.add_argument("--count_high", type=float, default=0.7,
