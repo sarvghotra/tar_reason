@@ -8,7 +8,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
   TRAIN_MICRO_BATCH 4, launcher defaults since `86d3c78`; checkout has the TA-Tok fix `395fcb4`), dataset seed from RUN_NAME,
   500 steps, evals every 100 on GenEval2 val800 (`val/`) + promptmix val800 (`val_promptmix/`), depth-4 mdp.
   Chain (submitted 2026-10-20 ~04:00): **merge 23887481 done** (34 min; 48 GB RSS; shard loading ~10 min per 3 GB shard = slow scratch reads) (CPU, `rrg-bengioy-ad_cpu`, → `models/tar/sft/darshan_mr_fir_merged800`)
-  → **smoke 23887482 passed** (`f800pm_smoke_rorqual`, 1 node, 40 min; per step ≈ 3.5 min at 1 node: rollout 161 s + reward 24 s + train 25 s) → full (4 nodes): 23887483 was cancelled by Slurm (uid 0) at start, 09:03, no logs (node/prolog side) → **23887484** (now first) → 23887485 → 24413404 (afterany, added as a spare).
+  → **smoke 23887482 passed** (`f800pm_smoke_rorqual`, 1 node, 40 min; per step ≈ 3.5 min at 1 node: rollout 161 s + reward 24 s + train 25 s) → full (4 nodes): 23887483 was cancelled by Slurm (uid 0) at start, 09:03, no logs (node/prolog side) → **23887484 running since 09:06** (rg[21706,32102,32301,32502]) → 23887485 → 24413404 (afterany, spare). ≈ 3.7 min/step at 4 nodes, eval ≈ 40 min → 500 steps ≈ 34 h (job 1 reaches ~step 340).
   Yamls pre-created in `output_dir/{f800pm_smoke_rorqual,darshan_mr_f800pm_rorqual}/`. All jobs are named `darshan_mr_rorqual`
   (logs `output_dir/slurm_logs/darshan_mr_rorqual_<job>.*`).
   To do: report each eval (val800 + promptmix) to Fir's Inbox
@@ -55,6 +55,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-20 10:10: full run up (23887484); step-0 eval (= F-800) val800 own 0.858 / oracle 0.905, promptmix own 0.712 / oracle 0.766; 3.7 min/step; sent to Fir's Inbox.
 - 2026-10-20 09:05: full job 23887483 cancelled by Slurm at start (CANCELLED by 0, signal 54, no logs); 23887484 takes over, spare 24413404 chained.
 - 2026-10-20 05:15: smoke 23887482 passed (both val sets, ckpt-2, staging 79 s); per-step time sent to Fir's Inbox; smoke wandb synced. Full run 23887483 pending (Priority).
 - 2026-10-20 04:16: F-800 merge 23887481 done (`darshan_mr_fir_merged800`, 12 GB, LoRA r64 on all 7 proj); reading the base from scratch took 27 min.
