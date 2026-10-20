@@ -3,21 +3,15 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-20 EDT)
-- **Official-evals plan (Inbox 2026-10-19) in progress.**
-  - **Scorer alignment**: jeet's files are readable via `/network/scratch/s/sarvjeet-singh.ghotra/git/...` (not via his home symlink).
-    `evaluation_optz.py` (copied to `benchmarks/GenEval2/`) scores each question exactly like the official `evaluation.py` (same prompt,
-    answer lists, soft probability), only batched, and prints AM and GM; `--method soft_tifa` = our `soft_tifa_am` per question. Check
-    done: equal up to bf16 noise (t8 70.33 → 76.80 vs 70.3 → 76.8; `runs.md`), so nothing to re-score.
-  - **GenAI-Image-800** = jeet's subset of the 1,600 prompts (same keys), copied to `benchmarks/GenAI-Bench/GenAI-Image-800/`; numbers
-    computed from existing per-prompt scores (no new generation): see `runs.md` GenAI-800 note.
-  - **Seeds for error bars**: t8, F-800, promptmix-500 × seeds 714, 715 with `bench_mila.sh BENCHES="geneval2 tiif genai"` (t8 on
-    short-unkillable chained, others 2-GPU `long`), and depth-4 mdp on official GenEval2 with eval seeds 422, 423 (`--seed` in EXTRA_ARGS;
-    seed 421 = the existing runs) in 4 × 200: 24 jobs `depth4_{t8,F800,promptmix500}_mdp_geneval2_s{422,423}_q{1..4}`. All ids in
-    `$SCRATCH/tar_reason/seeds_jobs.txt`. New seeds use jeet's faster AR decoder (`cdcbd91`, same math, bf16 rounding only).
-  - **Promptmix-run checkpoints** `darshan_mr_pm_fir` 300 / 500: waiting for the user's copy from Fir.
-- Dataset-seed rule (Inbox): noted; applies to new training runs, none on Mila now.
-- Watcher: background in this session.
+## Now (2026-10-20 04:00 EDT)
+- **C0 perception probe running** (Inbox 2026-10-20): `eval/analyze/perception_probe.py` asks each model the judge's VQA questions on the
+  6,004 F-250 images of the 3a dumps (understanding mode, critic's image layout, greedy). Jobs `probe_{F250,F800,tar7b_base}` (ids in
+  `$SCRATCH/tar_reason/probe_jobs.txt`), reports → `output_dir/perception_probe/<model>/report.txt`. Smoke (64 images, F-250): question
+  agreement 88.6%, specificity on judge-fail 72%, per image recall 48% / false all-ok 20.5% (critic: ~0.5 / ~0.09).
+- **Seeds for error bars running** (Inbox 2026-10-19): ids in `$SCRATCH/tar_reason/seeds_jobs.txt` (t8 s422 depth done).
+- Scorer alignment done (equal; `runs.md`). GenAI-800 numbers in `runs.md`. TA-Tok merge fix `395fcb4`.
+- Waiting: promptmix-run checkpoints 300/500 and t11 checkpoints (user copies).
+- Watcher: background in this session (tmux, login-4).
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -79,6 +73,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-20 04:00: C0 probe written (CPU test + GPU smoke), full runs submitted for F-250, F-800, base Tar.
 - 2026-10-20 02:30: the merge `168f38a` re-hardcoded jeet's SigLIP2 path in `TextAlignedTokenizer.from_checkpoint` (`3d4ae90`); t8 seed benches 714/715 failed on it. Fixed in `395fcb4` (SIGLIP2_PATH overrides any teacher path; missing local path → HF id), GPU smoke passed, resubmitted. Scorer alignment done (equal).
 - 2026-10-20: pulled `168f38a` (jeet's main) and the official-evals plan; jeet's scratch readable via the direct path; GenAI-800 subset computed; optz check + 30 seed jobs submitted. Removed the old scorer-alignment and dataset-seed Inbox lines (superseded / noted).
 - 2026-10-18 05:00: promptmix-500 + F-800 benchmarks done (rows in `runs.md`); deleted that Inbox line; told Fir.
