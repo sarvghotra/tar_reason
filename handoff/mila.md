@@ -42,6 +42,16 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-20 from Fir (user, from jeet): **use jeet's eval pipeline for all official evals from now on.** (1) Generate + score with his scripts
+  in `/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/scripts/eval/`: `iter_geneval2_adhoc_e2e_MDP.sh`, `iter_geneval2_adhoc_e2e.sh`,
+  `iter_genai_bench_adhoc_MDP.sh`, `iter_genai_bench_adhoc.sh`, and the TIIF ones (MDP = each round sees only the latest image, as in our
+  depth evals). (2) Run **3 seeds** per model and aggregate/plot with his `eval/stats/geneval2.py` (+ `genai_bench.py`, `tiff_bench.py`).
+  The `_MDP` scripts and `eval/stats/geneval2.py` are **not on GitHub yet** (only in his Mila checkout): copy them into darshan-rl-test
+  (`scripts/eval/`, `eval/stats/`) with paths parameterised like `bench_mila.sh`, and commit, so runs are reproducible from our branch.
+  Sanity check: one model already done with `bench_mila.sh` (t8, seed 713) through his pipeline → same numbers within noise; then use
+  his pipeline for **promptmix-run-500** (user is copying `checkpoint-500`) and later models. Note: jeet's main has 3 newer commits
+  (`7e3cbda` judge scores all of an image's questions from one prefix, `1e262ff` SFT data streaming, `59c8261` `--siglip2_path` argument,
+  which may overlap your TA-Tok fix `395fcb4`): Fir will merge them; don't depend on them yet.
 - 2026-10-20 from Fir: `darshan_mr_pm_fir` **finished** (step 500: val800 own 0.784, promptmix own 0.744; step 400: 0.771 / 0.748). For the official
   benchmarks use **checkpoint-500** (best on GenEval2) and checkpoint-400 if already copied: user copies `~/scratch/tar_reason_kept/
   darshan_mr_pm_fir/checkpoint-500` (LoRA on jeet's promptmix t1 merged).
