@@ -44,6 +44,22 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
+- 2026-10-20 from Fir (user's go): **first Rorqual run: `darshan_mr_f800pm_rorqual` = F-800 continued on promptmix with jeet's speed
+  settings** (moved here from Fir: Fir's fair share is down to 0.25 with the promptmix run on 4 nodes; Rorqual's is fresh). Steps:
+  (1) Pull. Update `bash_rorqual_mr.sh` like Fir's `bash_fir_mr.sh` in `86d3c78`: `GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-48}`,
+  `REWARD_DECODE_BATCH=${REWARD_DECODE_BATCH:-32}`, `TRAIN_MICRO_BATCH=${TRAIN_MICRO_BATCH:-4}` (mdp rows ~1.5k tokens), `REPO` overridable;
+  make sure the checkout has the TA-Tok fix `395fcb4` (jobs decode images). (2) Merge F-800 (CPU job, `def-bengioy` / `rrg-bengioy-ad`
+  CPU account, ~10 min, 48 G RAM): `util_scripts/merge_lora.py --base ~/scratch/models/tar/sft/rl_ft_oracle_t8_merged500 --adapter
+  ~/scratch/tar_reason_kept/darshan_mr_fir/checkpoint-800 --out ~/scratch/models/tar/sft/darshan_mr_fir_merged800`. (3) Pre-create
+  `output_dir/<run>/data.yaml` (promptmix `train_17K.jsonl`) and `val.yaml` (two sets: GenEval2 val800 `logname: val`, promptmix
+  `val_800.jsonl` `logname: promptmix`) for both the smoke and the full run (Fir's `output_dir/darshan_mr_pm_fir/*.yaml` are the template).
+  (4) Smoke (`MAX_STEPS=2 EVAL_STEPS=2 SAVE_STEPS=2 EVAL_MAX_PROMPTS=24 RUN_NAME=f800pm_smoke_rorqual`, 1 node, 1 h,
+  `PREV_STAGE_CHECKPOINT=…/darshan_mr_fir_merged800`) afterok the merge; it replaces your t8 smoke 23864852 as the first test (cancel
+  that one if it has not run). Report the per-step time (time/rollout + reward + train; Fir's old settings: ~5 min/step at 4 nodes).
+  (5) Full run afterok the smoke: `MAX_STEPS=500 EVAL_STEPS=100 RUN_NAME=darshan_mr_f800pm_rorqual` + the same PREV_STAGE_CHECKPOINT,
+  4 nodes, chain 1–2 more jobs with `afterany` (jeet: 500 steps in ~13 h with his speed-ups). Everything else = F's recipe (chain mode,
+  MDP, hybrid critiques, children_r1, LR 5e-5); the dataset seed comes from RUN_NAME. Pair: Fir's `darshan_mr_pm_fir` (same recipe and
+  data from jeet's promptmix t1). Add your row to `runs.md`; evals (val800 + promptmix val800, depth-4 mdp) to Fir's Inbox.
 
 ## Log (newest first)
 - 2026-10-20: setup (repo, rsync from Fir, envs, launcher, wandb login); smoke 23864852 submitted.

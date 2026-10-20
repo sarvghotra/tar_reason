@@ -3,11 +3,9 @@
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
 ## Now (2026-10-17 21:30 PDT)
-- **New: `darshan_mr_f800pm_fir`** = F's multi-round MDP recipe on **promptmix** from **F-800** (merged into merged t8 →
-  `models/tar/sft/darshan_mr_fir_merged800`, CPU job 66042887), with jeet's speed settings (GEN_BATCH_SIZE 48, REWARD_DECODE_BATCH 32,
-  TRAIN_MICRO_BATCH 4, now `bash_fir_mr.sh` defaults), dataset seed from RUN_NAME, 500 steps, evals every 100 on val800 + promptmix val800.
-  **Runs from the worktree `~/scratch/git/tar_reason_v2`** (`REPO=` override; merged code + TA-Tok fix `395fcb4`). Smoke `f800pm_smoke_fir`
-  66042904 (afterok merge) → full 66042905 (afterok smoke) → 66042906. Compare with `darshan_mr_pm_fir` (same recipe/data from promptmix t1).
+- **F-800 → promptmix moved to Rorqual** (user, 2026-10-20: Fir fair share 0.25 with the promptmix run on 4 nodes, Rorqual's
+  fresh): Fir's smoke/full jobs 66042904–06 cancelled; Rorqual Inbox has the task (`darshan_mr_f800pm_rorqual`). Fir keeps the F-800
+  merge (66042887 → `models/tar/sft/darshan_mr_fir_merged800`) for the critique experiment here after the promptmix run.
 - **F stopped** (jeet, 2026-10-17) at step ~855 (job 65300507 cancelled). Best checkpoint **F-800**: val800 depth-4 mdp own 0.858
   (0.866 after 3 rounds), all-correct 44.1% at 3, oracle 0.905. Checkpoints 100–800 kept in `~/scratch/tar_reason_kept/darshan_mr_fir/`.
 - **New (jeet, 2026-10-17): F's multi-round MDP recipe on promptmix, from jeet's promptmix t1 step 500** (his t8 recipe from SFT on
@@ -50,6 +48,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-20: F-800 → promptmix moved to Rorqual (user); cancelled Fir jobs 66042904–06; Rorqual Inbox written.
 - 2026-10-20: Mila Inbox handled: TA-Tok merge fix `395fcb4` (in the worktree before the f800pm jobs start; the main checkout's promptmix run predates the merge, unaffected); jeet's scorer = official (no re-scoring). Submitted F-800 → promptmix with speed settings (merge 66042887 → smoke 66042904 → 66042905/06).
 - 2026-10-19: merged jeet's main in worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2` → pushes to darshan-rl-test), pushed `168f38a`. **The main checkout `tar_reason/` stays behind origin until the promptmix run's last job (65732295) has started and finished: edit notes in the worktree.** Rorqual: rrg-bengioy-ad_gpu available, `rorqual.md` created. Mila: official-eval plan; TamIA: merge heads-up.
 - 2026-10-19 11:30: dataset seed (jeet's rule): all runs so far used 421 (= t8 / promptmix t1); launchers now derive it from RUN_NAME (`d71ee10`), rule in CLAUDE.md. The running promptmix run keeps 421 (queued job holds the old script).
