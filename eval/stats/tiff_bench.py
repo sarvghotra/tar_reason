@@ -1,17 +1,38 @@
-"""Aggregate TIIF-Bench overall numbers across seeds.
+"""Aggregate TIIF-Bench overall numbers across seeds and plot them.
 
 Reads each seed's ``eval_results/result_summary_dimension.txt`` and reports the
 per-iteration following-overall scores (basic / advanced / real-world) plus the
 overall average, as mean +- standard error over seeds, together with the
-per-seed paired difference (iter-2 - iter-1). Short and long prompts are
+per-seed paired differences against iter-1. Short and long prompts are
 reported in separate tables.
+
+It also writes paper figures (score vs. iteration, mean +- s.e. over seeds) to
+``out_dir`` as PDF (vector, for LaTeX) and PNG (preview):
+
+* ``tiif_overall``      -- 9-sub-attribute average, short / long (\\columnwidth)
+* ``tiif_<prompt>``     -- basic / advanced / real-world / overall (\\textwidth)
+
+Run with the ``tar`` env (the only one with matplotlib).
 """
 
-import math
 import re
 from pathlib import Path
 
-input_dir = "/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/tiif-bench-testmini_eval/iter_adhoc_slf_ref_edit_t20_16K_greedy_slf_ref_draft_S0_512px_repeat1_RL_rl_ft_oracle_t2_ckpt_500"
+from iter_plots import COLUMN_WIDTH, TEXT_WIDTH, complete_seeds, mean_sem, plot_panels
+
+# label -> results dir holding seed_*/eval_results. Several entries are drawn
+# as separate lines on the same axes (e.g. to compare methods).
+RUNS = {
+    "RL (MDP) OOD": "/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/tiif-bench-testmini_eval/iter_adhoc_MDP_n4_sslf_ref_edit_t21_17K_greedy_slf_ref_draft_S0_512px_repeat1_rl_ft_oracle_t8_500",
+    # "RL (w/o MDP) OOD": "/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/tiif-bench-testmini_eval/iter_adhoc_sslf_ref_edit_t21_17K_greedy_slf_ref_draft_S0_512px_repeat1_rl_ft_oracle_t8_500",
+    # "SFT OOD": "/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/tiif-bench-testmini_eval/iter_adhoc_sslf_ref_edit_t21_17K_greedy_slf_ref_draft_S0_512px_repeat1",
+    "RL-PM-t1 (MDP) OOD": "/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/tiif-bench-testmini_eval/iter_adhoc_MDP_n4_sslf_ref_edit_t21_17K_greedy_slf_ref_draft_S0_512px_repeat1_rl_ft_promptsmix_oracle_t1_500",
+    # "RL-PM-t1 (w/o MDP) OOD": "/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/tiif-bench-testmini_eval/iter_adhoc_n4_sslf_ref_edit_t21_17K_greedy_slf_ref_draft_S0_512px_repeat1_rl_ft_promptsmix_oracle_t1_500",
+    "T2I OOD": "/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/tiif-bench-testmini_eval/iter_adhoc_MDP_n4_sslf_ref_edit_t21_17K_greedy_slf_ref_draft_S0_512px_repeat1_bl_rl_t2i_t1_200",
+}
+out_dir = "/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/tiif-bench-testmini_eval/figures"
+# the summary holds accuracies in [0, 1]; the figures show them in percent
+PLOT_SCALE = 100
 
 # section title in result_summary_dimension.txt -> short column name
 SECTIONS = {
@@ -21,41 +42,120 @@ SECTIONS = {
     "Overall average score of 9 sub-attributes": "overall",
 }
 METRICS = ["basic", "advanced", "real-world", "overall"]
+METRIC_LABELS = {
+    "basic": "Basic",
+    "advanced": "Advanced",
+    "real-world": "Real world",
+    "overall": "Overall",
+}
 PROMPTS = ["short", "long"]
 
 SECTION_RE = re.compile(r"^====\s*(.+?)\s*====\s*$")
-# e.g. "7B_iter1  0.7601  0.7546" -- the two values are short then long
-ROW_RE = re.compile(r"^(\S+)_iter(\d+)\s+([\d.]+)\s+([\d.]+)\s*$")
+# a data row: model name then the short and long values. pandas truncates long
+# names ("..._S0_i..."), so the iteration comes from result_summary.xlsx.
+ROW_RE = re.compile(r"^(\S+)\s+([\d.]+)\s+([\d.]+)\s*$")
+ITER_NAME_RE = re.compile(r"_iter(\d+)$")
+# first-column cells of the xlsx sheet, inline or shared strings
+XLSX_CELL_RE = re.compile(r'<c r="A(\d+)"([^>]*)>(.*?)</c>', re.S)
 
 
-def parse_summary(path):
-    """Return {iter_index: {(metric, prompt): value}}."""
+def xlsx_model_iters(path):
+    """Iteration of each model row of result_summary.xlsx, in row order.
+
+    The summary txt prints its rows in the xlsx row order, which is not
+    sorted by iteration. Reads the sheet XML directly (no openpyxl here).
+    """
+    import zipfile
+
+    with zipfile.ZipFile(path) as z:
+        sheet = z.read("xl/worksheets/sheet1.xml").decode()
+        shared = []
+        if "xl/sharedStrings.xml" in z.namelist():
+            shared = re.findall(
+                r"<si>.*?<t[^>]*>(.*?)</t>.*?</si>",
+                z.read("xl/sharedStrings.xml").decode(),
+                re.S,
+            )
+    iters = []
+    for _, attrs, inner in sorted(
+        XLSX_CELL_RE.findall(sheet), key=lambda c: int(c[0])
+    ):
+        m = re.search(r"<t[^>]*>(.*?)</t>", inner) or re.search(r"<v>(.*?)</v>", inner)
+        if not m:
+            continue
+        text = shared[int(m.group(1))] if 't="s"' in attrs else m.group(1)
+        m = ITER_NAME_RE.search(text.strip())
+        if m:
+            iters.append(int(m.group(1)))
+    return iters
+
+
+def parse_summary(path, row_iters):
+    """Return {iter_index: {(metric, prompt): value}}.
+
+    ``row_iters`` gives the iteration of each data row of a section, in order.
+    """
     per_iter = {}
     section = None
+    k = 0
     for line in path.read_text(errors="replace").splitlines():
         m = SECTION_RE.match(line)
         if m:
             section = SECTIONS.get(m.group(1))
+            k = 0
             continue
         if section is None:
             continue
         m = ROW_RE.match(line.strip())
         if not m:
             continue
-        it = int(m.group(2))
+        # a full name carries its own iteration; otherwise go by row position
+        m_it = ITER_NAME_RE.search(m.group(1))
+        if m_it:
+            it = int(m_it.group(1))
+        else:
+            if k >= len(row_iters):
+                raise ValueError(f"{path}: more rows than xlsx models {row_iters}")
+            it = row_iters[k]
+        k += 1
         vals = per_iter.setdefault(it, {})
-        vals[(section, "short")] = float(m.group(3))
-        vals[(section, "long")] = float(m.group(4))
+        vals[(section, "short")] = float(m.group(2))
+        vals[(section, "long")] = float(m.group(3))
     return per_iter
 
 
-def mean_sem(xs):
-    n = len(xs)
-    mean = sum(xs) / n
-    if n < 2:
-        return mean, float("nan")
-    var = sum((x - mean) ** 2 for x in xs) / (n - 1)
-    return mean, math.sqrt(var / n)
+def load_run(input_dir):
+    """Return seed -> {iter: {(metric, prompt): value}}."""
+    root = Path(input_dir)
+    seed_dirs = sorted(
+        root.glob("seed_*"), key=lambda p: int(p.name.split("_")[1])
+    )
+    if not seed_dirs:
+        raise SystemExit(f"No seed_* directories under {root}")
+
+    runs = {}
+    for seed_dir in seed_dirs:
+        results = seed_dir / "eval_results"
+        summary = results / "result_summary_dimension.txt"
+        if not summary.exists():
+            print(f"[skip] missing {summary}")
+            continue
+        xlsx = results / "result_summary.xlsx"
+        row_iters = xlsx_model_iters(xlsx) if xlsx.exists() else []
+        per_iter = parse_summary(summary, row_iters)
+        if not per_iter:
+            print(f"[skip] no scores parsed from {summary}")
+            continue
+        missing = [
+            k
+            for it in per_iter
+            for k in ((m, p) for m in METRICS for p in PROMPTS)
+            if k not in per_iter[it]
+        ]
+        if missing:
+            raise ValueError(f"{summary}: missing entries {sorted(set(missing))}")
+        runs[seed_dir.name] = per_iter
+    return runs
 
 
 def print_overall_table(rows):
@@ -91,33 +191,10 @@ def print_table(prompt, rows):
     print()
 
 
-def main():
-    root = Path(input_dir)
-    seed_dirs = sorted(
-        root.glob("seed_*"), key=lambda p: int(p.name.split("_")[1])
-    )
-    if not seed_dirs:
-        raise SystemExit(f"No seed_* directories under {root}")
-
-    runs = {}  # seed -> {iter: {(metric, prompt): value}}
-    for seed_dir in seed_dirs:
-        summary = seed_dir / "eval_results" / "result_summary_dimension.txt"
-        if not summary.exists():
-            print(f"[skip] missing {summary}")
-            continue
-        per_iter = parse_summary(summary)
-        missing = [
-            k
-            for it in per_iter
-            for k in ((m, p) for m in METRICS for p in PROMPTS)
-            if k not in per_iter[it]
-        ]
-        if missing:
-            raise ValueError(f"{summary}: missing entries {sorted(set(missing))}")
-        runs[seed_dir.name] = per_iter
-
+def report(label, input_dir, runs):
     iters = sorted({it for r in runs.values() for it in r})
 
+    print(f"run      : {label}")
     print(f"input_dir: {input_dir}")
     print(f"seeds    : {', '.join(runs)} (n={len(runs)})\n")
 
@@ -143,8 +220,8 @@ def main():
         vals = {k: [r[it][k] for r in runs.values() if it in r] for k in keys}
         rows.append((f"iter-{it}", vals))
 
-    if len(iters) >= 2:
-        a, b = iters[0], iters[1]
+    a = iters[0]
+    for b in iters[1:]:
         paired = {
             k: [r[b][k] - r[a][k] for r in runs.values() if a in r and b in r]
             for k in keys
@@ -155,6 +232,79 @@ def main():
         print_table(prompt, rows)
 
     print_overall_table(rows)
+
+
+def make_figures(loaded):
+    keys = [(m, p) for m in METRICS for p in PROMPTS]
+    data = {}
+    for label, runs in loaded.items():
+        iters = sorted({it for r in runs.values() for it in r})
+        data[label] = (complete_seeds(runs, iters, keys, label), iters)
+    out = Path(out_dir)
+
+    plot_panels(
+        data,
+        [("overall", p) for p in PROMPTS],
+        {("overall", p): f"{p.capitalize()} prompts" for p in PROMPTS},
+        out / "tiif_overall",
+        COLUMN_WIDTH,
+        1.9,
+        titles=True,
+        ylabel="Overall accuracy (%)",
+        compact=True,
+        scale=PLOT_SCALE,
+    )
+    for prompt in PROMPTS:
+        plot_panels(
+            data,
+            [(m, prompt) for m in METRICS],
+            {(m, prompt): METRIC_LABELS[m] for m in METRICS},
+            out / f"tiif_{prompt}",
+            TEXT_WIDTH,
+            1.8,
+            titles=True,
+            ylabel=f"Accuracy, {prompt} prompts (%)",
+            compact=True,
+            scale=PLOT_SCALE,
+        )
+
+
+def parse_args():
+    """Runs and output folder; without --run, the RUNS dict above is used."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--run", action="append", metavar="LABEL=DIR",
+        help="A results dir holding seed_*/ (repeat to draw several runs on the "
+             "same axes). Default: the RUNS dict in this file.")
+    parser.add_argument("--out_dir", default=out_dir,
+                        help="Where the figures go (default: %(default)s).")
+    args = parser.parse_args()
+    if args.run:
+        bad = [r for r in args.run if "=" not in r]
+        if bad:
+            parser.error(f"--run expects LABEL=DIR, got {bad}")
+        args.runs = dict(r.split("=", 1) for r in args.run)
+    else:
+        args.runs = RUNS
+    return args
+
+
+def main():
+    global out_dir
+    args = parse_args()
+    out_dir = args.out_dir
+    loaded = {}
+    for label, input_dir in args.runs.items():
+        if not input_dir:  # placeholder entry in RUNS
+            print(f"[skip] {label}: no results dir")
+            continue
+        runs = load_run(input_dir)
+        report(label, input_dir, runs)
+        loaded[label] = runs
+    make_figures(loaded)
 
 
 if __name__ == "__main__":

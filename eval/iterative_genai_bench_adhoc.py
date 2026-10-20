@@ -3,17 +3,20 @@
 Same relationship to eval/iterative_genai_bench.py as
 eval/iterative_generation_adhoc.py has to eval/iterative_generation.py: instead
 of letting the model emit the whole image / reflection / image sequence on its
-own, the three phases are *forced*:
+own, the phases are *forced*, for ``--n_iters`` images (default 2):
 
-    Phase 1: <prefix><im_start><S{draft_img_scale}>  -> draft image codes
-    Phase 2: ... <im_end>\\nSelf-reflect:             -> reflection text
-    Phase 3: ... {reflection}\\n<im_start><S{scale}>  -> final image codes
+    Iteration 1: <prefix><im_start><S{draft_img_scale}>  -> draft image codes
+    Iteration k: ... <im_end>\\nSelf-reflect:             -> reflection text
+                 ... {reflection}\\n<im_start><S{scale}>  -> k-th image codes
+
+Each iteration conditions on the full history of images and reflections;
+``iterative_genai_bench_adhoc_MDP.py`` conditions on the previous image only.
 
 Output layout is the one expected by t2v_metrics/genai_bench/evaluate.py, one
 directory per iteration:
 
     <output_dir>/<gen_model>/1/<prompt_idx>.jpeg   (draft)
-    <output_dir>/<gen_model>/2/<prompt_idx>.jpeg   (after self-reflection)
+    <output_dir>/<gen_model>/k/<prompt_idx>.jpeg   (after k-1 self-reflections, k <= n_iters)
 
 Each iteration is scored separately (from the t2v_metrics repo):
 
@@ -62,12 +65,15 @@ def parse_args():
     parser.add_argument("--ar_path")
     parser.add_argument("--encoder_path")
     parser.add_argument("--decoder_path")
+    parser.add_argument("--n_iters", type=int, default=2,
+                        help="Number of images per sample: one draft plus "
+                             "n_iters - 1 reflect-and-correct rounds.")
     parser.add_argument("--gen_seq_len", type=int, default=729,
-                        help="Number of image tokens for the final (phase-3) image.")
+                        help="Number of image tokens for the corrected images.")
     parser.add_argument("--draft_gen_seq_len", type=int, default=729,
                         help="Number of image tokens for the draft (phase-1) image.")
     parser.add_argument("--scale", type=int, default=0, choices=[0, 1, 2],
-                        help="<S{scale}> used for the final (phase-3) image.")
+                        help="<S{scale}> used for the corrected images.")
     parser.add_argument("--draft_img_scale", type=int, default=0, choices=[0, 1, 2],
                         help="<S{scale}> used for the draft (phase-1) image.")
     parser.add_argument("--cfg_scale", type=float, default=4.0)
@@ -97,7 +103,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--single_pass", action="store_true",
                         help="Base-model baseline: plain prompt (no iterative prefix), "
-                             "draft only; stage 2 repeats stage 1.")
+                             "draft only; every later iteration repeats the draft.")
     parser.add_argument("--verbose", action="store_true",
                         help="Print the generated sequences (image runs elided).")
     parser.add_argument("--strip_photo_prefix",
@@ -136,15 +142,17 @@ def load_prompts(args, output_dirs):
     return records
 
 
-def main():
+def main(markov=False):
     args = parse_args()
+    if args.n_iters < 1:
+        raise ValueError("--n_iters must be positive")
     if args.batch_size < 1 or args.decode_batch_size < 1:
         raise ValueError("batch sizes must be positive")
     if args.repeat < 1:
         raise ValueError("repeat must be positive")
     for name, scale, seq_len in (
-            ("draft (phase 1)", args.draft_img_scale, args.draft_gen_seq_len),
-            ("final (phase 3)", args.scale, args.gen_seq_len)):
+            ("draft (iteration 1)", args.draft_img_scale, args.draft_gen_seq_len),
+            ("corrected", args.scale, args.gen_seq_len)):
         expected = SCALE_SEQ_LEN[scale]
         if seq_len != expected:
             raise ValueError(
@@ -155,7 +163,8 @@ def main():
     torch.manual_seed(args.seed + rank)
 
     save_dir = os.path.abspath(os.path.join(args.output_dir, args.gen_model))
-    output_dirs = (os.path.join(save_dir, "1"), os.path.join(save_dir, "2"))
+    output_dirs = [os.path.join(save_dir, str(k))
+                   for k in range(1, args.n_iters + 1)]
     if args.skip_existing:
         for output_dir in output_dirs:
             os.makedirs(output_dir, exist_ok=True)
@@ -164,8 +173,10 @@ def main():
 
     records = load_prompts(args, output_dirs)
     if rank == 0:
-        print(f"Loaded {len(records)} prompts x {args.repeat} samples; "
-              f"using {world_size} GPU process(es); writing to {save_dir}")
+        print(f"Loaded {len(records)} prompts x {args.repeat} samples, "
+              f"{args.n_iters} iterations "
+              f"({'markov' if markov else 'full history'}); using "
+              f"{world_size} GPU process(es); writing to {save_dir}")
     tokenizer, model, visual_tok = load_models(args, device)
     image_token_map = get_image_token_map(tokenizer)
 
@@ -182,15 +193,20 @@ def main():
         done += len(batch_jobs)
         results = generate_batch(
             model, tokenizer, visual_tok, [job[2] for job in batch_jobs],
-            image_token_map, args, device)
-        for (prompt_idx, sample, prompt), (img1, img2, reflection) in zip(
+            image_token_map, args, device, markov=markov)
+        for (prompt_idx, sample, prompt), (images, reflections) in zip(
                 batch_jobs, results):
-            img1.save(sample_path(output_dirs[0], prompt_idx, sample))
-            img2.save(sample_path(output_dirs[1], prompt_idx, sample))
+            for output_dir, image in zip(output_dirs, images):
+                image.save(sample_path(output_dir, prompt_idx, sample))
+            # "reflections" keeps the first critique per sample (what the
+            # iter-1 vs iter-2 viz reads); "reflections_per_iter[sample][k]"
+            # is the critique that produced image k + 2.
             entry = local_reflections.setdefault(
                 prompt_idx, {"prompt": prompt,
-                             "reflections": [None] * args.repeat})
-            entry["reflections"][sample] = reflection
+                             "reflections": [None] * args.repeat,
+                             "reflections_per_iter": [None] * args.repeat})
+            entry["reflections"][sample] = reflections[0] if reflections else None
+            entry["reflections_per_iter"][sample] = reflections
 
     gathered = [None] * world_size
     if world_size > 1:
@@ -205,7 +221,7 @@ def main():
             json.dump({k: merged[k] for k in sorted(merged)}, f, indent=2)
         print(f"Done, saved to {save_dir}")
         print("Score each iteration with (from the t2v_metrics repo):")
-        # for iteration in (1, 2):
+        # for iteration in range(1, args.n_iters + 1):
         #     print(f"  python -m genai_bench.evaluate --model clip-flant5-xxl"
         #           f" --root_dir {os.path.abspath(args.root_dir)}"
         #           f" --output_dir {os.path.abspath(args.output_dir)}"

@@ -1,12 +1,15 @@
 """Batched, multi-GPU iterative image generation for TIIF-Bench (forced schedule).
 
 Same relationship to TIIF-Bench as eval/iterative_genai_bench_adhoc.py has to
-GenAI-Bench: the three phases of the iterative model are *forced* rather than
-left to the model's own emission schedule:
+GenAI-Bench: the phases of the iterative model are *forced* rather than left
+to the model's own emission schedule, for ``--n_iters`` images (default 2):
 
-    Phase 1: <prefix><im_start><S{draft_img_scale}>  -> draft image codes
-    Phase 2: ... <im_end>\\nSelf-reflect:             -> reflection text
-    Phase 3: ... {reflection}\\n<im_start><S{scale}>  -> final image codes
+    Iteration 1: <prefix><im_start><S{draft_img_scale}>  -> draft image codes
+    Iteration k: ... <im_end>\\nSelf-reflect:             -> reflection text
+                 ... {reflection}\\n<im_start><S{scale}>  -> k-th image codes
+
+Each iteration conditions on the full history of images and reflections;
+``iterative_tiif_bench_adhoc_MDP.py`` conditions on the previous image only.
 
 Prompts are read from TIIF-Bench's generation prompt directory (one
 ``<dimension>_prompts.jsonl`` per dimension, each line holding ``type``,
@@ -20,7 +23,7 @@ scoring run covers both iterations and a single summary table compares them:
 
     <output_dir>/<gen_model>/images/<dimension>/<eval_model_name>_iter1/short_description/<idx>.png
     <output_dir>/<gen_model>/images/<dimension>/<eval_model_name>_iter1/long_description/<idx>.png
-    <output_dir>/<gen_model>/images/<dimension>/<eval_model_name>_iter2/...
+    <output_dir>/<gen_model>/images/<dimension>/<eval_model_name>_iter<k>/...   (k <= n_iters)
 
 ``<idx>`` is the 0-based line number in the prompt file, which is how
 eval_with_vlm.py pairs an image with its yes/no question list (the eval JSONL
@@ -80,16 +83,19 @@ def parse_args():
     parser.add_argument(
         "--eval_model_name", default="tar",
         help="Base name for the TIIF-Bench model-name directory level; the "
-             "iteration is appended as '_iter1' / '_iter2'.")
+             "iteration is appended as '_iter1' .. '_iter<n_iters>'.")
     parser.add_argument("--ar_path")
     parser.add_argument("--encoder_path")
     parser.add_argument("--decoder_path")
+    parser.add_argument("--n_iters", type=int, default=2,
+                        help="Number of images per sample: one draft plus "
+                             "n_iters - 1 reflect-and-correct rounds.")
     parser.add_argument("--gen_seq_len", type=int, default=729,
-                        help="Number of image tokens for the final (phase-3) image.")
+                        help="Number of image tokens for the corrected images.")
     parser.add_argument("--draft_gen_seq_len", type=int, default=729,
                         help="Number of image tokens for the draft (phase-1) image.")
     parser.add_argument("--scale", type=int, default=0, choices=[0, 1, 2],
-                        help="<S{scale}> used for the final (phase-3) image.")
+                        help="<S{scale}> used for the corrected images.")
     parser.add_argument("--draft_img_scale", type=int, default=0, choices=[0, 1, 2],
                         help="<S{scale}> used for the draft (phase-1) image.")
     parser.add_argument("--cfg_scale", type=float, default=4.0)
@@ -119,7 +125,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--single_pass", action="store_true",
                         help="Base-model baseline: plain prompt (no iterative prefix), "
-                             "draft only; stage 2 repeats stage 1.")
+                             "draft only; every later iteration repeats the draft.")
     parser.add_argument("--verbose", action="store_true",
                         help="Print the generated sequences (image runs elided).")
     return parser.parse_args()
@@ -193,15 +199,17 @@ def collect_records(args, images_dir, model_names):
     return records
 
 
-def main():
+def main(markov=False):
     args = parse_args()
+    if args.n_iters < 1:
+        raise ValueError("--n_iters must be positive")
     if args.batch_size < 1 or args.decode_batch_size < 1:
         raise ValueError("batch sizes must be positive")
     if args.repeat < 1:
         raise ValueError("repeat must be positive")
     for name, scale, seq_len in (
-            ("draft (phase 1)", args.draft_img_scale, args.draft_gen_seq_len),
-            ("final (phase 3)", args.scale, args.gen_seq_len)):
+            ("draft (iteration 1)", args.draft_img_scale, args.draft_gen_seq_len),
+            ("corrected", args.scale, args.gen_seq_len)):
         expected = SCALE_SEQ_LEN[scale]
         if seq_len != expected:
             raise ValueError(
@@ -213,15 +221,16 @@ def main():
 
     save_dir = os.path.abspath(os.path.join(args.output_dir, args.gen_model))
     images_dir = os.path.join(save_dir, "images")
-    model_names = (iter_model_name(args, 1), iter_model_name(args, 2))
+    model_names = [iter_model_name(args, k) for k in range(1, args.n_iters + 1)]
     if not args.skip_existing:
         reset_output_dirs([images_dir], rank, world_size)
 
     records = collect_records(args, images_dir, model_names)
     if rank == 0:
         print(f"Loaded {len(records)} TIIF-Bench prompts x {args.repeat} "
-              f"samples; using {world_size} GPU process(es); writing to "
-              f"{images_dir}")
+              f"samples, {args.n_iters} iterations "
+              f"({'markov' if markov else 'full history'}); using "
+              f"{world_size} GPU process(es); writing to {images_dir}")
         leaf_dirs = {
             os.path.dirname(sample_path(images_dir, dimension, model_name,
                                         desc, idx, 0))
@@ -248,16 +257,21 @@ def main():
         done += len(batch_jobs)
         results = generate_batch(
             model, tokenizer, visual_tok, [job[3] for job in batch_jobs],
-            image_token_map, args, device)
-        for (dimension, desc, idx, prompt, sample), (img1, img2, reflection) in zip(
+            image_token_map, args, device, markov=markov)
+        for (dimension, desc, idx, prompt, sample), (images, reflections) in zip(
                 batch_jobs, results):
-            for model_name, image in zip(model_names, (img1, img2)):
+            for model_name, image in zip(model_names, images):
                 image.save(sample_path(images_dir, dimension, model_name, desc,
                                        idx, sample))
+            # "reflections" keeps the first critique per sample (what the
+            # iter-1 vs iter-2 viz reads); "reflections_per_iter[sample][k]"
+            # is the critique that produced image k + 2.
             entry = local_reflections.setdefault(
                 f"{dimension}/{desc}/{idx}",
-                {"prompt": prompt, "reflections": [None] * args.repeat})
-            entry["reflections"][sample] = reflection
+                {"prompt": prompt, "reflections": [None] * args.repeat,
+                 "reflections_per_iter": [None] * args.repeat})
+            entry["reflections"][sample] = reflections[0] if reflections else None
+            entry["reflections_per_iter"][sample] = reflections
 
     gathered = [None] * world_size
     if world_size > 1:
@@ -271,7 +285,7 @@ def main():
         with open(os.path.join(save_dir, "self_reflect.json"), "w") as f:
             json.dump({k: merged[k] for k in sorted(merged)}, f, indent=2)
         print(f"Done, saved to {images_dir}")
-        print("Score both iterations with (from the TIIF-Bench repo):")
+        print("Score every iteration with (from the TIIF-Bench repo):")
         for model_name in model_names:
             print(f"  python eval/eval_with_vlm.py"
                   f" --jsonl_dir data/testmini_eval_prompts"

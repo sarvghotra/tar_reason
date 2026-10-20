@@ -1,19 +1,22 @@
-"""Batched, multi-GPU iterative image generation with a forced 3-phase schedule.
+"""Batched, multi-GPU iterative image generation with a forced schedule.
 
 Unlike ``iterative_generation.py`` (which lets the model emit the whole
 image / reflection / image sequence on its own), this script *forces* the
-structure:
+structure, for ``--n_iters`` images (default 2):
 
-    Phase 1: <prefix><im_start><S{scale}>            -> first image codes
-    Phase 2: ... <im_end>\\nSelf-reflect:             -> reflection text
-    Phase 3: ... {reflection}\\n<im_start><S{scale}>  -> second image codes
+    Iteration 1: <prefix><im_start><S{scale}>            -> first image codes
+    Iteration k: ... <im_end>\\nSelf-reflect:             -> reflection text
+                 ... {reflection}\\n<im_start><S{scale}>  -> k-th image codes
 
-Directory layout:
-    {out_dir}/1/{prompt_index:05d}/samples/{sample_index:05d}.png
-    {out_dir}/1/{prompt_index:05d}/metadata.jsonl
-    {out_dir}/2/{prompt_index:05d}/samples/{sample_index:05d}.png
-    {out_dir}/2/{prompt_index:05d}/metadata.jsonl
-    {out_dir}/2/{prompt_index:05d}/self_reflect.txt
+Each iteration conditions on the full history of images and reflections.
+A row whose reflection says it "looks good" stops; its later iterations reuse
+the last image. ``iterative_generation_adhoc_MDP.py`` runs the same schedule
+conditioned on the previous image only.
+
+Directory layout (k = 1..n_iters):
+    {out_dir}/{k}/{prompt_index:05d}/samples/{sample_index:05d}.png
+    {out_dir}/{k}/{prompt_index:05d}/metadata.jsonl
+    {out_dir}/{k}/{prompt_index:05d}/self_reflect.txt   (k >= 2)
 
 Input file formats accepted:
   - JSONL  — one JSON object per line with a "prompt" key
@@ -32,6 +35,7 @@ import os
 import re
 import shutil
 import sys
+import time
 
 import torch
 import torch.distributed as dist
@@ -62,14 +66,17 @@ def parse_args():
     parser.add_argument("--ar_path")
     parser.add_argument("--encoder_path")
     parser.add_argument("--decoder_path")
+    parser.add_argument("--n_iters", type=int, default=2,
+                        help="Number of images per sample: one draft plus "
+                             "n_iters - 1 reflect-and-correct rounds.")
     parser.add_argument("--gen_seq_len", type=int, default=729,
-                        help="Number of image tokens for the final (phase-3) image.")
+                        help="Number of image tokens for the corrected images.")
     parser.add_argument("--draft_gen_seq_len", type=int, default=729,
-                        help="Number of image tokens for the draft (phase-1) image.")
+                        help="Number of image tokens for the draft (iteration-1) image.")
     parser.add_argument("--scale", type=int, default=0, choices=[0, 1, 2],
-                        help="<S{scale}> used for the final (phase-3) image.")
+                        help="<S{scale}> used for the corrected images.")
     parser.add_argument("--draft_img_scale", type=int, default=0, choices=[0, 1, 2],
-                        help="<S{scale}> used for the draft (phase-1) image.")
+                        help="<S{scale}> used for the draft (iteration-1) image.")
     parser.add_argument("--cfg_scale", type=float, default=4.0)
     parser.add_argument("--repeat", type=int, default=4,
                         help="Number of independent iterative image pairs per prompt.")
@@ -94,7 +101,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--single_pass", action="store_true",
                         help="Base-model baseline: plain prompt (no iterative prefix), "
-                             "draft only; stage 2 repeats stage 1.")
+                             "draft only; every later iteration repeats the draft.")
     parser.add_argument("--verbose", action="store_true",
                         help="Print the generated sequences (image runs elided).")
     parser.add_argument("--strip_photo_prefix",
@@ -222,7 +229,9 @@ def summarize_model_output(text, head=2, tail=3):
     return pattern.sub(summarize, text)
 
 
-def make_prefix(tokenizer, prompt, args):
+def make_prefix(tokenizer, prompt, args, scale=None):
+    if scale is None:
+        scale = args.draft_img_scale
     messages = [
         {"role": "system", "content": args.system_prompt},
         {"role": "user", "content": prompt if getattr(args, "single_pass", False)
@@ -230,7 +239,7 @@ def make_prefix(tokenizer, prompt, args):
     ]
     return tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
-    ) + f"<im_start><S{args.draft_img_scale}>"
+    ) + f"<im_start><S{scale}>"
 
 
 def left_pad(rows, pad_id, device):
@@ -276,10 +285,19 @@ def trim_at(row, stop_ids):
 
 @torch.inference_mode()
 def generate_batch(model, tokenizer, visual_tok, prompts, image_token_map,
-                   args, device):
-    """Run the forced three-phase schedule for a batch of prompts.
+                   args, device, markov=False):
+    """Run the forced schedule for `args.n_iters` image iterations.
 
-    Returns a list of (first_image, second_image, reflection) tuples.
+    Iteration 1 samples a draft; every later iteration self-reflects on the
+    latest image and, unless the reflection says it "looks good", samples a
+    corrected image. With ``markov=False`` each step sees the whole history
+    (draft, reflection, image, reflection, ...). With ``markov=True`` the
+    context is reset to the prompt and the latest image only, so the next
+    reflection and correction depend on the previous image alone.
+
+    Returns a list of (images, reflections) per prompt: ``images`` has
+    `n_iters` entries and ``reflections[k]`` is the critique that produced
+    ``images[k + 1]`` (None once an earlier reflection stopped the row).
     """
     pad_id = tokenizer.pad_token_id
     im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
@@ -317,64 +335,83 @@ def generate_batch(model, tokenizer, visual_tok, prompts, image_token_map,
             new_ids.append(row)
         return codes, new_ids
 
-    # ── Phase 1: first image ─────────────────────────────────────────────────
-    prefixes = [make_prefix(tokenizer, prompt, args) for prompt in prompts]
-    phase1_rows = tokenizer(prefixes, add_special_tokens=False).input_ids
-    codes1, image1_ids = generate_image_codes(phase1_rows, gen_seq_len=args.draft_gen_seq_len)
-    if getattr(args, "single_pass", False):
-        # Base-model baseline: one image from the plain prompt, no critique; the
-        # "final" image is the draft.
-        visual_tok.ar_model.cls_token_num = args.draft_gen_seq_len
-        visual_tok.encoder.pool_scale = args.draft_img_scale + 1
-        images = []
-        for code_batch in even_chunks(torch.tensor(codes1, dtype=torch.long),
-                                      args.decode_batch_size):
-            images.extend(visual_tok.decode_from_encoder_indices(
-                code_batch.to(device, non_blocking=True), {"cfg_scale": args.cfg_scale}))
-        firsts = [Image.fromarray(image.numpy()) for image in images]
-        return [(image, image, "") for image in firsts]
+    def reflect(rows):
+        input_ids, attention_mask = left_pad(rows, pad_id, device)
+        reflect_out = model.generate(
+            input_ids,
+            attention_mask=attention_mask,
+            max_new_tokens=args.reflect_tokens,
+            do_sample=False,
+            # temperature=args.reflect_temperature,
+            # top_p=args.reflect_top_p,
+            # top_k=args.reflect_top_k,
+            repetition_penalty=1.0,
+            pad_token_id=pad_id,
+            eos_token_id=text_stop_ids,
+        )[:, input_ids.shape[1]:].tolist()
+        return [tokenizer.decode(trim_at(row, set(text_stop_ids)),
+                                 skip_special_tokens=True).strip()
+                for row in reflect_out]
 
-    # ── Phase 2: self-reflection text ────────────────────────────────────────
+    t_start = time.perf_counter()
+    n_prompts = len(prompts)
     reflect_prefix_ids = encode("<im_end>\nSelf-reflect:")
-    phase2_rows = [row + image + reflect_prefix_ids
-                   for row, image in zip(phase1_rows, image1_ids)]
-    input_ids, attention_mask = left_pad(phase2_rows, pad_id, device)
-    reflect_out = model.generate(
-        input_ids,
-        attention_mask=attention_mask,
-        max_new_tokens=args.reflect_tokens,
-        do_sample=False,
-        # temperature=args.reflect_temperature,
-        # top_p=args.reflect_top_p,
-        # top_k=args.reflect_top_k,
-        repetition_penalty=1.0,
-        pad_token_id=pad_id,
-        eos_token_id=text_stop_ids,
-    )[:, input_ids.shape[1]:].tolist()
-
-    reflections = [
-        tokenizer.decode(trim_at(row, set(text_stop_ids)),
-                         skip_special_tokens=True).strip()
-        for row in reflect_out
-    ]
-
-    # ── Phase 3: second image ────────────────────────────────────────────────
-    # A reflection saying the draft "looks good" means no correction is needed,
-    # so those rows skip phase 3 and reuse the phase-1 image (the visual decoder
-    # samples, so re-decoding the same codes would not be byte-identical).
     image_start_ids = encode(f"\n<im_start><S{args.scale}>")
-    pending = [index for index, reflection in enumerate(reflections)
-               if "looks good" not in reflection.lower()]
-    image2_ids = [[] for _ in prompts]
-    codes2 = []
-    if pending:
-        phase3_rows = [phase2_rows[index] + encode(" " + reflections[index])
-                       + image_start_ids for index in pending]
-        codes2, pending_ids = generate_image_codes(phase3_rows, args.gen_seq_len)
-        for slot, index in enumerate(pending):
-            image2_ids[index] = pending_ids[slot]
+    # Each entry: (row indices, codes, gen_seq_len, scale) for one iteration.
+    sampled = []
+    transcripts = [""] * n_prompts
 
-    # ── Decode each phase separately: they may use different scales/lengths ──
+    # ── Iteration 1: draft image ─────────────────────────────────────────────
+    prefixes = [make_prefix(tokenizer, prompt, args, args.draft_img_scale)
+                for prompt in prompts]
+    rows = tokenizer(prefixes, add_special_tokens=False).input_ids
+    codes, image_ids = generate_image_codes(rows, args.draft_gen_seq_len)
+    sampled.append((list(range(n_prompts)), codes, args.draft_gen_seq_len,
+                    args.draft_img_scale))
+    # contexts[i] always ends with the latest image's tokens (no <im_end>).
+    contexts = [row + image for row, image in zip(rows, image_ids)]
+    if args.verbose:
+        transcripts = [tokenizer.decode(image, skip_special_tokens=False)
+                       for image in image_ids]
+
+    # ── Iterations 2..n: reflect, then correct ───────────────────────────────
+    # A reflection saying the image "looks good" means no correction is
+    # needed, so that row stops and later iterations reuse its last image (the
+    # visual decoder samples, so re-decoding the same codes would not be
+    # byte-identical).
+    reflections = [[None] * (args.n_iters - 1) for _ in prompts]
+    # --single_pass (base-model baseline): no critique rounds; the fill-in
+    # below makes every later iteration repeat the draft.
+    active = [] if getattr(args, "single_pass", False) else list(range(n_prompts))
+    for step in range(1, args.n_iters):
+        if not active:
+            break
+        reflect_rows = [contexts[index] + reflect_prefix_ids for index in active]
+        texts = reflect(reflect_rows)
+        pending, gen_rows = [], []
+        for index, row, text in zip(active, reflect_rows, texts):
+            reflections[index][step - 1] = text
+            if args.verbose:
+                transcripts[index] += "<im_end>\nSelf-reflect: " + text
+            if "looks good" not in text.lower():
+                pending.append(index)
+                gen_rows.append(row + encode(" " + text) + image_start_ids)
+        if pending:
+            codes, image_ids = generate_image_codes(gen_rows, args.gen_seq_len)
+            sampled.append((pending, codes, args.gen_seq_len, args.scale))
+            for index, row, image in zip(pending, gen_rows, image_ids):
+                if markov:
+                    contexts[index] = encode(make_prefix(
+                        tokenizer, prompts[index], args, args.scale)) + image
+                else:
+                    contexts[index] = row + image
+                if args.verbose:
+                    transcripts[index] += (
+                        tokenizer.decode(image_start_ids, skip_special_tokens=False)
+                        + tokenizer.decode(image, skip_special_tokens=False))
+        active = pending
+
+    # ── Decode each iteration separately: they may use different scales ─────
     def decode_codes(codes, gen_seq_len, scale):
         visual_tok.ar_model.cls_token_num = gen_seq_len
         visual_tok.encoder.pool_scale = scale + 1
@@ -386,29 +423,26 @@ def generate_batch(model, tokenizer, visual_tok, prompts, image_token_map,
                 {"cfg_scale": args.cfg_scale}))
         return images
 
-    decoded1 = decode_codes(codes1, args.draft_gen_seq_len, args.draft_img_scale)
-    decoded2 = (decode_codes(codes2, args.gen_seq_len, args.scale)
-                if pending else [])
+    t_decode = time.perf_counter()
+    images = [[None] * args.n_iters for _ in prompts]
+    for step, (indices, codes, gen_seq_len, scale) in enumerate(sampled):
+        for index, decoded in zip(indices, decode_codes(codes, gen_seq_len, scale)):
+            images[index][step] = Image.fromarray(decoded.numpy())
+    # Both phases end in a host copy (.tolist() / .cpu()), so wall time is GPU time.
+    print(f"[timing] {n_prompts} prompts: LM {t_decode - t_start:.0f}s, "
+          f"pixel decode {time.perf_counter() - t_decode:.0f}s "
+          f"({sum(len(indices) for indices, *_ in sampled)} images)", flush=True)
+    for row in images:
+        for step in range(1, args.n_iters):
+            if row[step] is None:
+                row[step] = row[step - 1]
 
     if args.verbose:
-        for index, prefix in enumerate(prefixes):
-            full = (tokenizer.decode(image1_ids[index], skip_special_tokens=False)
-                    + "<im_end>\nSelf-reflect: " + reflections[index])
-            if image2_ids[index]:
-                full += (tokenizer.decode(image_start_ids, skip_special_tokens=False)
-                         + tokenizer.decode(image2_ids[index],
-                                            skip_special_tokens=False))
+        for prefix, transcript in zip(prefixes, transcripts):
             print(f"\n--- Input ---\n{prefix}\n--- Output ---")
-            print(summarize_model_output(full))
+            print(summarize_model_output(transcript))
 
-    second_slots = {index: slot for slot, index in enumerate(pending)}
-    results = []
-    for index in range(len(prompts)):
-        first = Image.fromarray(decoded1[index].numpy())
-        slot = second_slots.get(index)
-        second = Image.fromarray(decoded2[slot].numpy()) if slot is not None else first
-        results.append((first, second, reflections[index]))
-    return results
+    return list(zip(images, reflections))
 
 
 def init_distributed(args):
@@ -424,15 +458,17 @@ def init_distributed(args):
     return rank, world_size, device
 
 
-def main():
+def main(markov=False):
     args = parse_args()
     if args.batch_size < 1 or args.decode_batch_size < 1:
         raise ValueError("batch sizes must be positive")
+    if args.n_iters < 1:
+        raise ValueError("--n_iters must be positive")
     if args.geneval2 and args.repeat != 1:
         raise ValueError("--geneval2 requires --repeat 1")
     for name, scale, seq_len in (
-            ("draft (phase 1)", args.draft_img_scale, args.draft_gen_seq_len),
-            ("final (phase 3)", args.scale, args.gen_seq_len)):
+            ("draft (iteration 1)", args.draft_img_scale, args.draft_gen_seq_len),
+            ("corrected", args.scale, args.gen_seq_len)):
         expected = SCALE_SEQ_LEN[scale]
         if seq_len != expected:
             raise ValueError(
@@ -443,11 +479,12 @@ def main():
     torch.manual_seed(args.seed + rank)
     records = load_prompts(args.prompts_file, args.strip_photo_prefix)
     if rank == 0:
-        print(f"Loaded {len(records)} prompts; using {world_size} GPU process(es)")
+        print(f"Loaded {len(records)} prompts; using {world_size} GPU process(es); "
+              f"{args.n_iters} iterations ({'markov' if markov else 'full history'})")
     tokenizer, model, visual_tok = load_models(args, device)
     image_token_map = get_image_token_map(tokenizer)
 
-    output_dirs = (f"{args.out_dir}/1", f"{args.out_dir}/2")
+    output_dirs = [f"{args.out_dir}/{k}" for k in range(1, args.n_iters + 1)]
     reset_output_dirs(output_dirs, rank, world_size)
 
     jobs = [
@@ -455,8 +492,9 @@ def main():
         for index in range(rank, len(records), world_size)
         for sample in range(args.repeat)
     ]
+    # reflections[index][sample][k] is the critique that produced image k + 2.
     reflections = {}
-    local_geneval2 = ({}, {})
+    local_geneval2 = [{} for _ in output_dirs]
 
     done = 0
     for batch_jobs in even_chunks(jobs, args.batch_size):
@@ -464,35 +502,36 @@ def main():
         done += len(batch_jobs)
         results = generate_batch(
             model, tokenizer, visual_tok, [job[2] for job in batch_jobs],
-            image_token_map, args, device)
-        for (index, sample, prompt), (img1, img2, reflection) in zip(
+            image_token_map, args, device, markov=markov)
+        for (index, sample, prompt), (images, sample_reflections) in zip(
                 batch_jobs, results):
             prompt_dirs = [os.path.join(path, f"{index:05d}") for path in output_dirs]
             sample_dirs = [os.path.join(path, "samples") for path in prompt_dirs]
-            for sample_dir in sample_dirs:
-                os.makedirs(sample_dir, exist_ok=True)
             name = f"{sample:05d}.png"
-            img1.save(os.path.join(sample_dirs[0], name))
-            img2.save(os.path.join(sample_dirs[1], name))
-            reflections.setdefault(index, [None] * args.repeat)[sample] = reflection
+            for sample_dir, image in zip(sample_dirs, images):
+                os.makedirs(sample_dir, exist_ok=True)
+                image.save(os.path.join(sample_dir, name))
+            reflections.setdefault(index, [None] * args.repeat)[sample] = \
+                sample_reflections
 
             if sample == 0:
                 for prompt_dir in prompt_dirs:
                     with open(os.path.join(prompt_dir, "metadata.jsonl"), "w") as f:
                         f.write(records[index][1] + "\n")
                 if args.geneval2:
-                    local_geneval2[0][prompt] = os.path.abspath(
-                        os.path.join(sample_dirs[0], name))
-                    local_geneval2[1][prompt] = os.path.abspath(
-                        os.path.join(sample_dirs[1], name))
+                    for result, sample_dir in zip(local_geneval2, sample_dirs):
+                        result[prompt] = os.path.abspath(
+                            os.path.join(sample_dir, name))
 
     for index, values in reflections.items():
-        path = os.path.join(output_dirs[1], f"{index:05d}", "self_reflect.txt")
-        with open(path, "w") as reflect_file:
-            reflect_file.write(f"Prompt: {records[index][0]}\n")
-            for sample, reflection in enumerate(values):
-                reflect_file.write(f"\nSample: {sample:05d}\n"
-                                   f"Self-reflect: {reflection or ''}\n")
+        for step, output_dir in enumerate(output_dirs[1:]):
+            path = os.path.join(output_dir, f"{index:05d}", "self_reflect.txt")
+            with open(path, "w") as reflect_file:
+                reflect_file.write(f"Prompt: {records[index][0]}\n")
+                for sample, sample_reflections in enumerate(values):
+                    reflection = sample_reflections[step] if sample_reflections else None
+                    reflect_file.write(f"\nSample: {sample:05d}\n"
+                                       f"Self-reflect: {reflection or ''}\n")
 
     if args.geneval2:
         gathered = [None] * world_size
@@ -501,10 +540,10 @@ def main():
         else:
             gathered[0] = local_geneval2
         if rank == 0:
-            merged = ({}, {})
+            merged = [{} for _ in output_dirs]
             for rank_result in gathered:
-                merged[0].update(rank_result[0])
-                merged[1].update(rank_result[1])
+                for result, part in zip(merged, rank_result):
+                    result.update(part)
             for output_dir, result in zip(output_dirs, merged):
                 with open(os.path.join(output_dir, "geneval2_results.json"), "w") as f:
                     json.dump(result, f, indent=2)
