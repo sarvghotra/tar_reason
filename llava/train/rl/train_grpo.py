@@ -94,6 +94,11 @@ def parse_args():
     p.add_argument("--reflect_top_k", type=int, default=0)
     p.add_argument("--reflect_top_p", type=float, default=0.95)
     p.add_argument("--gen_batch_size", type=int, default=16)
+    p.add_argument("--merged_rollout", action=argparse.BooleanOptionalAction, default=True,
+                   help="Sample with the LoRA merged into the base weights (restored exactly "
+                        "from a snapshot afterwards): ~1.7x faster generate than peft's "
+                        "unmerged per-layer adapter matmuls, at the cost of one bf16 copy of "
+                        "the adapted weights per GPU. Pixel reward only.")
     # Reward
     p.add_argument("--alpha", type=float, default=1.0, help="reward = a*AM + (1-a)*GM")
     p.add_argument("--answer_suffix", default="llava", choices=sorted(ANSWER_SUFFIXES))
@@ -318,6 +323,41 @@ def load_policy(args, device, adapter_dir=None):
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     rank0_print(f"Trainable params: {n_train / 1e6:.1f}M")
     return model
+
+
+class MergedLoRA:
+    """Reusable context manager: LoRA merged into the base weights inside.
+
+    On exit the base weights are restored by copy from a snapshot taken once
+    at construction, not by peft's unmerge: merge + unmerge in bf16 is not
+    exact, and the drift would accumulate over steps in the frozen base and
+    hence in the KL reference (adapters disabled). The base is frozen, so the
+    snapshot stays valid for the whole run.
+
+    Nothing inside may run the model with adapters disabled: peft would
+    unmerge (inexactly) on the fly. The pixel reward never touches the
+    policy; the latent reward does, hence --merged_rollout is pixel-only.
+    """
+
+    def __init__(self, model):
+        from peft.tuners.lora import LoraLayer
+        self.model = model
+        self.layers = [m for m in model.modules() if isinstance(m, LoraLayer)]
+        self.snapshot = [m.get_base_layer().weight.detach().clone() for m in self.layers]
+        n = sum(w.numel() for w in self.snapshot)
+        rank0_print(f"merged rollout: snapshot of {len(self.layers)} adapted layers "
+                    f"({n * 2 / 2**30:.1f} GB)")
+
+    def __enter__(self):
+        self.model.merge_adapter()
+        return self
+
+    @torch.no_grad()
+    def __exit__(self, *exc):
+        self.model.unmerge_adapter()     # clears peft's merged flags
+        for m, w in zip(self.layers, self.snapshot):
+            m.get_base_layer().weight.copy_(w)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -982,6 +1022,12 @@ def main():
     assert args.images_per_critique == 1 or args.critique_source == "policy", \
         "--images_per_critique > 1 needs sampled critiques (--critique_source policy)"
     rollout = TreeRollout(tokenizer, rcfg, image_start_id, num_image_tokens, device)
+    if args.merged_rollout:
+        if args.reward_kind != "pixel":
+            rank0_print("--merged_rollout disabled: the latent reward runs the policy with "
+                        "adapters off inside the rollout, which peft would unmerge on the fly.")
+        else:
+            rollout.sampling_context = MergedLoRA(model)
     if len(branch) > 1 and args.min_refines > branch[1]:
         rank0_print(f"WARNING: --min_refines {args.min_refines} > branch[1] {branch[1]}; "
                     f"every child is forced to refine.")
@@ -1012,7 +1058,8 @@ def main():
             decoder.decode_pils, args.reward_server_url,
             RewardConfig(batch_size=args.reward_batch_size, answer_suffix=args.answer_suffix,
                          scale=args.scale, alpha=args.alpha),
-            images_per_request=args.reward_images_per_request)
+            images_per_request=args.reward_images_per_request,
+            decode_chunk=args.reward_decode_batch)
         info = reward.health()      # fail fast (per rank) if the judge is not up
         rank0_print(f"pixel reward judge: {info.get('model')} at {args.reward_server_url} "
                     f"(answer_suffix={info.get('answer_suffix')})")
