@@ -1,11 +1,13 @@
 # Rorqual
 
-Owned by the Rorqual session (none yet). Rorqual: Alliance cluster, user `dars11`, 4× H100 80GB per node (like Fir).
+Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100 80GB per node (like Fir).
 
-## Now (2026-10-19)
-- **Not set up yet.** Accounts (user, `sacctmgr`): `rrg-bengioy-ad_gpu` (fair share 0.32 on 2026-10-19, same RAC as Fir),
-  `def-bengioy_gpu`, `def-agrawal_gpu` (+ `_cpu`). MFA is mandatory for every ssh login (Fir cannot script into Rorqual without an
-  open ControlMaster connection the user starts).
+## Now (2026-10-20)
+- **Setup checklist items 1–3 and 5 done; smoke job 23864852 queued** (`mr_smoke_rorqual`, 1 node, `bash_rorqual_mr.sh`, t8-merged
+  base). When it passes: report to Fir's Inbox. Item 4 (`wandb login`) waits for the user (runs log offline anyway).
+- Accounts (user, `sacctmgr`): `rrg-bengioy-ad_gpu` (fair share 0.32 on 2026-10-19, same RAC as Fir), `def-bengioy_gpu`,
+  `def-agrawal_gpu` (+ `_cpu`). MFA is mandatory for every ssh login (Fir cannot script into Rorqual without an open
+  ControlMaster connection the user starts).
 
 ## Setup checklist (for the first Rorqual session; follow fir.md "Setup" as the model)
 1. Notes folder `~/scratch/git/` with the repo `tar_reason/` on `darshan-rl-test` (git identity `Darshansingh11`, GitHub SSH key), and
@@ -28,8 +30,21 @@ Owned by the Rorqual session (none yet). Rorqual: Alliance cluster, user `dars11
    1-node smoke (`MAX_STEPS=2 EVAL_STEPS=2 SAVE_STEPS=2 EVAL_MAX_PROMPTS=24`), then report to Fir's Inbox.
 
 ## Setup
+- Login node `rorqual3`; tmux session `claude`; Claude session id `f80c7887-914b-4a2c-a958-99786c0b63a8`
+  (`cd ~/scratch/git && claude --resume f80c7887-914b-4a2c-a958-99786c0b63a8`). Notes folder `~/scratch/git/` (= `/scratch/dars11/git`),
+  repo `tar_reason/` on `darshan-rl-test`, identity `Darshansingh11`, GitHub key `~/.ssh/id_ed25519_github` works.
+- Weights + data from Fir (one `rsync --relative`, 96.7 GB, finished 2026-10-20 ~03:15, no errors) at the paths in the checklist;
+  md5s match: geneval2_50K_v2 train `317971cc…` / val800 `1d3feb3f…`, promptmix train_17K `5a7d8259…` / val_800 `90eb656a…`.
+- Envs unpacked from `~/scratch/stage/envs_tar_qwenjudge.tar.zst` into `~/envs/{tar,qwen_judge}` + `~/.local/share/uv/python/
+  cpython-3.10.22-linux-x86_64-gnu`. **The venvs point at uv's alias `cpython-3.10-linux-x86_64-gnu`, which the archive lacks: added it
+  as a symlink** to the 3.10.22 dir. Imports OK on the login node (torch 2.1.2+cu121 / tf 4.50.0; judge torch 2.6.0+cu124 / tf 4.57.6);
+  flash_attn/GPU checked by the smoke. Jobs stage the envs to `$SLURM_TMPDIR` themselves (STAGE_LOCAL=1, rewrites the link).
+- Launcher `scripts/rl_ft/bash_rorqual_mr.sh` = `bash_fir_mr.sh` with job/run name `darshan_mr_rorqual` (same paths, account,
+  `gpu:h100:4`, `module load cuda/12.2` exists here). Rorqual also has MIG slices (`h100_3g.40gb` …): always request `h100:4`.
+- Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-20: setup (repo, rsync from Fir, envs, launcher); smoke 23864852 submitted.
 - 2026-10-19: file created by Fir (user decided to add Rorqual).
