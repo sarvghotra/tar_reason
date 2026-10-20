@@ -4,7 +4,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 
 ## Now (2026-10-20)
 - **Setup checklist items 1–3 and 5 done; smoke job 23864852 queued** (`mr_smoke_rorqual`, 1 node, `bash_rorqual_mr.sh`, t8-merged
-  base). When it passes: report to Fir's Inbox. Item 4 (`wandb login`) waits for the user (runs log offline anyway).
+  base). When it passes: report to Fir's Inbox. wandb login done (user `darshan-singh`; binary `~/envs/tar/bin/wandb`, not on PATH).
 - Accounts (user, `sacctmgr`): `rrg-bengioy-ad_gpu` (fair share 0.32 on 2026-10-19, same RAC as Fir), `def-bengioy_gpu`,
   `def-agrawal_gpu` (+ `_cpu`). MFA is mandatory for every ssh login (Fir cannot script into Rorqual without an open
   ControlMaster connection the user starts).
@@ -46,5 +46,5 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
-- 2026-10-20: setup (repo, rsync from Fir, envs, launcher); smoke 23864852 submitted.
+- 2026-10-20: setup (repo, rsync from Fir, envs, launcher, wandb login); smoke 23864852 submitted.
 - 2026-10-19: file created by Fir (user decided to add Rorqual).
