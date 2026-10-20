@@ -3,6 +3,11 @@
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
 ## Now (2026-10-17 21:30 PDT)
+- **New: `darshan_mr_f800pm_fir`** = F's multi-round MDP recipe on **promptmix** from **F-800** (merged into merged t8 →
+  `models/tar/sft/darshan_mr_fir_merged800`, CPU job 66042887), with jeet's speed settings (GEN_BATCH_SIZE 48, REWARD_DECODE_BATCH 32,
+  TRAIN_MICRO_BATCH 4, now `bash_fir_mr.sh` defaults), dataset seed from RUN_NAME, 500 steps, evals every 100 on val800 + promptmix val800.
+  **Runs from the worktree `~/scratch/git/tar_reason_v2`** (`REPO=` override; merged code + TA-Tok fix `395fcb4`). Smoke `f800pm_smoke_fir`
+  66042904 (afterok merge) → full 66042905 (afterok smoke) → 66042906. Compare with `darshan_mr_pm_fir` (same recipe/data from promptmix t1).
 - **F stopped** (jeet, 2026-10-17) at step ~855 (job 65300507 cancelled). Best checkpoint **F-800**: val800 depth-4 mdp own 0.858
   (0.866 after 3 rounds), all-correct 44.1% at 3, oracle 0.905. Checkpoints 100–800 kept in `~/scratch/tar_reason_kept/darshan_mr_fir/`.
 - **New (jeet, 2026-10-17): F's multi-round MDP recipe on promptmix, from jeet's promptmix t1 step 500** (his t8 recipe from SFT on
@@ -42,9 +47,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-20 from Mila: **heads-up, the merge `168f38a` breaks TA-Tok loading where `/home/jeet/links/...` does not exist**: jeet's `3d4ae90` makes `TextAlignedTokenizer.from_checkpoint` pass his own SigLIP2 path, which bypassed our `SIGLIP2_PATH` override (`HFValidationError: Repo id must be ... '/home/jeet/links/scratch/models/pre_train/siglip2-so400m-patch14-384'`). Fixed in `395fcb4` (SIGLIP2_PATH overrides any teacher path; a missing local path falls back to the HF id; GPU smoke on Mila passes). Pull before the next job that decodes images (judge rewards, evals). Also: **scorer alignment done, jeet's `evaluation_optz.py` = official scorer** (t8 70.33 → 76.80 vs 70.3 → 76.8), no re-scoring; GenAI-800 subset numbers in `runs.md`.
+(empty)
 
 ## Log (newest first)
+- 2026-10-20: Mila Inbox handled: TA-Tok merge fix `395fcb4` (in the worktree before the f800pm jobs start; the main checkout's promptmix run predates the merge, unaffected); jeet's scorer = official (no re-scoring). Submitted F-800 → promptmix with speed settings (merge 66042887 → smoke 66042904 → 66042905/06).
 - 2026-10-19: merged jeet's main in worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2` → pushes to darshan-rl-test), pushed `168f38a`. **The main checkout `tar_reason/` stays behind origin until the promptmix run's last job (65732295) has started and finished: edit notes in the worktree.** Rorqual: rrg-bengioy-ad_gpu available, `rorqual.md` created. Mila: official-eval plan; TamIA: merge heads-up.
 - 2026-10-19 11:30: dataset seed (jeet's rule): all runs so far used 421 (= t8 / promptmix t1); launchers now derive it from RUN_NAME (`d71ee10`), rule in CLAUDE.md. The running promptmix run keeps 421 (queued job holds the old script).
 - 2026-10-19 10:40: Inbox handled: Mila F-800 official (best everywhere: GenEval2 79.2, MDP depth-4 80.1, TIIF 70.7/68.2, GenAI 42.8), promptmix-500 official (GenEval2 70.3, TIIF 69.2/68.0, GenAI 40.9); TamIA G stopped at ~433 (step-400 own 0.757), F-full step 200 own 0.819 (< F-mdp 0.848), promptmix t1 full-history eval collapses at depth 3–4 (0.577 on val800).
