@@ -26,7 +26,7 @@
 #   wandb:   offline; sync each job's folder oldest first, later ones with wandb sync --append.
 #   cancel:  scancel --name=darshan_mr_fir --user=$USER
 
-REPO=/home/dars11/scratch/git/tar_reason
+REPO=${REPO:-/home/dars11/scratch/git/tar_reason}   # override to run from another checkout (e.g. the tar_reason_v2 worktree)
 MODELS=/home/dars11/scratch/models/tar
 DATA=/home/dars11/scratch/data/geneval2_50K_v2
 TRAIN_JSONL=${TRAIN_JSONL:-${DATA}/evaluation_metadata_shuf_train.jsonl}
@@ -60,7 +60,7 @@ PREV_STAGE_CHECKPOINT=${PREV_STAGE_CHECKPOINT:-${MODELS}/sft/rl_ft_oracle_t8_mer
 
 REWARD_QUESTION_BATCH=32
 REWARD_IMAGES_PER_REQ=8
-REWARD_DECODE_BATCH=24
+REWARD_DECODE_BATCH=${REWARD_DECODE_BATCH:-32}   # jeet's speed settings (2026-10-19, with his faster AR decoding)
 REWARD_LOAD_TIMEOUT=1800
 
 PROMPTS_PER_GPU=${PROMPTS_PER_GPU:-3}
@@ -72,8 +72,8 @@ TRAIN_DRAFTS=1
 TRAIN_IMAGES=1
 IMAGE_ADV_SCALE=1.0            # image tokens trained (t8 recipe)
 EVAL_BRANCH=${EVAL_BRANCH:-1,1,1,1,1}   # greedy depth-4 chains
-GEN_BATCH_SIZE=16
-TRAIN_MICRO_BATCH=${TRAIN_MICRO_BATCH:-2}   # rows reach ~3.8k tokens at round 4
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-48}            # jeet's speed settings (was 16)
+TRAIN_MICRO_BATCH=${TRAIN_MICRO_BATCH:-4}   # jeet's speed settings (was 2; mdp rows ~1.5k tokens, full-history rows up to ~3.8k: use 2 there)
 
 LR=${LR:-5e-5}
 LORA_R=64
