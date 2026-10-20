@@ -2,25 +2,26 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-20 03:50 EDT)
+## Now (2026-10-20 19:15 EDT)
 - **G stopped** (user, via Fir 2026-10-17, after the meeting with jeet): `darshan_mr_sft_tamia` cancelled at step ~433 (621301
   cancelled 2026-10-18 00:15; 621302–06 cancelled before starting). Last eval, step 400 (depth-4 mdp, val800): own am_upto
   0.734/0.748/0.762/0.759/**0.757**, oracle **0.791** — flat vs step 300 (0.757 / 0.803). Kept: checkpoints 50–400 in
   `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`; 390–430 still in the run dir. wandb: last piece synced with `--append`.
 - **F-full running/queued** (user: keep it): `darshan_mr_full_tamia`, 621218 ran 2026-10-17 12:05–00:05 (TIMEOUT at step ~133,
-  checkpoint-130); 621219 ran 2026-10-19 06:35–18:35 (TIMEOUT at step ~275, checkpoint-270); **621220 pending (est. 2026-10-20 15:45)**: steps 271–300 + step-300 eval. Step-100 full-history eval: own am_upto
+  checkpoint-130); 621219 ran 2026-10-19 06:35–18:35 (TIMEOUT at step ~275, checkpoint-270); **621220 pending (est. 2026-10-20 21:28)**: steps 271–300 + step-300 eval. Step-100 full-history eval: own am_upto
   0.785/0.826/0.833/0.820/**0.817** (step 0: …/0.796), oracle **0.882** (0.863); the depth-1 → depth-4 drop shrank from
   −0.025 to −0.009. Step 200: own **0.819**, oracle **0.880** (flat vs 100). Checkpoints 50/100/200/250 kept in `$SCRATCH/tar_reason_kept/darshan_mr_full_tamia/` (150 was pruned while no watcher ran). After step 300: mdp eval
   of checkpoint-300 (`bash_tamia_t11.sh`, `MAX_STEPS=0`, `EXTRA_ARGS="--init_adapter <ckpt-300> --eval_branch 1,1,1,1,1 --context_mode mdp"`,
-  base = merged t8, worktree still `cb1c831`). Watcher: tmux session (2026-10-20 03:50), background `wait_event.sh` (F-full + Inbox).
+  base = merged t8, worktree still `cb1c831`). Watcher: background `wait_event.sh` (F-full + Inbox), restarted 2026-10-20 19:15.
 - **Promptmix t1 full-history depth-4 eval done** (`pm_t1_depth4_full_tamia`, 626099, 3 h 14 min): full history collapses at
   depth 3–4 (GenEval2 own 0.750 at d1 → **0.577** at d4, oracle → 0.696; promptmix own 0.718 → **0.589**) vs mdp 0.761 / 0.809 and
   0.721 / 0.778 (Fir step 0). Reported to `runs.md` and Fir's Inbox. Merged model `$SCRATCH/models/tar/sft/promptmix_t1_merged500`.
 - **Code: the worktree stays at `cb1c831` until F-full is finished** (its last job 621220 and the final mdp eval), so all of F-full
   runs one code version. Upstream now has jeet's main merged (`168f38a`: fast RL, string `--stop_reward`, faster AR decoding) +
   Mila's TA-Tok fix (`395fcb4`, needed after that merge) + per-run `--dataset_seed` from RUN_NAME (`d71ee10`). **Before any new
-  run after F-full: rebase the worktree, and use jeet's speed settings** (GEN_BATCH_SIZE=48, REWARD_DECODE_BATCH=32,
-  TRAIN_MICRO_BATCH=4). Notes are edited in the main checkout (already at the latest).
+  run after F-full: rebase the worktree.** `bash_tamia_mr.sh` now defaults to jeet's settings (REWARD_QUESTION_BATCH=64,
+  GEN_BATCH_SIZE=48, REWARD_DECODE_BATCH=32, TRAIN_MICRO_BATCH=2, EVAL_STEPS=100; latest merge `7e3cbda`/`59c8261` needs
+  `SIGLIP2_PATH` exported, which our launchers do). Notes are edited in the main checkout (already at the latest).
 - Earlier tasks (B, C, M, G-300, smoke tests, t7, t11): see Log and `runs.md`.
 - Mila asked for G's checkpoints (benchmarks); the TamIA → Mila copy needs the user (suggested: checkpoint-300 or -400).
 
@@ -46,13 +47,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-20 from Fir: pushed the merge of jeet's latest main (`7e3cbda` one-prefix judge scoring, `1e262ff`, `59c8261` `--siglip2_path`).
-  jeet warned `59c8261` makes the SigLIP2 default the HF Hub id, which crashes GPU nodes without internet; the merge keeps the
-  `SIGLIP2_PATH` env override (wins when it is an existing dir; tested with HF_HUB_OFFLINE=1), so **launchers must export
-  SIGLIP2_PATH** (ours do). jeet's settings for new runs: REWARD_QUESTION_BATCH=64, GEN_BATCH_SIZE=48, REWARD_DECODE_BATCH=32,
-  TRAIN_MICRO_BATCH=2, EVAL_STEPS=100 (update your launcher's defaults). Rule 4 for queued jobs: decide before pulling.
 
 ## Log (newest first)
+- 2026-10-20 19:15: Fir Inbox (jeet's latest main merged; SIGLIP2_PATH must be exported; new-run settings) handled: `bash_tamia_mr.sh` defaults updated in the main checkout and pushed; worktree untouched (F-full 621220 still queued on `cb1c831`).
 - 2026-10-20 03:50: user resumed in tmux; watcher on F-full (621220) and Inbox started.
 - 2026-10-20 02:45: F-full 621219 TIMEOUT at step ~275; checkpoint-250 kept; 621220 pending. Inbox handled (Mila TA-Tok fix + scorer alignment; Fir merge of jeet's main; dataset-seed rule): decided to keep the worktree at `cb1c831` until F-full is done (rule 4), then rebase before any new run.
 - 2026-10-19 13:30: caught up after the tmux session ended: promptmix full-history eval done (collapse at depth 3–4); F-full at step ~200 (step-200 eval own 0.819); checkpoint-150 lost to pruning, checkpoint-200 kept.
