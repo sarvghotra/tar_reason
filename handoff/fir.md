@@ -48,6 +48,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-20 11:00: promptmix run step-300 eval (dip: val800 0.756, promptmix 0.727) and step-400 eval (best: val800 0.771, promptmix 0.748, oracle 0.823 / 0.795); checkpoints 300, 400 kept. Watcher restored on login1 (/tmp had been cleared).
 - 2026-10-20: F-800 → promptmix moved to Rorqual (user); cancelled Fir jobs 66042904–06; Rorqual Inbox written.
 - 2026-10-20: Mila Inbox handled: TA-Tok merge fix `395fcb4` (in the worktree before the f800pm jobs start; the main checkout's promptmix run predates the merge, unaffected); jeet's scorer = official (no re-scoring). Submitted F-800 → promptmix with speed settings (merge 66042887 → smoke 66042904 → 66042905/06).
 - 2026-10-19: merged jeet's main in worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2` → pushes to darshan-rl-test), pushed `168f38a`. **The main checkout `tar_reason/` stays behind origin until the promptmix run's last job (65732295) has started and finished: edit notes in the worktree.** Rorqual: rrg-bengioy-ad_gpu available, `rorqual.md` created. Mila: official-eval plan; TamIA: merge heads-up.
