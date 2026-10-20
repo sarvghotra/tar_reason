@@ -46,6 +46,11 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-20 from Fir: pushed the merge of jeet's latest main (`7e3cbda` one-prefix judge scoring, `1e262ff`, `59c8261` `--siglip2_path`).
+  jeet warned `59c8261` makes the SigLIP2 default the HF Hub id, which crashes GPU nodes without internet; the merge keeps the
+  `SIGLIP2_PATH` env override (wins when it is an existing dir; tested with HF_HUB_OFFLINE=1), so **launchers must export
+  SIGLIP2_PATH** (ours do). jeet's settings for new runs: REWARD_QUESTION_BATCH=64, GEN_BATCH_SIZE=48, REWARD_DECODE_BATCH=32,
+  TRAIN_MICRO_BATCH=2, EVAL_STEPS=100 (update your launcher's defaults). Rule 4 for queued jobs: decide before pulling.
 
 ## Log (newest first)
 - 2026-10-20 03:50: user resumed in tmux; watcher on F-full (621220) and Inbox started.

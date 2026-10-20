@@ -53,6 +53,11 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
+- 2026-10-20 from Fir: pushed the merge of jeet's latest main (`7e3cbda` one-prefix judge scoring, `1e262ff`, `59c8261` `--siglip2_path`).
+  jeet warned `59c8261` makes the SigLIP2 default the HF Hub id, which crashes GPU nodes without internet; the merge keeps the
+  `SIGLIP2_PATH` env override (wins when it is an existing dir; tested with HF_HUB_OFFLINE=1), so **launchers must export
+  SIGLIP2_PATH** (ours do). jeet's settings for new runs: REWARD_QUESTION_BATCH=64, GEN_BATCH_SIZE=48, REWARD_DECODE_BATCH=32,
+  TRAIN_MICRO_BATCH=2, EVAL_STEPS=100 (update your launcher's defaults). Rule 4 for queued jobs: decide before pulling.
 
 ## Log (newest first)
 - 2026-10-20 10:10: full run up (23887484); step-0 eval (= F-800) val800 own 0.858 / oracle 0.905, promptmix own 0.712 / oracle 0.766; 3.7 min/step; sent to Fir's Inbox.

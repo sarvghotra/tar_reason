@@ -40,6 +40,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-20 15:00: merged jeet's latest main (judge one-prefix scoring, --siglip2_path) keeping the SIGLIP2_PATH override (offline TA-Tok load tested); bash_fir_mr.sh: REWARD_QUESTION_BATCH 64, TRAIN_MICRO_BATCH 2. Inboxes TamIA/Rorqual/Mila. Mila: jeet's eval pipeline.
 - 2026-10-20 12:40: Inbox handled: Rorqual f800pm running (3.7 min/step at 4 nodes with jeet's settings vs ~5; step 0 = F-800: val800 0.858, promptmix 0.712 < promptmix t1's 0.721); Mila 3-seed error bars (F-800 > t8 on GenEval2 79.1±0.2 vs 76.5±0.7 and GenAI 43.1 vs 41.4; TIIF differences are noise); **C0: the critic is limited by perception, and RL fine-tuning eroded it** (judge-failed atoms rejected: base Tar 73%, F-800 69%; position 74→52%, object 62→49% = chance).
 - 2026-10-20 12:30: promptmix run done (step 500 val800 0.784, promptmix 0.744), wandb synced (3 pieces), main checkout pulled. Final job's limit cut to 11 h to start sooner.
 - 2026-10-20: critique plan agreed with the user: step 0 perception diagnostic (Mila Inbox), step 1 checklist-critique SFT, step 2 critic RL (jeet's t3 recipe from the step-1 critic, F-800 refiner). Pending: jeet's view on the checklist format and t3's results.
