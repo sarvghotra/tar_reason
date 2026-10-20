@@ -60,6 +60,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
   TRAIN_MICRO_BATCH=2, EVAL_STEPS=100 (update your launcher's defaults). Rule 4 for queued jobs: decide before pulling.
 
 ## Log (newest first)
+- 2026-10-20 19:10: step-100 eval: val800 own 0.850 (−0.007), promptmix own 0.712 (=), all-correct 18.3% (+2.3); drafts down on both; KL 0.16. Sent to Fir. (Session restarted; watchers restarted.)
 - 2026-10-20 10:10: full run up (23887484); step-0 eval (= F-800) val800 own 0.858 / oracle 0.905, promptmix own 0.712 / oracle 0.766; 3.7 min/step; sent to Fir's Inbox.
 - 2026-10-20 09:05: full job 23887483 cancelled by Slurm at start (CANCELLED by 0, signal 54, no logs); 23887484 takes over, spare 24413404 chained.
 - 2026-10-20 05:15: smoke 23887482 passed (both val sets, ckpt-2, staging 79 s); per-step time sent to Fir's Inbox; smoke wandb synced. Full run 23887483 pending (Priority).
