@@ -145,3 +145,21 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   --method soft_tifa_am`.** Same per-question prompt, answer lists and soft probability, only batched (bf16 noise). Re-scoring t8 seed-713
   images: AM 70.33 → 76.80, GM 33.4 final (official 70.3 → 76.8, GM 33.5); per question mean |Δ| 0.002, max 0.15, 9 / 19 of 6,012 answers
   cross 0.5. No re-scoring needed; the `bench_mila` table stays as is.
+- **C0 perception probe (Mila 2026-10-20): the trained models can't see most of their own errors, but base Tar can see more of them.**
+  `eval/analyze/perception_probe.py`: each of the judge's VQA questions asked in plain understanding mode (critic's image-token
+  layout, greedy, text only) on the 6,004 F-250 images of the 3a dumps (40,969 questions; judge pass rate 78.8%, all-pass images
+  25.8%). Columns: agreement with the judge / answers as expected when the judge passes / **rejects when the judge fails** (chance on
+  yes/no: 50%).
+  | model | agree | rec (pass) | **spec (fail)** | count | position | object | attribute | verb | says 'yes' | per image: recall / false all-ok |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | base Tar-7B | **88.7** | 92.9 | **73.3** | 78.3 | **73.5** | **61.7** | 57.1 | 80.4 | 86.6% | **59.7** / 11.5 |
+  | F-250 (made the images) | 84.3 | 88.5 | 68.6 | 75.2 | 56.2 | 51.1 | 58.0 | 75.5 | 84.4% | 38.2 / 10.1 |
+  | F-800 | 83.3 | 87.2 | 68.6 | 75.9 | 52.1 | 48.8 | 59.3 | 75.5 | 83.1% | 32.5 / 9.3 |
+  (skill columns = spec (fail): how often the model rejects a judge-failed atom.) F-250's per-image numbers match its critic's
+  stop rates (looks_good on passing images 0.49 at round 1, false stops 0.09): the critic does about as well as its perception allows.
+  **Perception degraded with fine-tuning**: position failures go from 73.5% detected (base) to 56 / 52% (F-250 / F-800, near chance),
+  missing objects 62% → 51 / 49% (chance), per-image recall of all-pass images 60% → 38 / 33%. Counts are the best-perceived skill in
+  all three (75–78%). **For the critique plan:** checklist critiques (step 1) can only work where perception exists; it exists in
+  base Tar for count / position / object (73–78% / 62%) and was eroded by SFT+RL. Options: (a) train checklist critiques with an
+  understanding-preserving term (mix VQA on own images with the judge's answers into SFT/RL), (b) use base Tar's answers as the
+  critic's evidence, (c) start critique training from base perception. Attribute errors are hard for every model (57–59%).
