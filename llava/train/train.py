@@ -25,6 +25,11 @@ class ModelArguments:
     version: Optional[str] = field(default="v0")
     vision_tower: Optional[str] = field(default=None)
     vision_tower_pretrained: Optional[str] = field(default=None)  # default to the last layer
+    siglip2_path: str = field(
+        default="google/siglip2-so400m-patch14-384",
+        metadata={"help": "SigLIP2 model id or local directory that defines the TA-Tok vision "
+                          "encoder's config. Use a local copy on nodes without Hugging Face Hub access."},
+    )
     mm_vision_select_layer: Optional[int] = field(default=-1)  # default to the last layer
     mm_use_im_start_end: bool = field(default=False)
     mm_patch_merge_type: Optional[str] = field(default="flat")
@@ -171,6 +176,11 @@ def get_model(model_args, training_args):
     if model_args.use_pos_skipping is not None and model_args.pos_skipping_range is not None:
         overwrite_config["use_pos_skipping"] = model_args.use_pos_skipping
         overwrite_config["pos_skipping_range"] = model_args.pos_skipping_range
+
+    # The vision tower is built inside from_pretrained (from `mm_vision_tower`
+    # in the checkpoint config), so its SigLIP2 path must be in the config
+    # before loading. TATokVisionTower reads it from `config.siglip2_path`.
+    overwrite_config["siglip2_path"] = model_args.siglip2_path
 
     if model_args.rope_scaling_factor is not None and model_args.rope_scaling_type is not None:
         overwrite_config["rope_scaling"] = {

@@ -5,7 +5,7 @@ from torch import nn
 from transformers.models.siglip.image_processing_siglip import SiglipImageProcessor
 
 from llava.utils import rank0_print
-from tok.ta_tok import TextAlignedTokenizer
+from tok.ta_tok import DEFAULT_SIGLIP2_PATH, TextAlignedTokenizer
 from tok.utils import ScalingLayer
 
 
@@ -20,6 +20,10 @@ class TATokVisionTower(nn.Module):
         self.image_processor = SiglipImageProcessor()
 
         self.vision_tower_name = vision_tower
+        # SigLIP2 model id or local dir for the TA-Tok encoder config. Set from
+        # `--siglip2_path` (llava/train/train.py) via the model config; configs
+        # saved before that argument existed fall back to the Hub id.
+        self.siglip2_path = getattr(vision_tower_cfg, "siglip2_path", None) or DEFAULT_SIGLIP2_PATH
 
         if not delay_load:
             rank0_print(f"Loading vision tower: {vision_tower}")
@@ -39,7 +43,10 @@ class TATokVisionTower(nn.Module):
             rank0_print("{} is already loaded, `load_model` called again, skipping.".format(self.vision_tower_name))
             return
 
-        self.vision_tower = TextAlignedTokenizer.from_checkpoint(self.vision_tower_name, load_teacher=False).to(device_map)
+        rank0_print(f"TA-Tok SigLIP2 config: {self.siglip2_path}")
+        self.vision_tower = TextAlignedTokenizer.from_checkpoint(
+            self.vision_tower_name, load_teacher=False, teacher=self.siglip2_path
+        ).to(device_map)
         self.vision_tower.bottleneck.regularizer.set_eval_deterministic(deterministic=True)
 
         self.vision_tower.input_type = 'rec'
