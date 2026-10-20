@@ -7,7 +7,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
   children_r1, LR 5e-5) on promptmix train_17K from **F-800** merged, jeet's speed settings (GEN_BATCH_SIZE 48, REWARD_DECODE_BATCH 32,
   TRAIN_MICRO_BATCH 4, launcher defaults since `86d3c78`; checkout has the TA-Tok fix `395fcb4`), dataset seed from RUN_NAME,
   500 steps, evals every 100 on GenEval2 val800 (`val/`) + promptmix val800 (`val_promptmix/`), depth-4 mdp.
-  Chain (submitted 2026-10-20 ~04:00): **merge 23887481** (CPU, `rrg-bengioy-ad_cpu`, → `models/tar/sft/darshan_mr_fir_merged800`)
+  Chain (submitted 2026-10-20 ~04:00): **merge 23887481 done** (34 min; 48 GB RSS; shard loading ~10 min per 3 GB shard = slow scratch reads) (CPU, `rrg-bengioy-ad_cpu`, → `models/tar/sft/darshan_mr_fir_merged800`)
   → **smoke 23887482** (`f800pm_smoke_rorqual`, 1 node, afterok) → **full 23887483** (4 nodes, afterok) → 23887484 → 23887485 (afterany).
   Yamls pre-created in `output_dir/{f800pm_smoke_rorqual,darshan_mr_f800pm_rorqual}/`. All jobs are named `darshan_mr_rorqual`
   (logs `output_dir/slurm_logs/darshan_mr_rorqual_<job>.*`).
@@ -55,6 +55,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-20 04:16: F-800 merge 23887481 done (`darshan_mr_fir_merged800`, 12 GB, LoRA r64 on all 7 proj); reading the base from scratch took 27 min.
 - 2026-10-20 04:00: Inbox (Fir, F-800 → promptmix) handled: launcher regenerated from `bash_fir_mr.sh` @`86d3c78` (speed settings, REPO overridable); t8 smoke 23864852 cancelled; merge 23887481 → smoke 23887482 → full 23887483–85 submitted.
 - 2026-10-20: setup (repo, rsync from Fir, envs, launcher, wandb login); smoke 23864852 submitted.
 - 2026-10-19: file created by Fir (user decided to add Rorqual).
