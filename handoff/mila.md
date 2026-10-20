@@ -7,9 +7,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 - **C0 done** (cross-run finding in `runs.md`): F-250 / F-800 reject only ~69% of judge-failed atoms (position 52–56%, object 49–51%:
   chance); base Tar 73% (position 74%, object 62%); per image, F-250's 'all answers ok' matches its critic's stop rates. Fine-tuning
   eroded the perception. Reports: `output_dir/perception_probe/{F250,F800,tar7b_base}/report.txt`; answers JSONL alongside. Told Fir.
-- **Seeds**: all 6 benchmark seeds done (table pending the depth seeds; 6 promptmix depth quarters still running). 3-seed means
-  (final): GenEval2 t8 76.5±0.7, F-800 79.1±0.2, promptmix 70.3±0.6; TIIF short 71.3 / 70.7 / 70.0, long 68.2 / 67.0 / 66.5 (±0.9–1.5:
-  a tie); GenAI 41.4 / 43.1 / 41.2.
+- **Seeds done** (3-seed table in `runs.md`): F-800 > t8 on GenEval2 (79.1 ± 0.2 vs 76.5 ± 0.7; depth-4 80.2 vs 77.7) and GenAI; TIIF a tie.
 - Waiting: promptmix-run checkpoints 300/500, t11 (user copies).
 - Watcher: background in this session (tmux, login-4).
 
@@ -49,15 +47,12 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   (2) **Scorer alignment**: jeet gave read access to his Mila scratch (`/network/scratch/s/sarvjeet-singh.ghotra/models/`, eval script
   `/home/mila/s/sarvjeet-singh.ghotra/scratch/git/tar_reason/scripts/eval/iter_geneval2_adhoc_e2e.sh` → `evaluation_optz.py`): re-score the
   existing GenEval2 images of base Tar / SFT / t8 / F-250 / F-800 / promptmix t1 with his scorer; if numbers differ, adopt his for
-  everything (table stays consistent). Also look for his GenAI-Image-800 prompt list there. (3) **The 3 official benchmarks jeet wants**
-  (GenEval2 incl. 4-round MDP depth, TIIF testmini, GenAI-Bench) for: the Fir promptmix run `darshan_mr_pm_fir` checkpoint-300 and its
-  final (500, ~2 days; both need the user's copy from Fir: `~/scratch/tar_reason_kept/darshan_mr_pm_fir/checkpoint-<N>`, LoRA on
-  jeet's promptmix t1 merged, which you have), and **2 more seeds** (e.g. 714, 715) of t8, F-800 and promptmix t1 for error bars (no copy
-  needed). Results to `runs.md` + Fir's Inbox.
+  everything (table stays consistent). Also look for his GenAI-Image-800 prompt list there. (3) remaining: the 3 official benchmarks for `darshan_mr_pm_fir` checkpoint-300 and its final (500), when the user copies them (LoRA on jeet's promptmix t1 merged). (Pull, scorer alignment, GenAI-800 and the 2 extra seeds: done 2026-10-20.)
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-20 09:00: all 30 seed jobs done; 3-seed table in runs.md; told Fir.
 - 2026-10-20 06:30: C0 probe done for F-250, F-800, base Tar (runs.md); deleted that Inbox line; told Fir.
 - 2026-10-20 04:00: C0 probe written (CPU test + GPU smoke), full runs submitted for F-250, F-800, base Tar.
 - 2026-10-20 02:30: the merge `168f38a` re-hardcoded jeet's SigLIP2 path in `TextAlignedTokenizer.from_checkpoint` (`3d4ae90`); t8 seed benches 714/715 failed on it. Fixed in `395fcb4` (SIGLIP2_PATH overrides any teacher path; missing local path → HF id), GPU smoke passed, resubmitted. Scorer alignment done (equal).

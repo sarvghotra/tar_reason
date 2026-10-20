@@ -163,3 +163,16 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   base Tar for count / position / object (73–78% / 62%) and was eroded by SFT+RL. Options: (a) train checklist critiques with an
   understanding-preserving term (mix VQA on own images with the judge's answers into SFT/RL), (b) use base Tar's answers as the
   critic's evidence, (c) start critique training from base perception. Attribute errors are hard for every model (57–59%).
+- **Error bars: 3 seeds of the official benchmarks (Mila 2026-10-20)** for t8, F-800, promptmix-500. `bench_mila.sh` seeds 713 / 714 / 715
+  (one refinement round, full history) and official GenEval2 depth-4 MDP with eval seeds 421 / 422 / 423 (`--seed`; 421 = the earlier
+  runs). Seeds 714/715 and 422/423 ran after the merge `168f38a` (jeet's faster AR decoder, same math). Mean ± sd over seeds, draft → final:
+  | model | GenEval2 AM | GM (final) | all-correct (final) | TIIF short | TIIF long | GenAI-Bench |
+  |---|---|---|---|---|---|---|
+  | t8 | 71.1 → **76.5 ± 0.7** | 32.8 ± 0.8 | 22.1 ± 0.8% | 68.7 → 71.3 ± 0.6 | 65.5 → 68.2 ± 0.9 | 39.3 → 41.4 ± 0.7 |
+  | F-800 | 75.1 → **79.1 ± 0.2** | 39.0 ± 1.7 | 26.5 ± 1.4% | 69.2 → 70.7 ± 1.3 | 65.4 → 67.0 ± 1.5 | 41.0 → **43.1 ± 0.7** |
+  | promptmix-500 | 67.0 → 70.3 ± 0.6 | 24.1 ± 0.8 | 14.6 ± 0.1% | 67.9 → 70.0 ± 1.0 | 65.8 → 66.5 ± 1.3 | 39.0 → 41.2 ± 0.4 |
+  Depth-4 MDP, AM after d = 0..4 (mean ± sd), all-correct at d = 0 → 4: **t8** 71.2 / 76.5 / 77.7 / 77.6 / **77.7 ± 0.3**, 18.1 → 23.3%;
+  **F-800** 75.0 / 79.0 / 79.9 / 80.2 / **80.2 ± 0.4**, 22.4 → 27.8%; **promptmix-500** 67.1 / 69.9 / 70.9 / 71.2 / **71.3 ± 0.3**, 13.9 → 15.7%.
+  **What holds:** F-800 > t8 on GenEval2 (+2.6 one round, +2.5 at depth 4, sd ≤ 0.7) and GenAI (+1.7); promptmix-500 is ~6 pts below on
+  GenEval2. **What does not:** TIIF differences are within one sd for all three (the single-seed "F-250/F-800 TIIF-long drop" and
+  "promptmix refines better on TIIF long" were seed noise).
