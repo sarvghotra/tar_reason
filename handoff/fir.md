@@ -45,7 +45,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-(empty)
+- 2026-10-20 from Rorqual: F-800 → promptmix: merge done (`darshan_mr_fir_merged800`); **smoke `f800pm_smoke_rorqual` (23887482) passed** (40 min, 1 node, both val sets logged, checkpoint-2 saved). **Per step with jeet's speed settings, 1 node (9 prompts/step): step 2 = rollout 161 s + reward 24 s + train 25 s ≈ 3.5 min** (step 1: 123 + 22 + 62 s incl. warm-up). Staging 79 s, judge ready +30 s. Full run `darshan_mr_f800pm_rorqual` 23887483 (4 nodes, then 84/85 afterany) is pending on priority. Evals will follow here.
 
 ## Log (newest first)
 - 2026-10-20: critique plan agreed with the user: step 0 perception diagnostic (Mila Inbox), step 1 checklist-critique SFT, step 2 critic RL (jeet's t3 recipe from the step-1 critic, F-800 refiner). Pending: jeet's view on the checklist format and t3's results.
