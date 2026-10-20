@@ -25,7 +25,8 @@ import json
 import time
 import urllib.error
 import urllib.request
-from typing import Callable, List, Sequence, Tuple
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from llava.train.rl.reward import RewardConfig, geometric_mean
 
@@ -42,15 +43,24 @@ class PixelVQAReward:
     ``decode_fn(list_of_code_lists) -> list[PIL.Image]`` is supplied by the
     caller (``train_grpo.py::ImageDecoder.decode_pils``) so the visual
     de-tokenizer is loaded once per rank and shared with image logging.
+
+    Images are decoded ``decode_chunk`` at a time (None: all at once; the AR
+    de-tokenizer is launch-bound, so 8 -> 32 images per call is ~3x cheaper
+    per image) and each chunk's requests go out on background threads while
+    the next chunk decodes, so the judge works during the decode. Up to
+    ``max_inflight`` requests are open at once; the server serialises them.
     """
 
     def __init__(self, decode_fn: Callable, server_url: str, cfg: RewardConfig,
                  images_per_request: int = 8, timeout: float = 1800.0,
-                 retries: int = 3):
+                 retries: int = 3, decode_chunk: Optional[int] = None,
+                 max_inflight: int = 4):
         self.decode_fn = decode_fn
         self.url = server_url.rstrip("/")
         self.cfg = cfg
         self.images_per_request = max(1, images_per_request)
+        self.decode_chunk = decode_chunk
+        self.max_inflight = max(1, max_inflight)
         self.timeout = timeout
         self.retries = max(1, retries)
 
@@ -85,18 +95,26 @@ class PixelVQAReward:
                      ) -> Tuple[List[float], List[float], List[List[float]]]:
         """Returns (AM, GM, per_question_probs) per image."""
         assert len(codes) == len(vqa_lists)
-        per_question: List[List[float]] = []
-        for start in range(0, len(codes), self.images_per_request):
-            chunk = codes[start:start + self.images_per_request]
-            chunk_vqa = vqa_lists[start:start + self.images_per_request]
-            images = self.decode_fn(chunk)
+
+        def request(images, chunk_vqa):
             items = [{"png_b64": _png_b64(im), "vqa": [list(qa) for qa in vqa]}
                      for im, vqa in zip(images, chunk_vqa)]
             scores = self._post_score(items)
             assert len(scores) == len(items) and \
                 all(len(s) == len(v) for s, v in zip(scores, chunk_vqa)), \
                 "reward server returned a mismatched score shape"
-            per_question.extend(scores)
+            return scores
+
+        step = self.decode_chunk or max(len(codes), 1)
+        futures = []
+        with ThreadPoolExecutor(max_workers=self.max_inflight) as pool:
+            for d0 in range(0, len(codes), step):
+                images = self.decode_fn(codes[d0:d0 + step])
+                for r0 in range(0, len(images), self.images_per_request):
+                    r1 = min(r0 + self.images_per_request, len(images))
+                    futures.append(pool.submit(request, images[r0:r1],
+                                               vqa_lists[d0 + r0:d0 + r1]))
+            per_question: List[List[float]] = [s for f in futures for s in f.result()]
         am = [sum(q) / len(q) if q else 0.0 for q in per_question]
         gm = [geometric_mean(q) if q else 0.0 for q in per_question]
         return am, gm, per_question

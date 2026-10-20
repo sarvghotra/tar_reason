@@ -59,6 +59,7 @@ Chain nodes before ``k*`` are alone in their group, so their advantage is 0
 (they keep the KL term, like a lone draft).
 """
 
+import contextlib
 import re
 import warnings
 from dataclasses import dataclass, field
@@ -175,7 +176,8 @@ class Node:
     am: float = 0.0
     gm: float = 0.0
     per_question: Optional[List[float]] = None
-    reward: float = 0.0
+    reward: float = 0.0                  # image-level reward (trainer's --break_weight)
+    reward_txt: float = 0.0              # critique-level reward (--critique_break_weight)
     adv: float = 0.0                     # advantage of the image tokens
     adv_txt: float = 0.0                 # advantage of the reflection tokens (== adv unless M > 1)
 
@@ -218,6 +220,10 @@ class TreeRollout:
         self.img_end = image_start_id + num_image_tokens
         self.pad_id = tokenizer.pad_token_id
         assert self.pad_id is not None
+        # Entered around every ``run`` (all policy sampling: drafts, sampled
+        # critiques, refines). The trainer sets it to a MergedLoRA so sampling
+        # runs on merged weights instead of peft's per-layer adapter matmuls.
+        self.sampling_context = contextlib.nullcontext()
 
         im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
         eot_id = tokenizer.convert_tokens_to_ids("<|endoftext|>")
@@ -360,7 +366,8 @@ class TreeRollout:
         was_training = model.training
         model.eval()
         try:
-            return self._run(model, prompts, branch, critique_fn, chain)
+            with self.sampling_context:
+                return self._run(model, prompts, branch, critique_fn, chain)
         finally:
             if was_training:
                 model.train()

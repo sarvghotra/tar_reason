@@ -17,7 +17,7 @@ class TextAlignedTokenizer(nn.Module):
         bottleneck,
         bottleneck_token_num=256,
         input_size=384,
-        teacher='google/siglip2-so400m-patch14-384',
+        teacher='/home/jeet/links/scratch/models/pre_train/siglip2-so400m-patch14-384',
         input_type='quant', # choose from ['quant', 'rec', 'indices']
         pool_scale=1, # choose from [1, 2, 3]
         decoder_depth=3,
@@ -87,12 +87,28 @@ class TextAlignedTokenizer(nn.Module):
 
     @classmethod
     def from_checkpoint(cls, ckpt, load_teacher=True, **kwargs):
+        # ckpt_path = ckpt
         ckpt = torch.load(ckpt, map_location='cpu')
         ckpt_kwargs = ckpt["model"]["args"]
+
+        # from llava.utils import rank0_print
+        # rank0_print("ckpt: ", ckpt_path)
+        # rank0_print("**kwargs: ", kwargs)
+        # rank0_print("**ckpt_kwargs: ", ckpt_kwargs)
+        # import sys
+        # sys.exit(0)
+
+        ckpt_kwargs['teacher'] = "/home/jeet/links/scratch/models/pre_train/siglip2-so400m-patch14-384"
         model = cls(**kwargs, **ckpt_kwargs)
         sd = ckpt["model"]["sd"]
         if not load_teacher:
             sd = {k: v for k, v in sd.items() if not k.startswith('teacher')}
+        if not hasattr(model.decoder, 'vision_model'):
+            # transformers>=5 flattens Siglip2VisionModel (no `.vision_model`
+            # wrapper); checkpoints were saved with transformers 4.x.
+            sd = {k.replace('decoder.vision_model.', 'decoder.', 1)
+                  if k.startswith('decoder.vision_model.') else k: v
+                  for k, v in sd.items()}
         model.load_state_dict(sd, strict=True)
         return model
 
