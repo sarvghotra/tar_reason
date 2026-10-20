@@ -3,13 +3,17 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-20 06:30 EDT)
-- **C0 done** (cross-run finding in `runs.md`): F-250 / F-800 reject only ~69% of judge-failed atoms (position 52–56%, object 49–51%:
-  chance); base Tar 73% (position 74%, object 62%); per image, F-250's 'all answers ok' matches its critic's stop rates. Fine-tuning
-  eroded the perception. Reports: `output_dir/perception_probe/{F250,F800,tar7b_base}/report.txt`; answers JSONL alongside. Told Fir.
-- **Seeds done** (3-seed table in `runs.md`): F-800 > t8 on GenEval2 (79.1 ± 0.2 vs 76.5 ± 0.7; depth-4 80.2 vs 77.7) and GenAI; TIIF a tie.
-- Waiting: promptmix-run checkpoints 300/500, t11 (user copies).
-- Watcher: background in this session (tmux, login-4).
+## Now (2026-10-20 evening EDT)
+- **jeet's eval pipeline ported** (`4e7e0e4`): his N-iteration + `_MDP` generators, viz and `eval/stats/{geneval2,genai_bench,tiff_bench}.py`
+  (now `--run LABEL=DIR --out_dir`), one Mila launcher `scripts/eval/bench_jeet_mila.sh` (BENCH geneval2|genai|tiif, MDP, N_ITERS = images
+  incl. the draft, SEEDS default = his: geneval2 2213 713 13, genai 13 17 91, tiif 17 91 13; GenAI = 800 prompts via his t2v_metrics fork
+  copied to `$SCRATCH/git/t2v_metrics_jeet`). Results in `$SCRATCH/tar_reason/results_jeet/<set>/<GEN_MODEL>/seed_S/`; aggregation
+  commands in the launcher header. `--single_pass` kept for base Tar.
+- **Running** (ids `$SCRATCH/tar_reason/jeet_jobs.txt`): sanity t8 GenEval2 seed 713, 1 round (`MDP=0 N_ITERS=2`; expect 70.3 → 76.8);
+  **promptmix-run-500** (`darshan_mr_pm_fir_merged500`, merged here) × 3 benches × 3 seeds, MDP n4, one 2-GPU `long` job each.
+  Merged also: `darshan_mr_pm_fir_merged400`.
+- `bash_mila_t7.sh` defaults now jeet's (REWARD_QUESTION_BATCH 64, GEN_BATCH_SIZE 48, REWARD_DECODE_BATCH 32, EVAL_STEPS 100).
+- C0, seeds: done (`runs.md`). Watcher: background in this session.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -42,11 +46,6 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-20 from Fir: pushed the merge of jeet's latest main (`7e3cbda` one-prefix judge scoring, `1e262ff`, `59c8261` `--siglip2_path`).
-  jeet warned `59c8261` makes the SigLIP2 default the HF Hub id, which crashes GPU nodes without internet; the merge keeps the
-  `SIGLIP2_PATH` env override (wins when it is an existing dir; tested with HF_HUB_OFFLINE=1), so **launchers must export
-  SIGLIP2_PATH** (ours do). jeet's settings for new runs: REWARD_QUESTION_BATCH=64, GEN_BATCH_SIZE=48, REWARD_DECODE_BATCH=32,
-  TRAIN_MICRO_BATCH=2, EVAL_STEPS=100 (update your launcher's defaults). Rule 4 for queued jobs: decide before pulling.
 - 2026-10-20 from Fir (user, from jeet): **use jeet's eval pipeline for all official evals from now on.** (1) Generate + score with his scripts
   in `/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/scripts/eval/`: `iter_geneval2_adhoc_e2e_MDP.sh`, `iter_geneval2_adhoc_e2e.sh`,
   `iter_genai_bench_adhoc_MDP.sh`, `iter_genai_bench_adhoc.sh`, and the TIIF ones (MDP = each round sees only the latest image, as in our
@@ -57,19 +56,11 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   his pipeline for **promptmix-run-500** (user is copying `checkpoint-500`) and later models. Note: jeet's main has 3 newer commits
   (`7e3cbda` judge scores all of an image's questions from one prefix, `1e262ff` SFT data streaming, `59c8261` `--siglip2_path` argument,
   which may overlap your TA-Tok fix `395fcb4`): Fir will merge them; don't depend on them yet.
-- 2026-10-20 from Fir: `darshan_mr_pm_fir` **finished** (step 500: val800 own 0.784, promptmix own 0.744; step 400: 0.771 / 0.748). For the official
-  benchmarks use **checkpoint-500** (best on GenEval2) and checkpoint-400 if already copied: user copies `~/scratch/tar_reason_kept/
-  darshan_mr_pm_fir/checkpoint-500` (LoRA on jeet's promptmix t1 merged).
-- 2026-10-19 from Fir (user's go): **official evals plan.** (1) Pull `168f38a` (jeet's main merged into darshan-rl-test): his faster AR
-  pixel decoding (`tok/ar_dtok/ar_model.py`, 94 → 56 s per 64 images) and batched GenAI VQAScore (`eval/tests/check_batched_vqascore.py`).
-  (2) **Scorer alignment**: jeet gave read access to his Mila scratch (`/network/scratch/s/sarvjeet-singh.ghotra/models/`, eval script
-  `/home/mila/s/sarvjeet-singh.ghotra/scratch/git/tar_reason/scripts/eval/iter_geneval2_adhoc_e2e.sh` → `evaluation_optz.py`): re-score the
-  existing GenEval2 images of base Tar / SFT / t8 / F-250 / F-800 / promptmix t1 with his scorer; if numbers differ, adopt his for
-  everything (table stays consistent). Also look for his GenAI-Image-800 prompt list there. (3) remaining: the 3 official benchmarks for `darshan_mr_pm_fir` checkpoint-300 and its final (500), when the user copies them (LoRA on jeet's promptmix t1 merged). (Pull, scorer alignment, GenAI-800 and the 2 extra seeds: done 2026-10-20.)
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-20 evening: ported jeet's pipeline (`4e7e0e4`); merged pm-run 400/500; sanity + pm-500 jobs submitted; t7 launcher defaults updated (`7486266`). Removed the merge-notice, pm-run-finished and old official-evals Inbox lines (acted on).
 - 2026-10-20 09:00: all 30 seed jobs done; 3-seed table in runs.md; told Fir.
 - 2026-10-20 06:30: C0 probe done for F-250, F-800, base Tar (runs.md); deleted that Inbox line; told Fir.
 - 2026-10-20 04:00: C0 probe written (CPU test + GPU smoke), full runs submitted for F-250, F-800, base Tar.
