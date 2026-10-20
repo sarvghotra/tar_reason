@@ -2,22 +2,14 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-17 21:30 PDT)
-- **F-800 → promptmix moved to Rorqual** (user, 2026-10-20: Fir fair share 0.25 with the promptmix run on 4 nodes, Rorqual's
-  fresh): Fir's smoke/full jobs 66042904–06 cancelled; Rorqual Inbox has the task (`darshan_mr_f800pm_rorqual`). Fir keeps the F-800
-  merge (66042887 → `models/tar/sft/darshan_mr_fir_merged800`) for the critique experiment here after the promptmix run.
-- **F stopped** (jeet, 2026-10-17) at step ~855 (job 65300507 cancelled). Best checkpoint **F-800**: val800 depth-4 mdp own 0.858
-  (0.866 after 3 rounds), all-correct 44.1% at 3, oracle 0.905. Checkpoints 100–800 kept in `~/scratch/tar_reason_kept/darshan_mr_fir/`.
-- **New (jeet, 2026-10-17): F's multi-round MDP recipe on promptmix, from jeet's promptmix t1 step 500** (his t8 recipe from SFT on
-  promptmix: `/scratch/jeet/tmp/models/sft_ckpt/rl_ft_promptsmix_oracle_t1_500`, LoRA r64 on SFT t21; copied to
-  `~/scratch/tar_reason_kept/jeet_promptmix_t1/`). Merge → `models/tar/sft/rl_ft_promptsmix_t1_merged500` (CPU job 65708081), then
-  `bash_fir_mr.sh` unchanged (chain mode N=4, MDP, children_r1, LR 5e-5, merged base + KL ref, fresh LoRA) with RUN dirs pre-seeded:
-  `output_dir/<run>/data.yaml` = promptmix train_17K (jeet's data.yaml: same file), `val.yaml` = GenEval2 val800 (`val/`) + promptmix
-  val800 (`val_promptmix/`, jeet uses all 800; his GenEval2 val800 = ours, md5 1d3feb3f…). Merge done (10 min); smoke 65708082 passed (53 min, both val sets logged). **Full run `darshan_mr_pm_fir` submitted 2026-10-18 ~00:30: 65732293 → 94 → 95** (`MAX_STEPS=500 EVAL_STEPS=100`, 4 nodes, job name `darshan_mr_fir`, so logs are `slurm_logs/darshan_mr_fir_<job>.*`). Watcher: scratchpad `mrpm/watch.sh` (self-terminating).
-  Data: `~/scratch/data/promptmix/` (train_17K md5 5a7d8259…, val_800 md5 90eb656a…, 0 overlap).
-  `bash_fir_promptmix.sh` (jeet's one-round t1 recipe from SFT) exists but is not needed now (his checkpoint replaces it).
-- Stop decision: 3a (stop-SFT, Mila) and 3b (stop-RL, here) both negative (`runs.md`).
-- Watcher: `mr/watch2.sh` pattern (self-terminating, 29 min); none running for F now.
+## Now (2026-10-20 12:30 PDT)
+- **Nothing running on Fir.** `darshan_mr_pm_fir` (F's multi-round MDP recipe on promptmix from jeet's promptmix t1) **done**: step 500
+  val800 own **0.784** (step 0 0.761), promptmix own **0.744** (0.721), all-correct 25.1% / 19.4%; checkpoints 100–500 kept; wandb synced.
+- **F-800 → promptmix runs on Rorqual** (`darshan_mr_f800pm_rorqual`, Rorqual Inbox). F-800 merged on Fir too
+  (`models/tar/sft/darshan_mr_fir_merged800`) for the critique plan (C0 diagnostic on Mila; C1 checklist SFT; C2 critic RL).
+- Code: main checkout pulled to the merged code (no jobs left on the old one); worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2`)
+  still exists, identical content, can be removed. Launchers: jeet's speed settings default, dataset seed from RUN_NAME.
+- Watcher: none (nothing running).
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
@@ -51,6 +43,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - 2026-10-20 from Rorqual: F-800 → promptmix: merge done (`darshan_mr_fir_merged800`); **smoke `f800pm_smoke_rorqual` (23887482) passed** (40 min, 1 node, both val sets logged, checkpoint-2 saved). **Per step with jeet's speed settings, 1 node (9 prompts/step): step 2 = rollout 161 s + reward 24 s + train 25 s ≈ 3.5 min** (step 1: 123 + 22 + 62 s incl. warm-up). Staging 79 s, judge ready +30 s. Full run `darshan_mr_f800pm_rorqual` 23887483 (4 nodes, then 84/85 afterany) is pending on priority. Evals will follow here.
 
 ## Log (newest first)
+- 2026-10-20 12:30: promptmix run done (step 500 val800 0.784, promptmix 0.744), wandb synced (3 pieces), main checkout pulled. Final job's limit cut to 11 h to start sooner.
 - 2026-10-20: critique plan agreed with the user: step 0 perception diagnostic (Mila Inbox), step 1 checklist-critique SFT, step 2 critic RL (jeet's t3 recipe from the step-1 critic, F-800 refiner). Pending: jeet's view on the checklist format and t3's results.
 - 2026-10-20 11:00: promptmix run step-300 eval (dip: val800 0.756, promptmix 0.727) and step-400 eval (best: val800 0.771, promptmix 0.748, oracle 0.823 / 0.795); checkpoints 300, 400 kept. Watcher restored on login1 (/tmp had been cleared).
 - 2026-10-20: F-800 → promptmix moved to Rorqual (user); cancelled Fir jobs 66042904–06; Rorqual Inbox written.

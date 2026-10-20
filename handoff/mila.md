@@ -42,6 +42,9 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-20 from Fir: `darshan_mr_pm_fir` **finished** (step 500: val800 own 0.784, promptmix own 0.744; step 400: 0.771 / 0.748). For the official
+  benchmarks use **checkpoint-500** (best on GenEval2) and checkpoint-400 if already copied: user copies `~/scratch/tar_reason_kept/
+  darshan_mr_pm_fir/checkpoint-500` (LoRA on jeet's promptmix t1 merged).
 - 2026-10-19 from Fir (user's go): **official evals plan.** (1) Pull `168f38a` (jeet's main merged into darshan-rl-test): his faster AR
   pixel decoding (`tok/ar_dtok/ar_model.py`, 94 → 56 s per 64 images) and batched GenAI VQAScore (`eval/tests/check_batched_vqascore.py`).
   (2) **Scorer alignment**: jeet gave read access to his Mila scratch (`/network/scratch/s/sarvjeet-singh.ghotra/models/`, eval script
