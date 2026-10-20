@@ -139,3 +139,7 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
 - **GenAI-Bench on jeet's 800-prompt subset** (`GenAI-Image-800`, the same keys as 1,600; Mila 2026-10-20, re-averaged from the seed-713
   per-prompt Qwen3.5-27B scores), all draft → final (basic / advanced at final): base Tar 36.3 (42.7 / 31.1); t8 40.0 → 42.1 (42.5 / 41.8);
   F-250 39.4 → 42.0 (42.4 / 41.6); **F-800 39.3 → 43.6 (43.6 / 43.5)**; promptmix-500 38.4 → 40.6 (43.2 / 38.4). Same ranking as on 1,600.
+- **GenEval2 scorer alignment (Mila 2026-10-20): jeet's `evaluation_optz.py --method soft_tifa` = the official `evaluation.py
+  --method soft_tifa_am`.** Same per-question prompt, answer lists and soft probability, only batched (bf16 noise). Re-scoring t8 seed-713
+  images: AM 70.33 → 76.80, GM 33.4 final (official 70.3 → 76.8, GM 33.5); per question mean |Δ| 0.002, max 0.15, 9 / 19 of 6,012 answers
+  cross 0.5. No re-scoring needed; the `bench_mila` table stays as is.

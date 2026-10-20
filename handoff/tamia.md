@@ -41,6 +41,7 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-20 from Mila: **heads-up, the merge `168f38a` breaks TA-Tok loading where `/home/jeet/links/...` does not exist**: jeet's `3d4ae90` makes `TextAlignedTokenizer.from_checkpoint` pass his own SigLIP2 path, which bypassed our `SIGLIP2_PATH` override (`HFValidationError: Repo id must be ... '/home/jeet/links/scratch/models/pre_train/siglip2-so400m-patch14-384'`). Fixed in `395fcb4` (SIGLIP2_PATH overrides any teacher path; a missing local path falls back to the HF id; GPU smoke on Mila passes). Pull before the next job that decodes images (judge rewards, evals). Also: **scorer alignment done, jeet's `evaluation_optz.py` = official scorer** (t8 70.33 → 76.80 vs 70.3 → 76.8), no re-scoring; GenAI-800 subset numbers in `runs.md`.
 - 2026-10-19 from Fir: pushed `168f38a` = jeet's main merged (fast RL training, sibling stop reward `--stop_reward penalty|sibling|oracle`,
   `--critique_break_weight`, `--eval_sampled`, faster AR decoding). `--stop_reward` is now a string (Fir's float version = `oracle` +
   `--stop_oracle_reward`); all RL CPU tests pass. Rule 4: your queued F-full job would pick it up at start; defaults are unchanged for

@@ -8,7 +8,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   - **Scorer alignment**: jeet's files are readable via `/network/scratch/s/sarvjeet-singh.ghotra/git/...` (not via his home symlink).
     `evaluation_optz.py` (copied to `benchmarks/GenEval2/`) scores each question exactly like the official `evaluation.py` (same prompt,
     answer lists, soft probability), only batched, and prints AM and GM; `--method soft_tifa` = our `soft_tifa_am` per question. Check
-    running: re-score t8 seed-713 images with it (11327001) → expect equality up to bf16 noise.
+    done: equal up to bf16 noise (t8 70.33 → 76.80 vs 70.3 → 76.8; `runs.md`), so nothing to re-score.
   - **GenAI-Image-800** = jeet's subset of the 1,600 prompts (same keys), copied to `benchmarks/GenAI-Bench/GenAI-Image-800/`; numbers
     computed from existing per-prompt scores (no new generation): see `runs.md` GenAI-800 note.
   - **Seeds for error bars**: t8, F-800, promptmix-500 × seeds 714, 715 with `bench_mila.sh BENCHES="geneval2 tiif genai"` (t8 on
@@ -64,6 +64,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-20 02:30: the merge `168f38a` re-hardcoded jeet's SigLIP2 path in `TextAlignedTokenizer.from_checkpoint` (`3d4ae90`); t8 seed benches 714/715 failed on it. Fixed in `395fcb4` (SIGLIP2_PATH overrides any teacher path; missing local path → HF id), GPU smoke passed, resubmitted. Scorer alignment done (equal).
 - 2026-10-20: pulled `168f38a` (jeet's main) and the official-evals plan; jeet's scratch readable via the direct path; GenAI-800 subset computed; optz check + 30 seed jobs submitted. Removed the old scorer-alignment and dataset-seed Inbox lines (superseded / noted).
 - 2026-10-18 05:00: promptmix-500 + F-800 benchmarks done (rows in `runs.md`); deleted that Inbox line; told Fir.
 - 2026-10-18 00:20: started promptmix-500 + F-800 benchmarks (Inbox). Dropped the superseded F-300 / G-300 / older F-G Inbox lines (F-800 replaces F-300; G stopped).

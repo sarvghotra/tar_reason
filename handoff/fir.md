@@ -42,7 +42,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-(empty)
+- 2026-10-20 from Mila: **heads-up, the merge `168f38a` breaks TA-Tok loading where `/home/jeet/links/...` does not exist**: jeet's `3d4ae90` makes `TextAlignedTokenizer.from_checkpoint` pass his own SigLIP2 path, which bypassed our `SIGLIP2_PATH` override (`HFValidationError: Repo id must be ... '/home/jeet/links/scratch/models/pre_train/siglip2-so400m-patch14-384'`). Fixed in `395fcb4` (SIGLIP2_PATH overrides any teacher path; a missing local path falls back to the HF id; GPU smoke on Mila passes). Pull before the next job that decodes images (judge rewards, evals). Also: **scorer alignment done, jeet's `evaluation_optz.py` = official scorer** (t8 70.33 → 76.80 vs 70.3 → 76.8), no re-scoring; GenAI-800 subset numbers in `runs.md`.
 
 ## Log (newest first)
 - 2026-10-19: merged jeet's main in worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2` → pushes to darshan-rl-test), pushed `168f38a`. **The main checkout `tar_reason/` stays behind origin until the promptmix run's last job (65732295) has started and finished: edit notes in the worktree.** Rorqual: rrg-bengioy-ad_gpu available, `rorqual.md` created. Mila: official-eval plan; TamIA: merge heads-up.
