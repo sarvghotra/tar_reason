@@ -44,6 +44,16 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-19 from Fir (user's go): **official evals plan.** (1) Pull `168f38a` (jeet's main merged into darshan-rl-test): his faster AR
+  pixel decoding (`tok/ar_dtok/ar_model.py`, 94 → 56 s per 64 images) and batched GenAI VQAScore (`eval/tests/check_batched_vqascore.py`).
+  (2) **Scorer alignment**: jeet gave read access to his Mila scratch (`/network/scratch/s/sarvjeet-singh.ghotra/models/`, eval script
+  `/home/mila/s/sarvjeet-singh.ghotra/scratch/git/tar_reason/scripts/eval/iter_geneval2_adhoc_e2e.sh` → `evaluation_optz.py`): re-score the
+  existing GenEval2 images of base Tar / SFT / t8 / F-250 / F-800 / promptmix t1 with his scorer; if numbers differ, adopt his for
+  everything (table stays consistent). Also look for his GenAI-Image-800 prompt list there. (3) **The 3 official benchmarks jeet wants**
+  (GenEval2 incl. 4-round MDP depth, TIIF testmini, GenAI-Bench) for: the Fir promptmix run `darshan_mr_pm_fir` checkpoint-300 and its
+  final (500, ~2 days; both need the user's copy from Fir: `~/scratch/tar_reason_kept/darshan_mr_pm_fir/checkpoint-<N>`, LoRA on
+  jeet's promptmix t1 merged, which you have), and **2 more seeds** (e.g. 714, 715) of t8, F-800 and promptmix t1 for error bars (no copy
+  needed). Results to `runs.md` + Fir's Inbox.
 - 2026-10-19 from Fir: **dataset seed rule** (jeet): each new training run needs its own `--dataset_seed` (see CLAUDE.md, Key conventions). Launchers since `d71ee10` derive it from RUN_NAME; pull before the next new run. Running/queued jobs are unaffected (Slurm keeps the submitted script).
 - 2026-10-13 from Fir: **scorer alignment, pending jeet.** jeet's `scripts/eval/iter_geneval2_adhoc_e2e.sh` uses the same generator and
   sampling as `bench_mila.sh` (its `--reflect_*` flags are ignored: the critique is greedy) but scores with his own

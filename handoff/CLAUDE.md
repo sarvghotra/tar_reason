@@ -6,7 +6,7 @@ that generates an image as a draft → text critique → refined draft loop, ent
 and text tokens, with no external verifier and no pixel decoding at inference.
 
 ## How the sessions coordinate (read first)
-Claude sessions run on three clusters (Mila, Fir, TamIA) and share notes through this folder,
+Claude sessions run on four clusters (Mila, Fir, TamIA, Rorqual) and share notes through this folder,
 `tar_reason/handoff/` on branch `darshan-rl-test`. On each cluster, `~/scratch/git/CLAUDE.md` (or the Mila
 equivalent) is a symlink to this file.
 
@@ -14,7 +14,7 @@ equivalent) is a symlink to this file.
 |---|---|---|
 | `CLAUDE.md` | any session, small edits | Stable project facts and these rules. No job IDs or progress. |
 | `runs.md` | any session, only its own rows | One row per run across all clusters, plus cross-run findings. |
-| `fir.md`, `mila.md`, `tamia.md` | only that cluster's session | **Now** (rewritten, always current), **Setup**, **Inbox**, **Log** (newest first). |
+| `fir.md`, `mila.md`, `tamia.md`, `rorqual.md` | only that cluster's session | **Now** (rewritten, always current), **Setup**, **Inbox**, **Log** (newest first). |
 | `archive/` | nobody | Frozen copies of the old `*_HANDOFF.md` files (2026-10-05 … 10-09). |
 
 Rules:
@@ -53,8 +53,9 @@ tmux session named `claude` on a fixed login node only while away (so watchers k
   collaborator's t7 recipe (pixel judge, oracle/hybrid critiques) is being reproduced on Mila and Fir.
 - Next (from the paper plan): rebuild the SFT data (image-conditioned critiques for all caption families; refine
   pairs from the model's own drafts), run the diagnostic experiments, RL with reward `α·AM + (1−α)·GM`.
-- Official GenEval2 and TIIF (testmini) results exist for base Tar-7B, SFT t21, t7 and t8; GenAI-Bench (1,600 prompts,
-  Qwen3.5-27B VQAScore) for base Tar-7B and t8 (`bench_mila` rows in `runs.md`; Mila runs them with `scripts/eval/bench_mila.sh`). In-training validation is GenEval2-style IID prompts (val256 / val800).
+- **Official evals = 3 benchmarks** (jeet): GenEval2 (official 800 prompts; also 4-round MDP depth), TIIF-Bench testmini (short/long),
+  GenAI-Bench (1,600 prompts, Qwen3.5-27B VQAScore). val800 / promptmix val are in-distribution, not official. Done for base Tar-7B,
+  SFT t21, t7, t8, F-250, F-800, promptmix t1 (`bench_mila` rows in `runs.md`; Mila runs them with `scripts/eval/bench_mila.sh`). In-training validation is GenEval2-style IID prompts (val256 / val800).
 
 ## Reference material
 Read the notes first; open the PDFs only for exact numbers. In `~/scratch/git/papers/` (outside the repo):
@@ -101,6 +102,7 @@ from the repo and checks their line numbers); republish `tools/walkthrough/out/t
 - **Fir** (Alliance, user `dars11`, 4× H100 80GB per node, account `rrg-bengioy-ad_gpu`): no internet on compute
   nodes. See `fir.md`.
 - **TamIA** (Alliance, user `dars11`, H100 4/node, account `aip-agrawal`; paths have an extra `d/` level). See `tamia.md`.
+- **Rorqual** (Alliance, user `dars11`, H100 4/node, account `rrg-bengioy-ad_gpu`; MFA on every ssh login). See `rorqual.md` (being set up).
 - All: Python envs `~/envs/tar` (training: uv, Python 3.10, torch 2.1.2+cu121, transformers 4.50.0, flash-attn
   2.5.9.post1 prebuilt wheel, `setuptools<70`) and `~/envs/qwen_judge` (torch 2.6.0+cu124, transformers 4.57.6).
   RL needs 80 GB GPUs (peak ~42.5 GB/GPU). The user prefers uv over conda and is new to the Alliance clusters:

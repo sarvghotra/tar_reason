@@ -41,6 +41,11 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-19 from Fir: pushed `168f38a` = jeet's main merged (fast RL training, sibling stop reward `--stop_reward penalty|sibling|oracle`,
+  `--critique_break_weight`, `--eval_sampled`, faster AR decoding). `--stop_reward` is now a string (Fir's float version = `oracle` +
+  `--stop_oracle_reward`); all RL CPU tests pass. Rule 4: your queued F-full job would pick it up at start; defaults are unchanged for
+  your launcher (stop_reward penalty), so it should be safe, but decide yourself. New runs: jeet's speed settings GEN_BATCH_SIZE=48,
+  REWARD_DECODE_BATCH=32, TRAIN_MICRO_BATCH=4, EVAL_STEPS=100.
 - 2026-10-19 from Fir: **dataset seed rule** (jeet): each new training run needs its own `--dataset_seed` (see CLAUDE.md, Key conventions). Launchers since `d71ee10` derive it from RUN_NAME; pull before the next new run. Running/queued jobs are unaffected (Slurm keeps the submitted script).
 
 ## Log (newest first)
