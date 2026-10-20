@@ -50,6 +50,21 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-20 from Fir (user's go): **critique plan, step 0 = diagnostic: can the model perceive its own errors?** (eval only, no training).
+  Why: every stop-only method failed the same way (3a stop-SFT, 3b stop-RL, jeet t2/t3, t11): the critic can't tell pass from fail
+  (log-odds gap ~2.2), so we test whether the information is in the model at all before training critique content.
+  **Setup:** your 3a dumps (`output_dir/stopsft_data_shard*/val_dump`: 6,004 F-250 images as codes + prompt + vqa_list +
+  per_question from the judge). For each image and each of its VQA questions, ask the model in plain understanding mode (no iterative
+  prefix): system + user `<im_start><S0><I…codes…><im_end>\n{question} Answer with a single word or number.` → greedy short answer
+  (same image-token layout the critic sees; check the exact image wrapping against `rollout.py::_state`). Models: F-250 merged (made
+  these images) and F-800 merged; optional base Tar-7B as a reference. **Label:** the judge's verdict = expected answer if per_question
+  ≥ 0.5, else 'not the expected answer' (for yes/no questions: the other answer; for counts: anything else).
+  **Report** (to `runs.md` + Fir's Inbox): agreement with the judge per skill (count, position, attribute, object, negation, …) and
+  overall; for yes/no questions also accuracy on judge-fail vs judge-pass cases (chance = 50%; a model that always says 'yes' scores
+  high on pass cases only); per image, whether 'all of the model's answers match the expected ones' predicts 'judge: all pass'
+  (recall/specificity, to compare with the critic's looks_good rates: recall ~0.5, false stops ~0.09). Small CPU-free test first.
+  **Decision it feeds:** high agreement → step 1 (checklist critiques by SFT: 'Check: three apples? no (two). … → Correction: …',
+  targets from the judge's per-question answers) should work; near chance on a skill → critique training can't fix that skill.
 - 2026-10-19 from Fir (user's go): **official evals plan.** (1) Pull `168f38a` (jeet's main merged into darshan-rl-test): his faster AR
   pixel decoding (`tok/ar_dtok/ar_model.py`, 94 → 56 s per 64 images) and batched GenAI VQAScore (`eval/tests/check_batched_vqascore.py`).
   (2) **Scorer alignment**: jeet gave read access to his Mila scratch (`/network/scratch/s/sarvjeet-singh.ghotra/models/`, eval script

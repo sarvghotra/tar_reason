@@ -59,6 +59,7 @@ One row per run. Each session edits only the rows for its own cluster. Longer no
 | L | Backfill `val/am_upto_d`, `allpass_upto_d` into the wandb summaries of the 4 depth-4 eval runs | TamIA, Mila | asked 2026-10-13 |
 | M | Split own-vs-oracle gap (MDP depth 4: 0.833 vs 0.885) into stop decision vs critique content, from `t8_depth4_mdp_tamia` val_dump (CPU) | TamIA | go 2026-10-13 |
 | N | Do t8's own critiques use unrecognised stop phrases ("no change", "no edit")? | Fir | **done**: none in 1,770 critiques (t11 step 0/300 val800 + smokes); `LOOKS_GOOD_RE` is enough for F |
+| C0–C2 | Critique plan (2026-10-20): C0 perception diagnostic (can the model answer the judge's questions about its own images?), C1 checklist-critique SFT (per-question checks from the judge, then the correction), C2 critic RL (jeet's t3 sibling-stop recipe) from the C1 critic with F-800 as refiner | Mila (C0, C1), Rorqual/TamIA (C2) | C0 sent to Mila |
 | F/G-1000 | Continue F (Fir) and G (TamIA) from step 300 to 1000 (jeet, 2026-10-15) | Fir / TamIA | **stopped 2026-10-17 (jeet)**: F at ~855 (best F-800), G: TamIA |
 | F-full | F's recipe with full-history context (ablation of MDP for training) | TamIA | go 2026-10-15, after G-1000 |
 | 3a / 3b | Stop decision: stop-SFT (Mila, done: negative) / stop-RL `darshan_stop_fir` (Fir, running) | Mila / Fir | see rows |
