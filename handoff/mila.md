@@ -3,15 +3,21 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-18 05:00 EDT)
-- **Nothing running on Mila.** promptmix-500 and F-800 official benchmarks done (rows in `runs.md`). **F-800 is the best model on
-  every benchmark**: GenEval2 75.5 → 79.2 (1 round), depth-4 MDP 80.1; TIIF 70.7 / 68.2; GenAI 42.8. Promptmix-500 refines better on
-  TIIF long (+2.0) but is ~7 pts lower on GenEval2 (70.3 / depth-4 70.9). Told Fir.
-- Models merged on Mila: `models/tar/sft/{rl_ft_oracle_t8_merged500, darshan_mr_fir_merged250, darshan_mr_fir_merged800,
-  jeet_promptmix_t1_merged500}`. Recipe for a new checkpoint: merge (CPU job) → `bench_mila.sh BENCHES="geneval2 tiif genai"` +
-  depth-4 mdp 4 × 200 (`benchmarks/GenEval2/splits/geneval2_q{1..4}.jsonl`, 2-GPU `long` jobs, `--no-requeue --exclude=cn-g029`).
-- Waiting: jeet's scorer / GenAI-800 (not readable); t11 checkpoints (copy).
-- Watcher: none.
+## Now (2026-10-20 EDT)
+- **Official-evals plan (Inbox 2026-10-19) in progress.**
+  - **Scorer alignment**: jeet's files are readable via `/network/scratch/s/sarvjeet-singh.ghotra/git/...` (not via his home symlink).
+    `evaluation_optz.py` (copied to `benchmarks/GenEval2/`) scores each question exactly like the official `evaluation.py` (same prompt,
+    answer lists, soft probability), only batched, and prints AM and GM; `--method soft_tifa` = our `soft_tifa_am` per question. Check
+    running: re-score t8 seed-713 images with it (11327001) → expect equality up to bf16 noise.
+  - **GenAI-Image-800** = jeet's subset of the 1,600 prompts (same keys), copied to `benchmarks/GenAI-Bench/GenAI-Image-800/`; numbers
+    computed from existing per-prompt scores (no new generation): see `runs.md` GenAI-800 note.
+  - **Seeds for error bars**: t8, F-800, promptmix-500 × seeds 714, 715 with `bench_mila.sh BENCHES="geneval2 tiif genai"` (t8 on
+    short-unkillable chained, others 2-GPU `long`), and depth-4 mdp on official GenEval2 with eval seeds 422, 423 (`--seed` in EXTRA_ARGS;
+    seed 421 = the existing runs) in 4 × 200: 24 jobs `depth4_{t8,F800,promptmix500}_mdp_geneval2_s{422,423}_q{1..4}`. All ids in
+    `$SCRATCH/tar_reason/seeds_jobs.txt`. New seeds use jeet's faster AR decoder (`cdcbd91`, same math, bf16 rounding only).
+  - **Promptmix-run checkpoints** `darshan_mr_pm_fir` 300 / 500: waiting for the user's copy from Fir.
+- Dataset-seed rule (Inbox): noted; applies to new training runs, none on Mila now.
+- Watcher: background in this session.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -54,17 +60,11 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   final (500, ~2 days; both need the user's copy from Fir: `~/scratch/tar_reason_kept/darshan_mr_pm_fir/checkpoint-<N>`, LoRA on
   jeet's promptmix t1 merged, which you have), and **2 more seeds** (e.g. 714, 715) of t8, F-800 and promptmix t1 for error bars (no copy
   needed). Results to `runs.md` + Fir's Inbox.
-- 2026-10-19 from Fir: **dataset seed rule** (jeet): each new training run needs its own `--dataset_seed` (see CLAUDE.md, Key conventions). Launchers since `d71ee10` derive it from RUN_NAME; pull before the next new run. Running/queued jobs are unaffected (Slurm keeps the submitted script).
-- 2026-10-13 from Fir: **scorer alignment, pending jeet.** jeet's `scripts/eval/iter_geneval2_adhoc_e2e.sh` uses the same generator and
-  sampling as `bench_mila.sh` (its `--reflect_*` flags are ignored: the critique is greedy) but scores with his own
-  `evaluation_optz.py --method soft_tifa`, not the official `evaluation.py --method soft_tifa_am`. The user is asking jeet for that
-  file. When it arrives: re-score the existing t8 ck-500 GenEval2 images (`bench/<t8>/seed_713/geneval2/{1,2}`) with it, compare to
-  70.3 / 76.8; if they differ, switch `bench_mila.sh` to it and re-score SFT/t7/t8 so the table is consistent. Until then, don't
-  change `bench_mila.sh`. Depth/MDP evals stay on the RL eval path (his script does one refinement, full history only).
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-20: pulled `168f38a` (jeet's main) and the official-evals plan; jeet's scratch readable via the direct path; GenAI-800 subset computed; optz check + 30 seed jobs submitted. Removed the old scorer-alignment and dataset-seed Inbox lines (superseded / noted).
 - 2026-10-18 05:00: promptmix-500 + F-800 benchmarks done (rows in `runs.md`); deleted that Inbox line; told Fir.
 - 2026-10-18 00:20: started promptmix-500 + F-800 benchmarks (Inbox). Dropped the superseded F-300 / G-300 / older F-G Inbox lines (F-800 replaces F-300; G stopped).
 - 2026-10-16 00:30: F-250 benchmarks done (see Now); deleted that Inbox line; told Fir.

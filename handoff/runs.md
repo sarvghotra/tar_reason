@@ -136,3 +136,6 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   P(stop | fail) barely changes (round-1 log-odds gap 2.2 → 2.4): SFT shifts *how often* the critic stops, not *how well it tells
   passing from failing images*. am_0 and the oracle curve never move. The perfect-stopping bound (~0.86 for t8) needs a better
   pass/fail detector; next is RL with a stop reward (3b, Fir) or critiques that check each question.
+- **GenAI-Bench on jeet's 800-prompt subset** (`GenAI-Image-800`, the same keys as 1,600; Mila 2026-10-20, re-averaged from the seed-713
+  per-prompt Qwen3.5-27B scores), all draft → final (basic / advanced at final): base Tar 36.3 (42.7 / 31.1); t8 40.0 → 42.1 (42.5 / 41.8);
+  F-250 39.4 → 42.0 (42.4 / 41.6); **F-800 39.3 → 43.6 (43.6 / 43.5)**; promptmix-500 38.4 → 40.6 (43.2 / 38.4). Same ranking as on 1,600.
