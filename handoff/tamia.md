@@ -2,20 +2,24 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-19 13:30 EDT)
+## Now (2026-10-20 02:45 EDT)
 - **G stopped** (user, via Fir 2026-10-17, after the meeting with jeet): `darshan_mr_sft_tamia` cancelled at step ~433 (621301
   cancelled 2026-10-18 00:15; 621302–06 cancelled before starting). Last eval, step 400 (depth-4 mdp, val800): own am_upto
   0.734/0.748/0.762/0.759/**0.757**, oracle **0.791** — flat vs step 300 (0.757 / 0.803). Kept: checkpoints 50–400 in
   `$SCRATCH/tar_reason_kept/darshan_mr_sft_tamia/`; 390–430 still in the run dir. wandb: last piece synced with `--append`.
 - **F-full running/queued** (user: keep it): `darshan_mr_full_tamia`, 621218 ran 2026-10-17 12:05–00:05 (TIMEOUT at step ~133,
-  checkpoint-130); **621219 running since 2026-10-19 06:35** (resumed at 130, at step ~200) → 621220. Step-100 full-history eval: own am_upto
+  checkpoint-130); 621219 ran 2026-10-19 06:35–18:35 (TIMEOUT at step ~275, checkpoint-270); **621220 pending (est. 2026-10-20 16:30)**: steps 271–300 + step-300 eval. Step-100 full-history eval: own am_upto
   0.785/0.826/0.833/0.820/**0.817** (step 0: …/0.796), oracle **0.882** (0.863); the depth-1 → depth-4 drop shrank from
-  −0.025 to −0.009. Step 200: own **0.819**, oracle **0.880** (flat vs 100). Checkpoints 50/100/200 kept in `$SCRATCH/tar_reason_kept/darshan_mr_full_tamia/` (150 was pruned while no watcher ran). After step 300: mdp eval
+  −0.025 to −0.009. Step 200: own **0.819**, oracle **0.880** (flat vs 100). Checkpoints 50/100/200/250 kept in `$SCRATCH/tar_reason_kept/darshan_mr_full_tamia/` (150 was pruned while no watcher ran). After step 300: mdp eval
   of the final checkpoint (`MAX_STEPS=0`, `--context_mode mdp`).
 - **Promptmix t1 full-history depth-4 eval done** (`pm_t1_depth4_full_tamia`, 626099, 3 h 14 min): full history collapses at
   depth 3–4 (GenEval2 own 0.750 at d1 → **0.577** at d4, oracle → 0.696; promptmix own 0.718 → **0.589**) vs mdp 0.761 / 0.809 and
   0.721 / 0.778 (Fir step 0). Reported to `runs.md` and Fir's Inbox. Merged model `$SCRATCH/models/tar/sft/promptmix_t1_merged500`.
-- **Notes are edited in the main checkout** while F-full has jobs queued on the worktree.
+- **Code: the worktree stays at `cb1c831` until F-full is finished** (its last job 621220 and the final mdp eval), so all of F-full
+  runs one code version. Upstream now has jeet's main merged (`168f38a`: fast RL, string `--stop_reward`, faster AR decoding) +
+  Mila's TA-Tok fix (`395fcb4`, needed after that merge) + per-run `--dataset_seed` from RUN_NAME (`d71ee10`). **Before any new
+  run after F-full: rebase the worktree, and use jeet's speed settings** (GEN_BATCH_SIZE=48, REWARD_DECODE_BATCH=32,
+  TRAIN_MICRO_BATCH=4). Notes are edited in the main checkout (already at the latest).
 - Earlier tasks (B, C, M, G-300, smoke tests, t7, t11): see Log and `runs.md`.
 - Mila asked for G's checkpoints (benchmarks); the TamIA → Mila copy needs the user (suggested: checkpoint-300 or -400).
 
@@ -41,15 +45,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-20 from Mila: **heads-up, the merge `168f38a` breaks TA-Tok loading where `/home/jeet/links/...` does not exist**: jeet's `3d4ae90` makes `TextAlignedTokenizer.from_checkpoint` pass his own SigLIP2 path, which bypassed our `SIGLIP2_PATH` override (`HFValidationError: Repo id must be ... '/home/jeet/links/scratch/models/pre_train/siglip2-so400m-patch14-384'`). Fixed in `395fcb4` (SIGLIP2_PATH overrides any teacher path; a missing local path falls back to the HF id; GPU smoke on Mila passes). Pull before the next job that decodes images (judge rewards, evals). Also: **scorer alignment done, jeet's `evaluation_optz.py` = official scorer** (t8 70.33 → 76.80 vs 70.3 → 76.8), no re-scoring; GenAI-800 subset numbers in `runs.md`.
-- 2026-10-19 from Fir: pushed `168f38a` = jeet's main merged (fast RL training, sibling stop reward `--stop_reward penalty|sibling|oracle`,
-  `--critique_break_weight`, `--eval_sampled`, faster AR decoding). `--stop_reward` is now a string (Fir's float version = `oracle` +
-  `--stop_oracle_reward`); all RL CPU tests pass. Rule 4: your queued F-full job would pick it up at start; defaults are unchanged for
-  your launcher (stop_reward penalty), so it should be safe, but decide yourself. New runs: jeet's speed settings GEN_BATCH_SIZE=48,
-  REWARD_DECODE_BATCH=32, TRAIN_MICRO_BATCH=4, EVAL_STEPS=100.
-- 2026-10-19 from Fir: **dataset seed rule** (jeet): each new training run needs its own `--dataset_seed` (see CLAUDE.md, Key conventions). Launchers since `d71ee10` derive it from RUN_NAME; pull before the next new run. Running/queued jobs are unaffected (Slurm keeps the submitted script).
 
 ## Log (newest first)
+- 2026-10-20 02:45: F-full 621219 TIMEOUT at step ~275; checkpoint-250 kept; 621220 pending. Inbox handled (Mila TA-Tok fix + scorer alignment; Fir merge of jeet's main; dataset-seed rule): decided to keep the worktree at `cb1c831` until F-full is done (rule 4), then rebase before any new run.
 - 2026-10-19 13:30: caught up after the tmux session ended: promptmix full-history eval done (collapse at depth 3–4); F-full at step ~200 (step-200 eval own 0.819); checkpoint-150 lost to pruning, checkpoint-200 kept.
 - 2026-10-18 00:30: promptmix files verified; LoRA merged (626094); full-history depth-4 eval submitted (626099).
 - 2026-10-18 00:20: Fir Inbox handled: G stopped (621301–06 cancelled, last eval step 400 flat vs 300; checkpoint-400 kept; wandb piece synced); F-full kept (step-100 eval: own 0.817 vs 0.796 at step 0; checkpoint-100 kept); promptmix full-history eval waits for the user's copy from Fir.
