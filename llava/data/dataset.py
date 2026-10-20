@@ -31,6 +31,13 @@ from llava.utils import rank0_print
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
+def dist_rank_world():
+    """(rank, world_size) of the current process, or (0, 1) when not distributed."""
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        return torch.distributed.get_rank(), torch.distributed.get_world_size()
+    return 0, 1
+
+
 def derive_seed(*parts) -> int:
     """Derive an independent 64-bit seed from arbitrary identifying parts.
 
@@ -579,6 +586,13 @@ class LazyParquetDataset(IterableDataset):
         # process, before workers are forked, so a second epoch does not replay
         # the first one's random decisions.
         self._epoch = 0
+        # When True, the stream is split across (rank, worker) pairs here and
+        # the DataLoader must NOT additionally be wrapped by Accelerate's
+        # IterableDatasetShard (see LLaVATrainer.get_train_dataloader). When
+        # False (default, and always for eval), every rank walks the same stream
+        # and Accelerate slices out this rank's samples -- which makes every
+        # rank decode world_size times more samples than it uses.
+        self.shard_by_rank = False
 
         self.modality = torch.tensor(0) # 0 is for und task, 1 is for gen task
         self.no_eos = no_eos
@@ -615,8 +629,25 @@ class LazyParquetDataset(IterableDataset):
         self._epoch = int(epoch)
 
     def make_worker_rng(self, worker_id):
-        """Build the RNG a DataLoader worker should use for this epoch."""
+        """Build the RNG a DataLoader worker should use for this epoch.
+
+        Without rank sharding the seed must depend on the worker only, so that
+        every rank replays the identical stream for Accelerate to slice.
+        """
+        if self.shard_by_rank:
+            rank, _ = dist_rank_world()
+            return random.Random(derive_seed(self.dataset_seed, self._epoch, "rank", rank, worker_id))
         return random.Random(derive_seed(self.dataset_seed, self._epoch, worker_id))
+
+    def _shard_slots(self):
+        """(shard_id, num_shards) for this process/worker of the file list."""
+        worker_info = get_worker_info()
+        worker_id = worker_info.id if worker_info else 0
+        num_workers = worker_info.num_workers if worker_info else 1
+        if self.shard_by_rank:
+            rank, world_size = dist_rank_world()
+            return rank * num_workers + worker_id, world_size * num_workers, worker_id
+        return worker_id, num_workers, worker_id
 
     def _conversation_variant_keys(self, sources):
         """Return 'conversations_<n>' keys, ordered by n, for a multi-variant row.
@@ -779,6 +810,30 @@ class LazyParquetDataset(IterableDataset):
         image = processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
         return image, image_size, self.modality
 
+    def _readable_urls(self, urls):
+        """Drop shards whose parquet footer is missing/corrupt.
+
+        A truncated shard used to raise inside a worker and take the whole
+        training run down (seen 2026-10-20: "Parquet magic bytes not found in
+        footer" on BLIP3o shard_00052 and gpt-edit omni_4 shard_00015). The
+        check is one open+seek per file, done once per worker at iterator
+        start, so it is also cheap enough for the 4K-shard sets. Warn once per
+        bad file per worker.
+        """
+        good = []
+        for url in urls:
+            try:
+                with open(url, "rb") as fh:
+                    fh.seek(-4, os.SEEK_END)
+                    ok = fh.read(4) == b"PAR1"
+            except Exception:
+                ok = False
+            if ok:
+                good.append(url)
+            else:
+                print(f"[dataset] skipping unreadable parquet shard {url}", flush=True)
+        return good
+
     def _iter_parquet_rows(self, file_path):
         parquet_file = pq.ParquetFile(file_path)
         for batch in parquet_file.iter_batches(batch_size=self.parquet_batch_size):
@@ -823,25 +878,25 @@ class LazyParquetDataset(IterableDataset):
             active = next_active
 
     def __iter__(self):
-        worker_info = get_worker_info()
-        worker_id = worker_info.id if worker_info else 0
-        num_workers = worker_info.num_workers if worker_info else 1
-
-        # Hugging Face Trainer prepares IterableDatasets with Accelerate, which
-        # already partitions the sample stream across distributed processes.
-        # Partitioning by RANK here as well would shard the data twice. Only
-        # split files among this process's DataLoader workers; Accelerate owns
-        # the process-level split.
+        # Files are split over `num_shards` slots: one per DataLoader worker of
+        # this process when Accelerate's IterableDatasetShard owns the
+        # rank-level split, or one per (rank, worker) pair when
+        # `shard_by_rank` is set and the trainer hands the DataLoader to the
+        # Trainer unwrapped (so nothing shards twice and nothing is decoded
+        # redundantly).
+        shard_id, num_shards, worker_id = self._shard_slots()
         if not self.urls_all:
             raise RuntimeError("No parquet files found for training")
         # Per-worker seed, so each worker walks its own stream instead of
         # replaying the state it inherited from the forked parent.
         rng = self.make_worker_rng(worker_id)
-        urls = list(self.urls_all)
-        if len(urls) < num_workers:
-            urls.extend(urls[i % len(urls)] for i in range(num_workers - len(urls)))
+        urls = self._readable_urls(self.urls_all)
+        if not urls:
+            raise RuntimeError(f"No readable parquet files among {len(self.urls_all)} for {self.data_type}")
+        if len(urls) < num_shards:
+            urls.extend(urls[i % len(urls)] for i in range(num_shards - len(urls)))
 
-        files_iter = urls[worker_id::num_workers]
+        files_iter = urls[shard_id::num_shards]
 
         while True:
             rng.shuffle(files_iter)
@@ -898,11 +953,11 @@ class LazyParquetDataset(IterableDataset):
         if has_image:
             image_file = sources["image"]
             if type(image_file) is list:
+                # Each image is decoded + resized once (~15-30 ms each for the
+                # 1024^2 PNGs of the edit sets); multi-image samples used to
+                # run this twice.
                 image = [self.process_image(f) for f in image_file]
-                # Handling multi images
-                # overwrite to process with simple pad
                 if len(image_file) > 1:
-                    image = [self.process_image(f) for f in image_file]
                     image = [[im[0], im[1], self.modality] for im in image]
             else:
                 image = [self.process_image(image_file)]
@@ -1344,16 +1399,19 @@ class FiniteParquetDatasetMixin:
         rng = self.make_worker_rng(worker_id)
         self._val_row_group_id = 0
         self._val_row_group_count = 1
-        if len(self.urls_all) < num_workers:
-            file_count = len(self.urls_all)
+        urls_all = self._readable_urls(self.urls_all)
+        if not urls_all:
+            raise RuntimeError(f"No readable parquet files among {len(self.urls_all)} for {self.data_type}")
+        if len(urls_all) < num_workers:
+            file_count = len(urls_all)
             file_id = worker_id % file_count
-            files_iter = [self.urls_all[file_id]]
+            files_iter = [urls_all[file_id]]
             self._val_row_group_id = worker_id // file_count
             self._val_row_group_count = (
                 (num_workers - 1 - file_id) // file_count
             ) + 1
         else:
-            files_iter = self.urls_all[worker_id::num_workers]
+            files_iter = urls_all[worker_id::num_workers]
 
         for sample in self._interleave_parquet_rows(files_iter, rng=rng):
             try:
@@ -1465,12 +1523,33 @@ class WeightedDataset(IterableDataset):
             if hasattr(dataset, "set_epoch"):
                 dataset.set_epoch(epoch)
 
+    @property
+    def shard_by_rank(self):
+        return getattr(self, "_shard_by_rank", False)
+
+    @shard_by_rank.setter
+    def shard_by_rank(self, value):
+        """Split the mixture across (rank, worker) pairs in-dataset.
+
+        Set by LLaVATrainer.get_train_dataloader, which then bypasses
+        Accelerate's IterableDatasetShard. Propagated to every sub-dataset so
+        their file lists and RNGs are rank-specific too.
+        """
+        self._shard_by_rank = bool(value)
+        for dataset in self.datasets:
+            if hasattr(dataset, "shard_by_rank"):
+                dataset.shard_by_rank = self._shard_by_rank
+
     def __iter__(self):
         worker_info = get_worker_info()
         worker_id = worker_info.id if worker_info else 0
         # Sub-datasets use derive_seed(self.dataset_seed, idx), so the raw
         # run seed used here cannot collide with any of them.
-        rng = random.Random(derive_seed(self.dataset_seed, self._epoch, worker_id))
+        if self.shard_by_rank:
+            rank, _ = dist_rank_world()
+            rng = random.Random(derive_seed(self.dataset_seed, self._epoch, "rank", rank, worker_id))
+        else:
+            rng = random.Random(derive_seed(self.dataset_seed, self._epoch, worker_id))
         iterators = [iter(dataset) for dataset in self.datasets]
         ratios = {it: r for r, it in zip(self.ratios, iterators)}
 

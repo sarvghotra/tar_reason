@@ -71,7 +71,7 @@ if REPO_ROOT not in sys.path:
 
 from llava.train.rl.pixel_reward import PixelVQAReward
 from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQAReward, geometric_mean
-from tok.ta_tok import TextAlignedTokenizer
+from tok.ta_tok import DEFAULT_SIGLIP2_PATH, TextAlignedTokenizer
 from tok.utils import ScalingLayer
 
 # Mirrors GRPOConfig defaults, so the advantages here match the ones training
@@ -86,6 +86,8 @@ def parse_args():
     p.add_argument("--model", default=None,
                    help="Tar LM scoring the latent reward (--reward_kind latent).")
     p.add_argument("--encoder_path", default=None, help="ta_tok.pth (latent reward only)")
+    p.add_argument("--siglip2_path", default="google/siglip2-so400m-patch14-384",
+                   help="SigLIP2 model id or local dir for the TA-Tok encoder config")
     p.add_argument("--reward_kind", default="latent", choices=["latent", "pixel"],
                    help="latent: score image tokens with a Tar LM. pixel: score the "
                         "generated PNGs with the VLM judge served by "
@@ -127,8 +129,10 @@ def init_distributed(args):
 
 
 class Encoder:
-    def __init__(self, path, device):
-        self.vt = TextAlignedTokenizer.from_checkpoint(path, load_teacher=False).to(device)
+    def __init__(self, path, device, siglip2_path=DEFAULT_SIGLIP2_PATH):
+        self.vt = TextAlignedTokenizer.from_checkpoint(
+            path, load_teacher=False, teacher=siglip2_path
+        ).to(device)
         self.vt.bottleneck.regularizer.set_eval_deterministic(deterministic=True)
         self.vt.input_type = "rec"
         # The Siglip processor already maps pixels to [-1, 1].
@@ -559,7 +563,7 @@ def main():
         reward = TarLatentVQAReward(
             tokenizer, forward_hidden, model.lm_head, device,
             RewardConfig(batch_size=args.batch_size, answer_suffix=args.answer_suffix), image_start_id)
-        encoder = Encoder(os.path.expanduser(args.encoder_path), device)
+        encoder = Encoder(os.path.expanduser(args.encoder_path), device, args.siglip2_path)
 
     lat, ref = {}, {}
     for it in its:

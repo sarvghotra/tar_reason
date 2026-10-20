@@ -10,6 +10,12 @@ from transformers import AutoConfig, AutoModel, Siglip2VisionConfig, Siglip2Visi
 from . import models
 from .utils import ScalingLayer
 
+# SigLIP2 model whose config defines the TA-Tok encoder. Only its config is
+# read (the weights come from the TA-Tok checkpoint), so a local copy of the
+# model directory works too; pass it as `teacher` (e.g. `--siglip2_path` in
+# llava/train/train.py) on machines without Hugging Face Hub access.
+DEFAULT_SIGLIP2_PATH = 'google/siglip2-so400m-patch14-384'
+
 
 class TextAlignedTokenizer(nn.Module):
     def __init__(
@@ -17,7 +23,7 @@ class TextAlignedTokenizer(nn.Module):
         bottleneck,
         bottleneck_token_num=256,
         input_size=384,
-        teacher='/home/jeet/links/scratch/models/pre_train/siglip2-so400m-patch14-384',
+        teacher=DEFAULT_SIGLIP2_PATH,
         input_type='quant', # choose from ['quant', 'rec', 'indices']
         pool_scale=1, # choose from [1, 2, 3]
         decoder_depth=3,
@@ -36,15 +42,13 @@ class TextAlignedTokenizer(nn.Module):
 
         self.bottleneck_dim = bottleneck['args']['bottleneck_dim']
 
-        # Only the config is read here (weights come from the TA-Tok checkpoint).
-        # SIGLIP2_PATH points at a local copy, for nodes without internet. It overrides any teacher
-        # path (from_checkpoint sets a user-specific one); a local path that does not exist here
-        # falls back to the HF id.
-        local_teacher = os.environ.get('SIGLIP2_PATH', '/scratch/jeet/models/pre_train/siglip2-so400m-patch14-384')
-        if os.path.isdir(local_teacher):
+        # SIGLIP2_PATH (env) points at a local SigLIP2 copy for GPU nodes without internet (Fir, TamIA,
+        # Rorqual) and wins over `teacher` when it exists: the RL launchers export it, and train_grpo.py
+        # has no --siglip2_path (train.py / check_reward.py pass `teacher` from --siglip2_path).
+        # Only the config is read here; the weights come from the TA-Tok checkpoint.
+        local_teacher = os.environ.get('SIGLIP2_PATH')
+        if local_teacher and os.path.isdir(local_teacher):
             teacher = local_teacher
-        elif teacher.startswith('/') and not os.path.isdir(teacher):
-            teacher = 'google/siglip2-so400m-patch14-384'
 
         self.encoder_config = AutoConfig.from_pretrained(teacher)
         self.encoder = AutoModel.from_config(self.encoder_config).vision_model
@@ -89,19 +93,16 @@ class TextAlignedTokenizer(nn.Module):
         return next(self.parameters()).dtype
 
     @classmethod
-    def from_checkpoint(cls, ckpt, load_teacher=True, **kwargs):
-        # ckpt_path = ckpt
+    def from_checkpoint(cls, ckpt, load_teacher=True, teacher=DEFAULT_SIGLIP2_PATH, **kwargs):
+        """Build from a TA-Tok checkpoint.
+
+        `teacher` is the SigLIP2 model id or local directory used for the
+        encoder config. It always overrides the id stored in the checkpoint's
+        args, so a run can point at a local copy without editing the code.
+        """
         ckpt = torch.load(ckpt, map_location='cpu')
-        ckpt_kwargs = ckpt["model"]["args"]
-
-        # from llava.utils import rank0_print
-        # rank0_print("ckpt: ", ckpt_path)
-        # rank0_print("**kwargs: ", kwargs)
-        # rank0_print("**ckpt_kwargs: ", ckpt_kwargs)
-        # import sys
-        # sys.exit(0)
-
-        ckpt_kwargs['teacher'] = "/home/jeet/links/scratch/models/pre_train/siglip2-so400m-patch14-384"
+        ckpt_kwargs = dict(ckpt["model"]["args"])
+        ckpt_kwargs['teacher'] = teacher
         model = cls(**kwargs, **ckpt_kwargs)
         sd = ckpt["model"]["sd"]
         if not load_teacher:

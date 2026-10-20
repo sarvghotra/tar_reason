@@ -65,11 +65,17 @@ from llava.train.rl.reward import ANSWER_SUFFIXES, answer_variants
 # forward pass, fp32 softmax at the last position) is shared.
 #   template_kwargs: extra kwargs for apply_chat_template
 #   soft_tokens:     whether the processor takes a visual token budget
+#   prefix_share:    the image prefix can be run once per image and its KV
+#                    cache reused for every question (Judge.score_shared);
+#                    needs a model whose text positions after the image are
+#                    plain consecutive ids (Qwen3-VL's get_rope_index)
 JUDGE_PROFILES = {
-    "gemma4": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True),
-    "qwen3_vl": dict(template_kwargs={}, soft_tokens=False),
+    "gemma4": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
+                   prefix_share=False),
+    "qwen3_vl": dict(template_kwargs={}, soft_tokens=False, prefix_share=True),
 }
-DEFAULT_PROFILE = dict(template_kwargs={}, soft_tokens=False)
+DEFAULT_PROFILE = dict(template_kwargs={}, soft_tokens=False, prefix_share=False)
+QUESTION_PLACEHOLDER = "@@QUESTION@@"
 
 
 def parse_args():
@@ -96,6 +102,11 @@ def parse_args():
     p.add_argument("--device", default="cuda")
     p.add_argument("--ready_file", default=None,
                    help="Touched once the model is loaded and the socket is listening.")
+    p.add_argument("--share_image_prefix", action=argparse.BooleanOptionalAction, default=True,
+                   help="Run each image's prompt prefix (up to the end of the image tokens) "
+                        "once and score all its questions from that KV cache, instead of "
+                        "one full forward per (image, question) row. Same numbers up to "
+                        "bf16 batch-layout noise; Qwen3-VL only (other judges ignore it).")
     p.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=True)
     return p.parse_args()
 
@@ -104,7 +115,7 @@ class Judge:
     """Frozen VLM scoring (image, question) rows by answer-token probability."""
 
     def __init__(self, model_path, answer_suffix, batch_size, device, attn_implementation,
-                 image_soft_tokens=None, answer_id_mode="strict"):
+                 image_soft_tokens=None, answer_id_mode="strict", share_image_prefix=False):
         from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor
 
         self.model_type = getattr(AutoConfig.from_pretrained(model_path), "model_type", "?")
@@ -139,6 +150,10 @@ class Judge:
         self._answer_cache = {}
         space = self.processor.tokenizer.encode(" ", add_special_tokens=False)
         self._space_id = space[0] if len(space) == 1 else None
+        self.share_image_prefix = share_image_prefix and self.profile["prefix_share"]
+        if share_image_prefix and not self.share_image_prefix:
+            print(f"[reward] --share_image_prefix ignored for {self.model_type}", flush=True)
+        self._prefix_checked = False
 
     def question_text(self, question: str) -> str:
         return f"{question}{self._suffix_text}"
@@ -182,6 +197,15 @@ class Judge:
 
         Returns one list of probabilities per image, aligned with its vqa list.
         """
+        if self.share_image_prefix and images:
+            out = self.score_shared(images, vqa_lists)
+            if out is not None:
+                return out
+        return self.score_rows(images, vqa_lists)
+
+    @torch.inference_mode()
+    def score_rows(self, images, vqa_lists):
+        """One full forward per (image, question) row."""
         rows = []
         for i, (image, vqa) in enumerate(zip(images, vqa_lists)):
             for slot, (question, answer) in enumerate(vqa):
@@ -201,6 +225,108 @@ class Judge:
             for j, (i, slot, _, _, ids) in enumerate(chunk):
                 out[i][slot] = float(probs[j, ids].sum()) if ids else 0.0
         return out
+
+    def _split_template(self, image):
+        """(prefix text, suffix template) of one row, split right after the
+        image tokens; the suffix holds QUESTION_PLACEHOLDER."""
+        messages = [{"role": "user", "content": [
+            {"type": "image", "image": image},
+            {"type": "text", "text": QUESTION_PLACEHOLDER},
+        ]}]
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, **self.profile["template_kwargs"])
+        end = "<|vision_end|>"
+        assert text.count(end) == 1 and text.count(QUESTION_PLACEHOLDER) == 1, text
+        head, tail = text.split(end)
+        return head + end, tail
+
+    @torch.inference_mode()
+    def score_shared(self, images, vqa_lists):
+        """Image prefix once per image, then every question from its KV cache.
+
+        A row's tokens are [prefix | suffix] with the split right after
+        ``<|vision_end|>`` (a special token, so tokenising the halves apart
+        gives the same ids as the whole row; checked once against
+        ``score_rows``' tokenisation). Suffix positions are the prefix's last
+        text position + 1, + 2, ... in all three M-RoPE axes, exactly what
+        ``get_rope_index`` assigns to text after an image. Returns None (caller
+        falls back to ``score_rows``) when the images' prefixes differ in length.
+        """
+        from transformers import DynamicCache
+
+        tok = self.processor.tokenizer
+        prefix_text, suffix_tmpl = self._split_template(images[0])
+        enc = self.processor(text=[prefix_text] * len(images), images=list(images),
+                             return_tensors="pt", padding=True)
+        if not bool(enc["attention_mask"].all()):
+            return None             # mixed image sizes -> ragged prefixes
+        enc = enc.to(self.device)
+        prefix_ids = enc["input_ids"]
+        G, P = prefix_ids.shape
+        lm = self.model.model
+        out = lm(input_ids=prefix_ids, attention_mask=enc["attention_mask"],
+                 pixel_values=enc["pixel_values"], image_grid_thw=enc["image_grid_thw"],
+                 use_cache=True)
+        prefix_cache = out.past_key_values
+        pos, _ = lm.get_rope_index(prefix_ids, enc["image_grid_thw"], None,
+                                   attention_mask=enc["attention_mask"])
+        lm.rope_deltas = None       # computed per call here; don't leak into score_rows
+        next_pos = pos.amax(dim=(0, 2)) + 1                     # (G,)
+
+        rows = []                    # (image idx, slot, suffix ids, answer ids)
+        for i, vqa in enumerate(vqa_lists):
+            for slot, (question, answer) in enumerate(vqa):
+                text = suffix_tmpl.replace(QUESTION_PLACEHOLDER, self.question_text(question))
+                rows.append((i, slot, tok.encode(text, add_special_tokens=False),
+                             self.answer_ids(question, answer)))
+        if not self._prefix_checked and rows:
+            self._check_split(images[rows[0][0]], prefix_ids[rows[0][0]], rows[0][2],
+                              vqa_lists[rows[0][0]][rows[0][1]][0])
+        pad = tok.pad_token_id if tok.pad_token_id is not None else 0
+        result = [[0.0] * len(vqa) for vqa in vqa_lists]
+        for start in range(0, len(rows), self.batch_size):
+            chunk = rows[start:start + self.batch_size]
+            R, S = len(chunk), max(len(r[2]) for r in chunk)
+            idx = torch.tensor([r[0] for r in chunk], device=self.device)
+            ids = torch.full((R, S), pad, dtype=torch.long)
+            mask = torch.zeros((R, P + S), dtype=torch.long)
+            mask[:, :P] = 1
+            lens = []
+            for j, (_, _, sfx, _) in enumerate(chunk):
+                ids[j, :len(sfx)] = torch.tensor(sfx)
+                mask[j, P:P + len(sfx)] = 1
+                lens.append(len(sfx))
+            ids, mask = ids.to(self.device), mask.to(self.device)
+            position_ids = (next_pos[idx][:, None] + torch.arange(S, device=self.device))
+            position_ids = position_ids.unsqueeze(0).expand(3, -1, -1)
+            cache = DynamicCache()
+            for layer, kv in enumerate(prefix_cache.layers):
+                cache.update(kv.keys[idx], kv.values[idx], layer)
+            hidden = lm(input_ids=ids, attention_mask=mask, position_ids=position_ids,
+                        past_key_values=cache, use_cache=True,
+                        cache_position=torch.arange(P, P + S, device=self.device)
+                        ).last_hidden_state
+            last = hidden[torch.arange(R, device=self.device),
+                          torch.tensor(lens, device=self.device) - 1]
+            # `generate` upcasts before the softmax; match it for identical numbers.
+            probs = torch.softmax(self.model.lm_head(last).float(), dim=-1)
+            for j, (i, slot, _, aids) in enumerate(chunk):
+                result[i][slot] = float(probs[j, aids].sum()) if aids else 0.0
+        return result
+
+    def _check_split(self, image, prefix_ids, suffix_ids, question):
+        """Once: [prefix | suffix] must equal score_rows' tokenisation of the row."""
+        messages = [[{"role": "user", "content": [
+            {"type": "image", "image": image},
+            {"type": "text", "text": self.question_text(question)},
+        ]}]]
+        full = self._template_inputs(messages)["input_ids"][0].tolist()
+        got = prefix_ids.tolist() + list(suffix_ids)
+        if full != got:
+            raise RuntimeError("share_image_prefix: split tokenisation differs from the "
+                               f"full row ({len(got)} vs {len(full)} ids); run with "
+                               "--no-share_image_prefix")
+        self._prefix_checked = True
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -265,7 +391,7 @@ def main():
     t0 = time.time()
     judge = Judge(args.model, args.answer_suffix, args.batch_size,
                   args.device, args.attn_implementation, args.image_soft_tokens,
-                  args.answer_id_mode)
+                  args.answer_id_mode, args.share_image_prefix)
     print(f"[reward] loaded {judge.model_type} in {time.time() - t0:.0f}s", flush=True)
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)

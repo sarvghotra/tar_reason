@@ -607,10 +607,27 @@ class LLaVATrainer(Trainer):
             dataloader_params["sampler"] = self._get_train_sampler()
             dataloader_params["drop_last"] = self.args.dataloader_drop_last
             dataloader_params["prefetch_factor"] = self.args.dataloader_num_workers * 2 if self.args.dataloader_num_workers != 0 else None
+            return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
 
-        dataloader = self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
-
-        return dataloader
+        # Iterable (parquet) datasets: shard by rank inside the dataset and hand
+        # the DataLoader to the Trainer *unwrapped*. accelerator.prepare() would
+        # wrap it in IterableDatasetShard, which makes every rank iterate the
+        # full global batch (bs * world_size samples per micro-batch) and keep
+        # only its slice -- i.e. world_size x redundant decoding. That was the
+        # bottleneck of the 16-GPU SFT job: ~10 s of the 11.8 s step was
+        # workers decoding 256 samples per rank per step. The Trainer moves
+        # batches to the device itself (_prepare_inputs), gradient sync does
+        # not depend on the dataloader (sync_with_dataloader=False), and
+        # max_steps bounds the infinite stream, so nothing needs the wrapper.
+        if not hasattr(train_dataset, "shard_by_rank"):
+            raise TypeError(
+                f"{type(train_dataset).__name__} must expose `shard_by_rank` so the "
+                "unwrapped DataLoader yields rank-specific samples."
+            )
+        train_dataset.shard_by_rank = True
+        if self.args.dataloader_num_workers > 0 and self.args.dataloader_prefetch_factor is not None:
+            dataloader_params["prefetch_factor"] = self.args.dataloader_prefetch_factor
+        return DataLoader(train_dataset, **dataloader_params)
 
     def create_optimizer(self):
         """
