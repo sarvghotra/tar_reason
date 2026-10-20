@@ -72,16 +72,24 @@ class TATokVisionTower(nn.Module):
         pool_scale = int(os.environ.get('POOL_SCALE', pool_scale))
 
         if pool_scale is None: pool_scale = 1
-        if type(images) is list:
-            image_features, tokens = [], []
-            for image in images:
-                image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), pool_scale=pool_scale)
-                image_feature, token = image_forward_out['vq_feats'].to(image.dtype), image_forward_out['bottleneck_rep']
-                image_features.append(image_feature)
-                tokens.append(token)
-        else:
-            image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), pool_scale=pool_scale)
-            image_features, tokens = image_forward_outs['vq_feats'].to(images.dtype), image_forward_outs['bottleneck_rep']
+        # Only the encoder side is needed here: the LLM consumes the discrete
+        # `bottleneck_rep` tokens (and `vq_feats`), never the TA-Tok decoder's
+        # reconstruction, so skip the 3-layer decoder that the full
+        # TextAlignedTokenizer.forward would run (~2x the tower time per
+        # micro-batch). The tower is frozen; no_grad (not inference_mode: the
+        # token ids become embedding indices that autograd saves) drops the
+        # bookkeeping too.
+        with torch.no_grad():
+            if type(images) is list:
+                image_features, tokens = [], []
+                for image in images:
+                    image_forward_out = self.vision_tower.encode(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), pool_scale=pool_scale)
+                    image_feature, token = image_forward_out['vq_feats'].to(image.dtype), image_forward_out['bottleneck_rep']
+                    image_features.append(image_feature)
+                    tokens.append(token)
+            else:
+                image_forward_outs = self.vision_tower.encode(images.to(device=self.device, dtype=self.dtype), pool_scale=pool_scale)
+                image_features, tokens = image_forward_outs['vq_feats'].to(images.dtype), image_forward_outs['bottleneck_rep']
 
         return {"image_features": image_features, "tokens": tokens, 'pool_scale': pool_scale}
 
