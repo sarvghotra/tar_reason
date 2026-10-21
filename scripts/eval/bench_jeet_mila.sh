@@ -36,7 +36,7 @@
 #   N_ITERS      images per sample INCLUDING the draft (default 4 = draft + 3 corrections). With
 #                N_ITERS=2 MDP and full history are identical.
 #   SEEDS        space-separated (defaults = his: geneval2 "2213 713 13", genai "13 17 91", tiif "17 91 13")
-#   NUM_PROMPTS  GenAI-Bench subset, 800 (his default) or 1600
+#   NUM_PROMPTS  GenAI-Bench prompts: 1600 (default, the full official set) or 800 (jeet's subset, same ids)
 #   SINGLE_PASS  1 = base-model baseline (--single_pass)
 #   OUT_ROOT     default $SCRATCH/tar_reason/results_jeet
 #
@@ -75,7 +75,7 @@ LORA_PATH=${LORA_PATH:-}
 RL_FT=${RL_FT:-}
 MDP=${MDP:-1}
 N_ITERS=${N_ITERS:-4}
-NUM_PROMPTS=${NUM_PROMPTS:-800}
+NUM_PROMPTS=${NUM_PROMPTS:-1600}   # full official GenAI-Bench (jeet used 800)
 SINGLE_PASS=${SINGLE_PASS:-0}
 OUT_ROOT=${OUT_ROOT:-/network/scratch/s/singhsd/tar_reason/results_jeet}
 REPEAT=1
