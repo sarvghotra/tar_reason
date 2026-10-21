@@ -4,14 +4,13 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
 ## Now (2026-10-21 EDT)
-- **Nothing running on Mila.** jeet's eval pipeline ported and sanity-checked; promptmix-run-500 done through it (3 seeds × 3 benches,
-  MDP n4; `runs.md`). Told Fir.
-- Pipeline: `MODEL_NAME=<label> MODEL_PATH=<merged dir> BENCH=geneval2|genai|tiif MDP=1 N_ITERS=4 SEEDS=<one seed> sbatch
-  --partition=long --gres=gpu:a100l:2 --cpus-per-task=8 --mem=96G --time=12:00:00 --no-requeue scripts/eval/bench_jeet_mila.sh`
-  (one job per bench × seed: ~1 h 10 GenEval2, ~50 min GenAI / TIIF on 2 A100); aggregate with `eval/stats/*.py --run LABEL=DIR`.
-  A rank can segfault at teardown after writing everything: the launcher now checks outputs (`f3269f5`); TIIF still needs a clean exit.
-- Not yet through jeet's pipeline: t8, F-800, promptmix t1, pm-run-400 (merged). Waiting: t11 (copy).
-- Watcher: none.
+- **Running (jeet's pipeline, MDP n4, 3 seeds; ids `$SCRATCH/tar_reason/jeet_jobs2.txt`):** F-800 (`darshan_mr_fir_merged800`) × GenEval2 /
+  GenAI / TIIF (9 jobs), and promptmix-run-500 GenAI re-run on the **full 1,600 prompts** (3 jobs).
+- **GenAI-Bench = full 1,600 prompts from now on** (user, 2026-10-21; launcher default `59a3906`; `NUM_PROMPTS=800` for jeet's subset).
+  Results go to `results_jeet/genai-bench-1600/`; the earlier pm-run-500 GenAI-800 numbers stay in `runs.md` as the 800-subset.
+- Pipeline usage: see the header of `scripts/eval/bench_jeet_mila.sh`; one 2-GPU `long` job per bench × seed.
+- Not yet through jeet's pipeline: t8, promptmix t1, pm-run-400. Waiting: t11 (copy).
+- Watcher: background in this session.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -48,6 +47,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-21: user: GenAI on the full 1,600 prompts; F-800 through jeet's pipeline. Submitted 9 F-800 + 3 pm-500 GenAI-1600 jobs.
 - 2026-10-21: pm-run-500 through jeet's pipeline done (runs.md); deleted the jeet-pipeline Inbox line; told Fir.
 - 2026-10-20 evening: ported jeet's pipeline (`4e7e0e4`); merged pm-run 400/500; sanity + pm-500 jobs submitted; t7 launcher defaults updated (`7486266`). Removed the merge-notice, pm-run-finished and old official-evals Inbox lines (acted on).
 - 2026-10-20 09:00: all 30 seed jobs done; 3-seed table in runs.md; told Fir.
