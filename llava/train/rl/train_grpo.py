@@ -668,6 +668,16 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
             s[f"{prefix}delta_am_{r}"] = sum(deltas)
             s[f"{prefix}improved_{r}"] = sum(d > 0.05 for d in deltas)
             s[f"{prefix}degraded_{r}"] = sum(d < -0.05 for d in deltas)
+            # Mean AM delta of the refines whose parent already passed every
+            # question (the cost of flagging a correct draft) and of those
+            # whose parent failed something (the gain on drafts that needed it).
+            rate(f"delta_am_flagged_pass_{r}", 0, 0)
+            rate(f"delta_am_flagged_fail_{r}", 0, 0)
+            for n, d in zip(level, deltas):
+                if n.looks_good or n.parent.per_question is None:
+                    continue
+                ok = all(q >= fail_threshold for q in n.parent.per_question)
+                rate(f"delta_am_flagged_{'pass' if ok else 'fail'}_{r}", d, 1)
             for src in CRITIQUE_SOURCES:
                 s[f"{prefix}critique_{src}_{r}"] = sum(n.critique_source == src for n in level)
             s[f"{prefix}critique_fallback_{r}"] = sum(n.critique_fallback for n in level)

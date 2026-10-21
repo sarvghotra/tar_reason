@@ -258,6 +258,36 @@ class LLaVATrainer(Trainer):
         }
         self._collecting_eval_per_type_loss = False
 
+        # Optional in-loop generation eval (draft / critic / refine metrics with
+        # the GenEval2 judge); see llava/train/gen_eval.py.
+        self._gen_eval = None
+        if getattr(self.args, "gen_eval_data_path", None):
+            from llava.train.gen_eval import GenEvalConfig, GenEvaluator
+            a = self.args
+            cfg = GenEvalConfig(
+                data_path=a.gen_eval_data_path, steps=a.gen_eval_steps,
+                max_prompts=a.gen_eval_max_prompts, bank=a.gen_eval_bank,
+                judge_python=a.gen_eval_judge_python, judge_model=a.gen_eval_judge_model,
+                judge_port=a.gen_eval_judge_port, ar_path=a.gen_eval_ar_path,
+                encoder_path=a.gen_eval_encoder_path, decoder_path=a.gen_eval_decoder_path,
+                siglip2_path=a.gen_eval_siglip2_path, cfg_scale=a.gen_eval_cfg_scale,
+                gen_batch_size=a.gen_eval_gen_batch_size, log_images=a.gen_eval_log_images,
+                seed=a.gen_eval_seed)
+            tok = getattr(self, "processing_class", None) or self.tokenizer
+            self._gen_eval = GenEvaluator(cfg, tok, a.output_dir, a.device)
+
+    def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix="eval"):
+        metrics = super().evaluate(eval_dataset=eval_dataset, ignore_keys=ignore_keys,
+                                   metric_key_prefix=metric_key_prefix)
+        if self._gen_eval is not None:
+            step = self.state.global_step
+            final = self.state.max_steps > 0 and step >= self.state.max_steps
+            extra = self._gen_eval.maybe_run(self.model, step, final)
+            if extra:
+                self.log(extra)
+                metrics.update(extra)
+        return metrics
+
     def _discover_data_types(self, dataset):
         types = set()
         datasets_ = getattr(dataset, "datasets", None)

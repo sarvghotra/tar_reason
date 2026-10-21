@@ -58,6 +58,7 @@ class GenEval2PromptDataset:
             raise ValueError(f"No json_path entries in {yaml_path}")
 
         rows = []
+        per_set_idx: Dict[str, int] = {}   # row position within its set (bank lookups)
         for path, name in paths:
             path = os.path.expanduser(path)
             if not path.endswith(".jsonl"):
@@ -86,7 +87,9 @@ class GenEval2PromptDataset:
                         "skills": skills,
                         "atom_count": int(obj.get("atom_count", len(vqa_list))),
                         "set": name,
+                        "idx": per_set_idx.setdefault(name, 0),
                     })
+                    per_set_idx[name] += 1
         return rows
 
     def __len__(self):

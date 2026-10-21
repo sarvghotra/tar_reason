@@ -117,6 +117,29 @@ class TrainingArguments(transformers.TrainingArguments):
                           "weights (no optimizer/scheduler/RNG/trainer global state) under the `weights_only/` "
                           "sub-directory of the output dir. Useful to keep many eval-able snapshots cheaply."},
     )
+    # In-loop generation eval (llava/train/gen_eval.py). Off unless
+    # gen_eval_data_path is set. Runs inside Trainer.evaluate on the training
+    # GPUs: the decision metric at every eval, the generation evals every
+    # gen_eval_steps (and at the final step).
+    gen_eval_data_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "YAML of GenEval2-format val .jsonl files (with lognames) for the generation eval."},
+    )
+    gen_eval_steps: int = field(default=4000, metadata={"help": "Generation eval cadence in steps; must be a "
+                                                                  "multiple of eval_steps to ever fire."})
+    gen_eval_max_prompts: int = field(default=400, metadata={"help": "Prompts per val set (first rows of the file)."})
+    gen_eval_bank: Optional[str] = field(default=None, metadata={"help": "Draft bank JSONL (build_draft_bank.py)."})
+    gen_eval_judge_python: str = field(default="", metadata={"help": "Python of the judge env (pixel_reward_server)."})
+    gen_eval_judge_model: str = field(default="", metadata={"help": "GenEval2 judge VLM checkpoint."})
+    gen_eval_judge_port: int = field(default=8765)
+    gen_eval_ar_path: Optional[str] = field(default=None, metadata={"help": "AR de-tokenizer checkpoint."})
+    gen_eval_encoder_path: Optional[str] = field(default=None, metadata={"help": "TA-Tok checkpoint."})
+    gen_eval_decoder_path: Optional[str] = field(default=None, metadata={"help": "VQ decoder checkpoint."})
+    gen_eval_siglip2_path: Optional[str] = field(default=None)
+    gen_eval_cfg_scale: float = field(default=4.0)
+    gen_eval_gen_batch_size: int = field(default=16)
+    gen_eval_log_images: int = field(default=4)
+    gen_eval_seed: int = field(default=42)
 
 
 def find_self_attn_linear_names(model, exclude_keywords=("vision_tower", "embed_tokens", "lm_head")):
