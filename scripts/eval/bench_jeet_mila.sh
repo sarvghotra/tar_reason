@@ -180,9 +180,11 @@ geneval2_seed() {
     echo "seed ${SEED}: done, skipping"; return 0
   fi
   if [ ! -f "$RESULT_DIR/.gen_done" ]; then
+    # Success = all iteration outputs on disk, not torchrun's exit code: a rank can segfault at
+    # teardown after writing everything (seen 2026-10-20), and a rerun would wipe the finished images.
     echo "$(date +%H:%M:%S) seed ${SEED}: generation"
     run_gen --out_dir "$RESULT_DIR" --prompts_file "$EVAL_SET" --geneval2 --seed "$SEED" \
-      && iters_have "$RESULT_DIR" geneval2_results.json && touch "$RESULT_DIR/.gen_done" \
+      ; iters_have "$RESULT_DIR" geneval2_results.json && touch "$RESULT_DIR/.gen_done" \
       || { echo "GenEval2 generation failed (seed ${SEED})"; exit 1; }
   fi
   echo "$(date +%H:%M:%S) seed ${SEED}: scoring ITER-1..ITER-${N_ITERS} (evaluation_optz.py soft_tifa, one iteration per GPU)"
@@ -235,7 +237,7 @@ genai_seed() {
     echo "$(date +%H:%M:%S) seed ${SEED}: generation"
     run_gen --gen_model "$GEN_MODEL" --output_dir "$OUTPUT_DIR" --root_dir "$GENAI_ROOT" \
         --eval_set_dir "$EVAL_SET_DIR" --seed "$SEED" \
-      && genai_images_complete "$SEED_DIR" && touch "$SEED_DIR/.gen_done" \
+      ; genai_images_complete "$SEED_DIR" && touch "$SEED_DIR/.gen_done" \
       || { echo "GenAI-Bench generation failed (seed ${SEED})"; exit 1; }
   fi
   echo "$(date +%H:%M:%S) seed ${SEED}: VQAScore ${SCORE_MODEL}, ${NUM_PROMPTS} prompts, one iteration per GPU (${N_GPUS} at a time)"
