@@ -32,6 +32,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 - Partitions: `main` caps a user at 2 GPUs / 8 CPUs / 48 GB; `long` has no cap but is preemptible (requeued jobs
   resume); `short-unkillable` allows 4 GPUs for 3 h, not preempted (QoS: 4 GPUs per user). Use `a100l` (80 GB);
   the 2 `h100` nodes are usually full. A full `a100l` node with 4 free GPUs is rare on `long`.
+- Bad nodes (scratch `Remote I/O error`, jobs die in ~1 min): **cn-g028, cn-g029** (2026-10-15/21). Submit with `--exclude=cn-g028,cn-g029`.
 - On A100, t7 is ~7.3 min/step (rollout ~225 s, decode+judge ~130 s, train ~95 s); a val800 validation with
   `--eval_oracle` takes 1 h 46 min on 3 ranks. Judge loads in ~50 s.
 - sbatch copies the script at submission: editing a launcher does not change already-queued jobs.
@@ -47,6 +48,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-21 08:50: cn-g028 has the same scratch I/O error as cn-g029; F-800 GenEval2 seeds 2213/713 resubmitted off it, pending jobs updated to exclude both.
 - 2026-10-21: user: GenAI on the full 1,600 prompts; F-800 through jeet's pipeline. Submitted 9 F-800 + 3 pm-500 GenAI-1600 jobs.
 - 2026-10-21: pm-run-500 through jeet's pipeline done (runs.md); deleted the jeet-pipeline Inbox line; told Fir.
 - 2026-10-20 evening: ported jeet's pipeline (`4e7e0e4`); merged pm-run 400/500; sanity + pm-500 jobs submitted; t7 launcher defaults updated (`7486266`). Removed the merge-notice, pm-run-finished and old official-evals Inbox lines (acted on).
