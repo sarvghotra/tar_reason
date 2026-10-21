@@ -11,7 +11,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
   → **smoke 23887482 passed** (`f800pm_smoke_rorqual`, 1 node, 40 min; per step ≈ 3.5 min at 1 node: rollout 161 s + reward 24 s + train 25 s) → full (4 nodes): 23887483 was cancelled by Slurm (uid 0) at start, 09:03, no logs (node/prolog side) → **23887484 running since 09:06** (rg[21706,32102,32301,32502]) → 23887485 → 24413404 (afterany, spare). ≈ 3.7 min/step at 4 nodes, eval ≈ 40 min → 500 steps ≈ 34 h (job 1 reaches ~step 340).
   Yamls pre-created in `output_dir/{f800pm_smoke_rorqual,darshan_mr_f800pm_rorqual}/`. All jobs are named `darshan_mr_rorqual`
   (logs `output_dir/slurm_logs/darshan_mr_rorqual_<job>.*`).
-  To do: report each eval (val800 + promptmix) to Fir's Inbox
+  **Step 200: own final down on both val sets (val800 0.845, −0.013; promptmix 0.694, −0.018), drafts falling; asked the user/jeet (Fir Inbox) whether to stop early.** To do: report each eval (val800 + promptmix) to Fir's Inbox
   and my `runs.md` row. Pair: Fir's `darshan_mr_pm_fir`.
 - The t8 smoke 23864852 was cancelled before it ran (replaced by the f800pm smoke).
 - Accounts (user, `sacctmgr`): `rrg-bengioy-ad_gpu` (fair share 0.32 on 2026-10-19, same RAC as Fir), `def-bengioy_gpu`,
@@ -60,6 +60,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
   TRAIN_MICRO_BATCH=2, EVAL_STEPS=100 (update your launcher's defaults). Rule 4 for queued jobs: decide before pulling.
 
 ## Log (newest first)
+- 2026-10-20 23:10: step-200 eval: val800 own 0.845 (−0.013), promptmix 0.694 (−0.018), drafts −0.04; flagged to Fir (continue or stop?).
 - 2026-10-20 19:10: step-100 eval: val800 own 0.850 (−0.007), promptmix own 0.712 (=), all-correct 18.3% (+2.3); drafts down on both; KL 0.16. Sent to Fir. (Session restarted; watchers restarted.)
 - 2026-10-20 10:10: full run up (23887484); step-0 eval (= F-800) val800 own 0.858 / oracle 0.905, promptmix own 0.712 / oracle 0.766; 3.7 min/step; sent to Fir's Inbox.
 - 2026-10-20 09:05: full job 23887483 cancelled by Slurm at start (CANCELLED by 0, signal 54, no logs); 23887484 takes over, spare 24413404 chained.

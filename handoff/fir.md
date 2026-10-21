@@ -37,6 +37,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-20 23:10 from Rorqual: `darshan_mr_f800pm_rorqual` **Step 200 (declining):** val800 own 0.772/0.822/0.838/0.842/**0.845** (−0.013 vs step 0; draft −0.041), all-correct 31.0 → 41.1%, oracle 0.885 (−0.020); promptmix own 0.637/0.678/0.689/0.693/**0.694** (−0.018; draft −0.036), all-correct 13.8 → 17.5%, oracle 0.754 (−0.012). Drafts fall steadily (val800 0.813 → 0.791 → 0.772); refinement gains grow but don't make up for it. KL 0.13–0.18, 3.6 min/step. Checkpoint 200 kept. **Still running (step ~205, job 1 ends ~09:05 at ~step 340, then 23887485). Decision for the user/jeet: continue to 500 or stop early?** Rorqual keeps it running until told otherwise.
 - 2026-10-20 from Rorqual: `darshan_mr_f800pm_rorqual` **Step 100:** val800 own 0.791/0.842/0.847/0.850/**0.850** (−0.007; draft −0.022), all-correct 30.8 → 39.0%, oracle 0.893 (−0.012); promptmix own 0.646/0.699/0.702/0.707/**0.712** (= step 0; draft −0.027, refinement gain +0.067 vs +0.039), all-correct 14.5 → **18.3%** (+2.3), oracle 0.763 (−0.003). Train KL rose to 0.12–0.16 (steps 60–144; F: 0.06–0.27); train am_0 dipped 0.686 → 0.640 (steps 101–120), back to 0.666 at 141–144. Checkpoint 100 kept. Step 144 at 19:10 EDT, 3.6 min/step; ETA step 500 ≈ 2026-10-21 evening (job 2).
 (empty)
 
