@@ -564,10 +564,15 @@ def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig) -> Dict[str, 
     normalised among the M images of its own critique, and a critique's
     reflection gets the mean ``reward_txt`` of its images normalised among the
     parent's critiques (a "looks good" critique is its own single-image
-    critique, reward = the stop reward). Returns the zero-variance / total
-    group counts of both levels for logging.
+    critique, reward = the stop reward). Returns the group counts of both
+    levels for logging: total, zero-variance, floor-bound (0 < std <
+    ``adv_std_floor``) and the summed group std, for the image level split
+    into drafts (round 0) and refines (later rounds), plus the critique level.
     """
-    c = dict(zero_var=0, groups=0, zero_var_crit=0, groups_crit=0)
+    c: Dict[str, float] = {}
+    for tag in ("draft", "refine", "crit"):
+        for k in ("groups", "zero_var", "floor", "std_sum"):
+            c[f"{k}_{tag}"] = 0.0
     M = args.images_per_critique
     for level in batch.nodes_by_round:
         if not level:
@@ -579,11 +584,12 @@ def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig) -> Dict[str, 
             keys = [(id(n.parent), n.critique_idx) for n in level]
         else:
             keys = [id(n.parent) for n in level]
-        adv, zv = normalize_groups([n.reward for n in level], keys, gcfg)
+        adv, st = normalize_groups([n.reward for n in level], keys, gcfg)
         for n, a in zip(level, adv):
             n.adv = n.adv_txt = a
-        c["zero_var"] += zv
-        c["groups"] += len(set(keys))
+        tag = "draft" if level[0].round == 0 else "refine"
+        for k, v in st.items():
+            c[f"{k}_{tag}"] += v
         if not two_level:
             continue
         by_crit: Dict[tuple, List[Node]] = {}
@@ -592,12 +598,12 @@ def assign_advantages(batch: RolloutBatch, args, gcfg: GRPOConfig) -> Dict[str, 
         crit_keys = list(by_crit)
         crit_reward = [sum(n.reward_txt for n in by_crit[k]) / len(by_crit[k]) for k in crit_keys]
         parent_keys = [by_crit[k][0].prompt_idx if args.group == "prompt" else k[0] for k in crit_keys]
-        adv_c, zvc = normalize_groups(crit_reward, parent_keys, gcfg)
+        adv_c, st = normalize_groups(crit_reward, parent_keys, gcfg)
         for k, a in zip(crit_keys, adv_c):
             for n in by_crit[k]:
                 n.adv_txt = a
-        c["zero_var_crit"] += zvc
-        c["groups_crit"] += len(set(parent_keys))
+        for k, v in st.items():
+            c[f"{k}_crit"] += v
     return c
 
 
@@ -1160,10 +1166,20 @@ def main():
                 sums[f"train/adv_{k}"] = v
             sums = reduce_sum(sums, device)
             metrics = finalize_stats(sums, "train/")
-            metrics["train/frac_zero_adv_groups"] = sums["train/adv_zero_var"] / max(sums["train/adv_groups"], 1.0)
+            # Image-level groups over drafts + refines (the old single number),
+            # then per level: a floor-bound group is one whose std is under
+            # --adv_std_floor, i.e. its advantages come out below unit scale.
+            g_img = sums["train/adv_groups_draft"] + sums["train/adv_groups_refine"]
+            metrics["train/frac_zero_adv_groups"] = (
+                (sums["train/adv_zero_var_draft"] + sums["train/adv_zero_var_refine"]) / max(g_img, 1.0))
+            for tag in ("draft", "refine") + (("crit",) if args.images_per_critique > 1 else ()):
+                g = sums[f"train/adv_groups_{tag}"]
+                nz = g - sums[f"train/adv_zero_var_{tag}"]
+                metrics[f"train/frac_zero_adv_groups_{tag}"] = sums[f"train/adv_zero_var_{tag}"] / max(g, 1.0)
+                metrics[f"train/frac_floor_adv_groups_{tag}"] = sums[f"train/adv_floor_{tag}"] / max(g, 1.0)
+                metrics[f"train/adv_group_std_{tag}"] = sums[f"train/adv_std_sum_{tag}"] / max(nz, 1.0)
             if args.images_per_critique > 1:
-                metrics["train/frac_zero_adv_critique_groups"] = (
-                    sums["train/adv_zero_var_crit"] / max(sums["train/adv_groups_crit"], 1.0))
+                metrics["train/frac_zero_adv_critique_groups"] = metrics["train/frac_zero_adv_groups_crit"]
             metrics.update({f"train/{k}": v for k, v in reduce_mean(train_metrics, device).items()})
             metrics.update({"time/rollout": t1 - t0, "time/reward": t2 - t1, "time/train": t3 - t2,
                             "train/lr": scheduler.get_last_lr()[0], "train/epoch_frac":

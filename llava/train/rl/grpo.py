@@ -105,34 +105,40 @@ def masked_token_logprobs(model, input_ids: torch.Tensor, attention_mask: torch.
 # ---------------------------------------------------------------------------
 
 def normalize_groups(rewards: List[float], groups: List[int], cfg: GRPOConfig
-                     ) -> Tuple[List[float], int]:
+                     ) -> Tuple[List[float], Dict[str, float]]:
     """Group-relative advantages. ``groups[i]`` is the group key of reward i.
 
-    Returns (advantages, number_of_zero_variance_groups). A group whose
-    rewards are all identical (or of size 1) gets advantage 0.
+    Returns (advantages, stats) with stats = dict(groups, zero_var, floor,
+    std_sum): the number of groups, how many had identical rewards (or size 1,
+    advantage 0), how many had 0 < std < ``adv_std_floor`` (their advantages
+    are shrunk below unit scale by the floor), and the sum of the non-zero
+    group stds (``std_sum / (groups - zero_var)`` is the mean group std).
     """
     by_group: Dict[int, List[int]] = {}
     for i, g in enumerate(groups):
         by_group.setdefault(g, []).append(i)
     adv = [0.0] * len(rewards)
-    zero_var = 0
+    st = dict(groups=float(len(by_group)), zero_var=0.0, floor=0.0, std_sum=0.0)
     for members in by_group.values():
         vals = torch.tensor([rewards[i] for i in members], dtype=torch.float64)
         if len(members) < 2:
-            zero_var += 1
+            st["zero_var"] += 1
             continue
         centered = vals - vals.mean()
         std = vals.std(unbiased=False)
         if float(std) < 1e-8:
-            zero_var += 1
+            st["zero_var"] += 1
             continue
+        st["std_sum"] += float(std)
+        if float(std) < cfg.adv_std_floor:
+            st["floor"] += 1
         if cfg.adv_norm == "std":
             centered = centered / (max(float(std), cfg.adv_std_floor) + cfg.adv_eps)
         elif cfg.adv_norm != "mean":
             raise ValueError(f"Unknown adv_norm {cfg.adv_norm}")
         for i, a in zip(members, centered.tolist()):
             adv[i] = a
-    return adv, zero_var
+    return adv, st
 
 
 # ---------------------------------------------------------------------------
