@@ -188,3 +188,12 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   TIIF short 68.1 → 72.4 → 72.6 → **73.2** ± 0.1, long 66.4 → 67.8 → 67.4 → 67.8 ± 0.8.
   vs promptmix t1 (our pipeline, 1 round): GenEval2 67.0 → 70.3 (depth-4 71.3): the multi-round training adds ~+1.5–2 on GenEval2 through
   refinement, not the draft; still ~7 pts below F-800 (79–80). t8 / F-800 / promptmix t1 have not been run through jeet's pipeline yet.
+- **F-800 vs promptmix-run-500, jeet's pipeline, official sets, own (policy) greedy critique, MDP n4 = draft + 3 corrections, 3 seeds,
+  mean ± se, image 1 → 2 → 3 → 4** (Mila 2026-10-21; GenAI on the **full 1,600 prompts**, user decision; jeet's log rounds GenAI to 0.01):
+  | model | GenEval2 AM | GenEval2 all-correct | GenAI-1600 all (basic / advanced at 4) | TIIF short | TIIF long |
+  |---|---|---|---|---|---|
+  | F-800 | 74.8 → 78.9 → 79.9 → **80.1 ± 0.4** | 22.7 → 28.0% | 40.7 → 42.7 → 43.0 → **43.3 ± 0.3** (42.3 / 44.3) | 68.8 → 71.7 → 71.9 → 71.4 ± 0.9 | 66.4 → 67.3 → 67.1 → 67.7 ± 1.1 |
+  | promptmix-run-500 | 67.3 → 72.1 → 72.8 → 72.5 ± 0.3 | 14.4 → 16.5% | 39.7 → 41.3 → 42.3 → 42.7 ± 0.3 (44.3 / 40.7) | 68.1 → 72.4 → 72.6 → **73.2 ± 0.1** | 66.4 → 67.8 → 67.4 → 67.8 ± 0.8 |
+  F-800 leads on GenEval2 by ~7.6 (draft already +7.5) and slightly on GenAI (+0.6, advanced skills); promptmix-run-500 leads on TIIF short
+  (+1.8, refinement +5.1 vs +2.6); TIIF long is a tie. Same-pipeline sanity: F-800 GenEval2 80.1 here vs 80.2 ± 0.4 in our depth runs
+  (draft + 4 corrections). Results: `$SCRATCH/tar_reason/results_jeet/{GenEval2,genai-bench-1600,tiif-bench-testmini_eval}/`, figures in `figures/`.
