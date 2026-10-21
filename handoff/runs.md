@@ -176,3 +176,15 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   **What holds:** F-800 > t8 on GenEval2 (+2.6 one round, +2.5 at depth 4, sd ≤ 0.7) and GenAI (+1.7); promptmix-500 is ~6 pts below on
   GenEval2. **What does not:** TIIF differences are within one sd for all three (the single-seed "F-250/F-800 TIIF-long drop" and
   "promptmix refines better on TIIF long" were seed noise).
+- **jeet's eval pipeline on Mila (2026-10-20/21)**: ported to `darshan-rl-test` (`4e7e0e4`, launcher `scripts/eval/bench_jeet_mila.sh`,
+  results in `$SCRATCH/tar_reason/results_jeet/`, aggregation `eval/stats/{geneval2,genai_bench,tiff_bench}.py --run LABEL=DIR`). Sanity:
+  t8 GenEval2 seed 713, 1 round, through his pipeline 70.29 → 76.62 (our `bench_mila.sh` 70.3 → 76.8: same within noise). His N_ITERS =
+  images incl. the draft (n4 = draft + 3 corrections); seeds: GenEval2 2213/713/13, GenAI 13/17/91 (800 prompts, his t2v_metrics fork),
+  TIIF 17/91/13. **Compare numbers only within one pipeline** (ours: 1,600 GenAI prompts, seeds 713–715, depth = 4 corrections).
+- **promptmix-run-500** (`darshan_mr_pm_fir` checkpoint-500, multi-round MDP training from jeet's promptmix t1; merged
+  `darshan_mr_pm_fir_merged500`), jeet's pipeline, **MDP n4, 3 seeds, mean ± se, image 1 → 2 → 3 → 4**:
+  GenEval2 AM 67.3 ± 0.2 → 72.1 → **72.8** → 72.5 ± 0.3 (GM 23.1 → 26.0, all-correct 14.4 → 16.5%);
+  GenAI-800 39.7 → 41.7 → 42.3 → **42.7** ± 0.3 (basic 43.3 → 45.3, advanced 36.3 → 40.7);
+  TIIF short 68.1 → 72.4 → 72.6 → **73.2** ± 0.1, long 66.4 → 67.8 → 67.4 → 67.8 ± 0.8.
+  vs promptmix t1 (our pipeline, 1 round): GenEval2 67.0 → 70.3 (depth-4 71.3): the multi-round training adds ~+1.5–2 on GenEval2 through
+  refinement, not the draft; still ~7 pts below F-800 (79–80). t8 / F-800 / promptmix t1 have not been run through jeet's pipeline yet.

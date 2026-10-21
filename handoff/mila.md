@@ -3,17 +3,15 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-20 evening EDT)
-- **jeet's eval pipeline ported** (`4e7e0e4`): his N-iteration + `_MDP` generators, viz and `eval/stats/{geneval2,genai_bench,tiff_bench}.py`
-  (now `--run LABEL=DIR --out_dir`), one Mila launcher `scripts/eval/bench_jeet_mila.sh` (BENCH geneval2|genai|tiif, MDP, N_ITERS = images
-  incl. the draft, SEEDS default = his: geneval2 2213 713 13, genai 13 17 91, tiif 17 91 13; GenAI = 800 prompts via his t2v_metrics fork
-  copied to `$SCRATCH/git/t2v_metrics_jeet`). Results in `$SCRATCH/tar_reason/results_jeet/<set>/<GEN_MODEL>/seed_S/`; aggregation
-  commands in the launcher header. `--single_pass` kept for base Tar.
-- **Running** (ids `$SCRATCH/tar_reason/jeet_jobs.txt`): sanity t8 GenEval2 seed 713, 1 round (`MDP=0 N_ITERS=2`; expect 70.3 → 76.8);
-  **promptmix-run-500** (`darshan_mr_pm_fir_merged500`, merged here) × 3 benches × 3 seeds, MDP n4, one 2-GPU `long` job each.
-  Merged also: `darshan_mr_pm_fir_merged400`.
-- `bash_mila_t7.sh` defaults now jeet's (REWARD_QUESTION_BATCH 64, GEN_BATCH_SIZE 48, REWARD_DECODE_BATCH 32, EVAL_STEPS 100).
-- C0, seeds: done (`runs.md`). Watcher: background in this session.
+## Now (2026-10-21 EDT)
+- **Nothing running on Mila.** jeet's eval pipeline ported and sanity-checked; promptmix-run-500 done through it (3 seeds × 3 benches,
+  MDP n4; `runs.md`). Told Fir.
+- Pipeline: `MODEL_NAME=<label> MODEL_PATH=<merged dir> BENCH=geneval2|genai|tiif MDP=1 N_ITERS=4 SEEDS=<one seed> sbatch
+  --partition=long --gres=gpu:a100l:2 --cpus-per-task=8 --mem=96G --time=12:00:00 --no-requeue scripts/eval/bench_jeet_mila.sh`
+  (one job per bench × seed: ~1 h 10 GenEval2, ~50 min GenAI / TIIF on 2 A100); aggregate with `eval/stats/*.py --run LABEL=DIR`.
+  A rank can segfault at teardown after writing everything: the launcher now checks outputs (`f3269f5`); TIIF still needs a clean exit.
+- Not yet through jeet's pipeline: t8, F-800, promptmix t1, pm-run-400 (merged). Waiting: t11 (copy).
+- Watcher: none.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -46,20 +44,11 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-20 from Fir (user, from jeet): **use jeet's eval pipeline for all official evals from now on.** (1) Generate + score with his scripts
-  in `/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/scripts/eval/`: `iter_geneval2_adhoc_e2e_MDP.sh`, `iter_geneval2_adhoc_e2e.sh`,
-  `iter_genai_bench_adhoc_MDP.sh`, `iter_genai_bench_adhoc.sh`, and the TIIF ones (MDP = each round sees only the latest image, as in our
-  depth evals). (2) Run **3 seeds** per model and aggregate/plot with his `eval/stats/geneval2.py` (+ `genai_bench.py`, `tiff_bench.py`).
-  The `_MDP` scripts and `eval/stats/geneval2.py` are **not on GitHub yet** (only in his Mila checkout): copy them into darshan-rl-test
-  (`scripts/eval/`, `eval/stats/`) with paths parameterised like `bench_mila.sh`, and commit, so runs are reproducible from our branch.
-  Sanity check: one model already done with `bench_mila.sh` (t8, seed 713) through his pipeline → same numbers within noise; then use
-  his pipeline for **promptmix-run-500** (user is copying `checkpoint-500`) and later models. Note: jeet's main has 3 newer commits
-  (`7e3cbda` judge scores all of an image's questions from one prefix, `1e262ff` SFT data streaming, `59c8261` `--siglip2_path` argument,
-  which may overlap your TA-Tok fix `395fcb4`): Fir will merge them; don't depend on them yet.
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-21: pm-run-500 through jeet's pipeline done (runs.md); deleted the jeet-pipeline Inbox line; told Fir.
 - 2026-10-20 evening: ported jeet's pipeline (`4e7e0e4`); merged pm-run 400/500; sanity + pm-500 jobs submitted; t7 launcher defaults updated (`7486266`). Removed the merge-notice, pm-run-finished and old official-evals Inbox lines (acted on).
 - 2026-10-20 09:00: all 30 seed jobs done; 3-seed table in runs.md; told Fir.
 - 2026-10-20 06:30: C0 probe done for F-250, F-800, base Tar (runs.md); deleted that Inbox line; told Fir.
