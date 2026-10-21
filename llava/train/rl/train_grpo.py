@@ -252,6 +252,9 @@ def parse_args():
     p.add_argument("--log_images", type=int, default=0)
     p.add_argument("--ar_path", default=None)
     p.add_argument("--encoder_path", default=None)
+    p.add_argument("--siglip2_path", default="google/siglip2-so400m-patch14-384",
+                   help="SigLIP2 model id or local directory that defines the TA-Tok "
+                        "encoder config (a local copy on nodes without Hub access).")
     p.add_argument("--decoder_path", default=None)
     p.add_argument("--cfg_scale", type=float, default=4.0)
     return p.parse_args()
@@ -867,7 +870,7 @@ class ImageDecoder:
         from tok.mm_autoencoder import MMAutoEncoder
         self.tok = MMAutoEncoder(
             ar_path=args.ar_path, encoder_path=args.encoder_path, decoder_path=args.decoder_path,
-            encoder_args={"input_type": "rec"}, decoder_args={},
+            encoder_args={"input_type": "rec", "teacher": args.siglip2_path}, decoder_args={},
         ).eval().to(dtype=torch.bfloat16, device=device)
         self.tok.ar_model.cls_token_num = args.gen_seq_len
         self.tok.encoder.pool_scale = args.scale + 1
