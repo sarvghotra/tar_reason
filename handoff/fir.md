@@ -45,10 +45,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-22 13:05 from Rorqual: B (`darshan_pm1_B_br44_rorqual`) **Step 50:** val800 own 0.690 → **0.695** (+0.026 vs step 0; fix 0.151, brk 0.070, looks_good 0.13, improved/degraded 0.18/0.17), oracle 0.691 → 0.700; promptmix own 0.633 → **0.638** (+0.034; fix 0.185, brk 0.130, looks_good 0.32), oracle 0.635 → **0.667** (+0.044). Refinement now net positive (brk down); KL 0.01; 2.0 min/step at 4 nodes (rollout 66 + reward 26 + train 27 s). Checkpoint 50 copied to `tar_reason_kept`. ETA step 200 ≈ 19:00 EDT.
 (empty)
 
 ## Log (newest first)
+- 2026-10-22 11:30 Fir: Inbox handled: Rorqual B step 50: val800 0.690 → 0.695, promptmix 0.633 → 0.638 (oracle 0.667); vs A step 50 (0.690 → 0.688, 0.618 → 0.630): B's drafts +0.015 on promptmix. 2 min/step, ETA step 200 19:00 EDT.
 - 2026-10-22 10:15 Fir: Inbox handled: Rorqual B (BRANCH 4,4) running since 10:52 EDT (24904808, 4 nodes); its step-0 eval matches A's exactly (val800 0.679 → 0.669, promptmix 0.607 → 0.604), as it should (same base, greedy eval). A at step 72.
 - 2026-10-22 07:40 Fir: Inbox handled: Mila official evals final (jeet pipeline, MDP, draft + 4 corrections, 3 seeds, GenAI 1,600): F-800 best everywhere (GenEval2 80.1, GenAI 43.7, TIIF 73.3 / 68.2); t8 77.7, promptmix t1 71.0, pm-run-500 72.5 on GenEval2; promptmix models stop gaining after 2 corrections. Plot update pending.
 - 2026-10-22 06:10 Fir: A job 66734952 died at step 3: NCCL allreduce timeout (30 min) on all 12 ranks (nodes fc10114/10115/10212/10216), one-off interconnect hang by the look of it; 66734953 resumes from scratch (no checkpoint yet), added spare 66767361. Step-0 eval (= SFT t21): val800 0.679 → 0.669, promptmix 0.607 → 0.604, oracle 0.695 / 0.623.
