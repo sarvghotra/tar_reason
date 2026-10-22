@@ -165,17 +165,37 @@ run_gen() {
     && export PYTHONPATH=${REPO} \
     && torchrun --standalone --nproc_per_node=$N_GPUS "$GEN_SCRIPT" "${GEN_COMMON[@]}" "$@" )
 }
-# gen_retry '<success check>' <run_gen args...>: up to GEN_TRIES attempts, 2 min apart. Scratch (BeeGFS) has
-# intermittent "Remote I/O error" (Errno 121) on mkdir from compute nodes (2026-10-21); a fresh attempt usually works.
-# The check may use $rc (torchrun's exit code).
+# gen_retry '<success check>' <run_gen args...>: generate on the node's local disk, then copy to scratch.
+# Mila's scratch (BeeGFS) returned intermittent "Remote I/O error" (Errno 121) on mkdir from many compute nodes
+# (2026-10-21), killing generations that create thousands of folders there. So every output path under $OUT_ROOT
+# is redirected to $LOCAL_ROOT for the generation, the result is copied with rsync (retried: it is idempotent),
+# absolute image paths in geneval2_results.json are rewritten to the scratch copy, and the check then runs on
+# scratch. Up to GEN_TRIES generation attempts, 2 min apart. The check may use $rc (torchrun's exit code).
 GEN_TRIES=${GEN_TRIES:-3}
+LOCAL_ROOT=${SLURM_TMPDIR:-/tmp/${USER}_bench_jeet}/results_jeet
+copy_to_scratch() {
+  local t
+  for t in 1 2 3 4 5 6; do
+    rsync -a "$LOCAL_ROOT/" "$OUT_ROOT/" && return 0
+    echo "$(date +%H:%M:%S) rsync to scratch attempt $t failed; retrying in 60 s"; sleep 60
+  done
+  return 1
+}
 gen_retry() {
-  local check=$1 t rc; shift
+  local check=$1 t rc a f; shift
+  local args=(); for a in "$@"; do args+=("${a//$OUT_ROOT/$LOCAL_ROOT}"); done
   for t in $(seq 1 $GEN_TRIES); do
-    run_gen "$@"; rc=$?
-    eval "$check" && return 0
+    rm -rf "$LOCAL_ROOT"; mkdir -p "$LOCAL_ROOT"
+    run_gen "${args[@]}"; rc=$?
+    if copy_to_scratch; then
+      while IFS= read -r f; do
+        sed -i "s|$LOCAL_ROOT|$OUT_ROOT|g" "$OUT_ROOT/${f#$LOCAL_ROOT/}"
+      done < <(find "$LOCAL_ROOT" -name geneval2_results.json)
+      eval "$check" && { rm -rf "$LOCAL_ROOT"; return 0; }
+    fi
     echo "$(date +%H:%M:%S) generation attempt $t/${GEN_TRIES} failed (exit $rc)"; [ "$t" -lt "$GEN_TRIES" ] && sleep 120
   done
+  rm -rf "$LOCAL_ROOT"
   return 1
 }
 n_images() {     # n_images <dir> <glob>: number of matching files directly in <dir>
