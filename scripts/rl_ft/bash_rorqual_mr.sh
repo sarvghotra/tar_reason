@@ -59,7 +59,7 @@ WORLD_SIZE_GPUS=$((N_TRAIN_GPUS * N_NODES))
 
 PREV_STAGE_CHECKPOINT=${PREV_STAGE_CHECKPOINT:-${MODELS}/sft/rl_ft_oracle_t8_merged500}   # base + KL reference; fresh LoRA
 
-REWARD_QUESTION_BATCH=32
+REWARD_QUESTION_BATCH=${REWARD_QUESTION_BATCH:-64}   # jeet 2026-10-20 (judge scores an image's questions from one shared prefix)
 REWARD_IMAGES_PER_REQ=8
 REWARD_DECODE_BATCH=${REWARD_DECODE_BATCH:-32}   # jeet's speed settings (2026-10-19, with his faster AR decoding)
 REWARD_LOAD_TIMEOUT=1800
@@ -74,7 +74,7 @@ TRAIN_IMAGES=1
 IMAGE_ADV_SCALE=1.0            # image tokens trained (t8 recipe)
 EVAL_BRANCH=${EVAL_BRANCH:-1,1,1,1,1}   # greedy depth-4 chains
 GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-48}            # jeet's speed settings (was 16)
-TRAIN_MICRO_BATCH=${TRAIN_MICRO_BATCH:-4}   # jeet's speed settings (was 2; mdp rows ~1.5k tokens, full-history rows up to ~3.8k: use 2 there)
+TRAIN_MICRO_BATCH=${TRAIN_MICRO_BATCH:-2}   # jeet's settings 2026-10-20 (4 on 10-19, back to 2)
 
 LR=${LR:-5e-5}
 LORA_R=64
