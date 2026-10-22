@@ -340,6 +340,10 @@ tiif_seed() {
       || { echo "TIIF generation failed (seed ${SEED})"; exit 1; }
   fi
   mkdir -p "$RESULT_DIR"
+  # The judge writes one folder per (dimension, register, iteration): judge into a local copy (seeded with any
+  # results already on scratch, so it stays resumable) and rsync back, for the same scratch mkdir errors as above.
+  local JUDGE_DIR=${LOCAL_ROOT}/tiif_judge_seed_${SEED}
+  rm -rf "$JUDGE_DIR"; mkdir -p "$JUDGE_DIR"; rsync -a "$RESULT_DIR/" "$JUDGE_DIR/"
   # eval/tiif_bench_vlm_judge.py (TIIF-Bench's prompts, parsing and result schema, local Qwen2.5-VL-7B).
   # Resumable: prompts whose result json exists are skipped, so a failed attempt is simply re-run.
   local JUDGE_ATTEMPTS=3
@@ -351,7 +355,7 @@ tiif_seed() {
           --jsonl_dir ${EVAL_PROMPTS_DIR} \
           --image_dir ${IMAGE_DIR} \
           --eval_model ${MODEL_NAME}_iter${ITER} \
-          --output_dir ${RESULT_DIR} \
+          --output_dir ${JUDGE_DIR} \
           --model ${JUDGE_PATH} \
           --batch_size 32 \
           --seed ${SEED} \
@@ -373,6 +377,9 @@ tiif_seed() {
     done
     for PID in "${PIDS[@]}"; do wait ${PID} || STATUS=$?; done
   done
+  local T; for T in 1 2 3 4 5 6; do rsync -a "$JUDGE_DIR/" "$RESULT_DIR/" && break
+    echo "$(date +%H:%M:%S) rsync of judge results attempt $T failed; retrying in 60 s"; sleep 60; done
+  rm -rf "$JUDGE_DIR"
   if [ $STATUS -ne 0 ]; then
     echo "ERROR: at least one judging run failed (exit $STATUS)"
     for ITER in "${ITERS[@]}"; do echo "--- iter ${ITER} tail ---"; tail -30 ${SAVE_DIR}/judge_log_iter${ITER}.txt; done
