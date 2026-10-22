@@ -57,6 +57,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-21: shared two merged models read-only with jeet (`sarvjeet-singh.ghotra`) by ACL (user request): `/network/scratch/s/singhsd/models/tar/sft/darshan_mr_fir_merged800` (F-800 on t8) and `/network/scratch/s/singhsd/models/tar/sft/darshan_mr_pm_fir_merged500` (promptmix-run-500 on promptmix t1): `u:jeet:rX` recursive on the two folders, `u:jeet:--x` on `$SCRATCH`, `models/`, `models/tar/`, `models/tar/sft/`. To keep everything else private, removed 'other' permissions (o-rwx) on every sibling along that path (benchmarks, data, git, hf_home, tar_reason, .uv_cache, slurm-*.out, models/vlm, models/tar/{Tar-7B, siglip2…, *.pth, .cache}, the other sft/* models) and on the path folders; nobody else could reach them anyway (`$SCRATCH` was already 750). Verified with getfacl. Revoke: `setfacl -R -x u:sarvjeet-singh.ghotra <dir>`.
 - 2026-10-21: Inbox: N_ITERS=5 default; submitted 36 n5 jobs (F-800, pm-500 re-runs; t8, promptmix t1).
 - 2026-10-21: F-800 + pm-500 (GenAI-1600) done through jeet's pipeline; several `long` preemptions resubmitted on short-unkillable/main.
 - 2026-10-21 08:50: cn-g028 has the same scratch I/O error as cn-g029; F-800 GenEval2 seeds 2213/713 resubmitted off it, pending jobs updated to exclude both.
