@@ -56,6 +56,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-22 13:05: B step 50: val800 own 0.695 (+0.026), promptmix 0.638 (+0.034), oracle pm 0.667; 2 min/step; ckpt-50 kept; sent to Fir.
 - 2026-10-22 11:10: full B 24904808 up (10:52, staging 107 s); step-0 eval (SFT t21) val800 own 0.669, promptmix 0.604; sent to Fir.
 - 2026-10-22 03:45: B smoke passed (≈ 2 min/step, PROMPTS_PER_GPU stays 3); full B 24904808 → 24904809 submitted.
 - 2026-10-22 02:50: Inbox handled: f800pm had finished 500 steps on 2026-10-21 20:21 (23887485, resumed at 350); spare 24413404 cancelled; wandb synced (2 pieces); step 300/400/500 evals to Fir + runs.md; only checkpoint-500 survived (save_total_limit 5). `bash_rorqual_mr.sh` re-synced (Fir's 2026-10-20 merge Inbox: jeet's settings, SIGLIP2_PATH). Variant B: `bash_rorqual_promptmix.sh`, smoke 24902055.
