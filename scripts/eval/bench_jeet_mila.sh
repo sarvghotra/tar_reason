@@ -165,6 +165,19 @@ run_gen() {
     && export PYTHONPATH=${REPO} \
     && torchrun --standalone --nproc_per_node=$N_GPUS "$GEN_SCRIPT" "${GEN_COMMON[@]}" "$@" )
 }
+# gen_retry '<success check>' <run_gen args...>: up to GEN_TRIES attempts, 2 min apart. Scratch (BeeGFS) has
+# intermittent "Remote I/O error" (Errno 121) on mkdir from compute nodes (2026-10-21); a fresh attempt usually works.
+# The check may use $rc (torchrun's exit code).
+GEN_TRIES=${GEN_TRIES:-3}
+gen_retry() {
+  local check=$1 t rc; shift
+  for t in $(seq 1 $GEN_TRIES); do
+    run_gen "$@"; rc=$?
+    eval "$check" && return 0
+    echo "$(date +%H:%M:%S) generation attempt $t/${GEN_TRIES} failed (exit $rc)"; [ "$t" -lt "$GEN_TRIES" ] && sleep 120
+  done
+  return 1
+}
 n_images() {     # n_images <dir> <glob>: number of matching files directly in <dir>
   find "$1" -maxdepth 1 -name "$2" 2>/dev/null | wc -l
 }
@@ -183,8 +196,9 @@ geneval2_seed() {
     # Success = all iteration outputs on disk, not torchrun's exit code: a rank can segfault at
     # teardown after writing everything (seen 2026-10-20), and a rerun would wipe the finished images.
     echo "$(date +%H:%M:%S) seed ${SEED}: generation"
-    run_gen --out_dir "$RESULT_DIR" --prompts_file "$EVAL_SET" --geneval2 --seed "$SEED" \
-      ; iters_have "$RESULT_DIR" geneval2_results.json && touch "$RESULT_DIR/.gen_done" \
+    gen_retry 'iters_have "$RESULT_DIR" geneval2_results.json' \
+        --out_dir "$RESULT_DIR" --prompts_file "$EVAL_SET" --geneval2 --seed "$SEED" \
+      && touch "$RESULT_DIR/.gen_done" \
       || { echo "GenEval2 generation failed (seed ${SEED})"; exit 1; }
   fi
   echo "$(date +%H:%M:%S) seed ${SEED}: scoring ITER-1..ITER-${N_ITERS} (evaluation_optz.py soft_tifa, one iteration per GPU)"
@@ -235,9 +249,10 @@ genai_seed() {
   fi
   if [ ! -f "$SEED_DIR/.gen_done" ]; then
     echo "$(date +%H:%M:%S) seed ${SEED}: generation"
-    run_gen --gen_model "$GEN_MODEL" --output_dir "$OUTPUT_DIR" --root_dir "$GENAI_ROOT" \
+    gen_retry 'genai_images_complete "$SEED_DIR"' \
+        --gen_model "$GEN_MODEL" --output_dir "$OUTPUT_DIR" --root_dir "$GENAI_ROOT" \
         --eval_set_dir "$EVAL_SET_DIR" --seed "$SEED" \
-      ; genai_images_complete "$SEED_DIR" && touch "$SEED_DIR/.gen_done" \
+      && touch "$SEED_DIR/.gen_done" \
       || { echo "GenAI-Bench generation failed (seed ${SEED})"; exit 1; }
   fi
   echo "$(date +%H:%M:%S) seed ${SEED}: VQAScore ${SCORE_MODEL}, ${NUM_PROMPTS} prompts, one iteration per GPU (${N_GPUS} at a time)"
@@ -298,9 +313,10 @@ tiif_seed() {
   fi
   if [ ! -f "$SAVE_DIR/.gen_done" ]; then
     echo "$(date +%H:%M:%S) seed ${SEED}: generation (short + long)"
-    run_gen --gen_model "$GEN_MODEL" --output_dir "$OUTPUT_DIR" --prompts_dir "$PROMPTS_DIR" \
+    gen_retry '[ "$rc" -eq 0 ] && [ -n "$(ls -A "$IMAGE_DIR" 2>/dev/null)" ]' \
+        --gen_model "$GEN_MODEL" --output_dir "$OUTPUT_DIR" --prompts_dir "$PROMPTS_DIR" \
         --eval_model_name "$MODEL_NAME" --seed "$SEED" \
-      && [ -n "$(ls -A "$IMAGE_DIR" 2>/dev/null)" ] && touch "$SAVE_DIR/.gen_done" \
+      && touch "$SAVE_DIR/.gen_done" \
       || { echo "TIIF generation failed (seed ${SEED})"; exit 1; }
   fi
   mkdir -p "$RESULT_DIR"
