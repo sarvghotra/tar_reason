@@ -48,6 +48,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-22 06:10 Fir: A job 66734952 died at step 3: NCCL allreduce timeout (30 min) on all 12 ranks (nodes fc10114/10115/10212/10216), one-off interconnect hang by the look of it; 66734953 resumes from scratch (no checkpoint yet), added spare 66767361. Step-0 eval (= SFT t21): val800 0.679 → 0.669, promptmix 0.607 → 0.604, oracle 0.695 / 0.623.
 - 2026-10-22 01:00 PDT: Inbox handled: Rorqual f800pm had finished 500 steps before the stop: final val800 0.849 (−0.009 vs F-800), promptmix 0.730 (+0.018; vs pm-run-500 from t1: 0.784 / 0.744); only ckpt-500 kept (100–400 pruned by save_total_limit). B (BRANCH 4,4) ported, smoke 24902055 queued.
 - 2026-10-22 00:10 PDT: session resumed in tmux (login2); watcher re-armed. Inbox handled: TamIA F-full done (step 300 full-history own 0.833 / oracle 0.897 vs F-mdp 0.848 / 0.896; mdp eval of ckpt-300 queued), C (KL 0.01) ported, smoke queued. A smoke 66734951 still pending (priority).
 - 2026-10-21 21:30: user: no E2 (start from SFT); jeet has no hparam recipe → round-1 screen (A/B/C/D). Cancelled E2 chain 66733473–75 unrun. Launcher: HYBRID_ORACLE_FRAC/KL_COEF/ADV_STD_FLOOR/BREAK_WEIGHT/ALPHA overridable. A submitted (66734951 → 52 → 53). Rorqual: stop f800pm + B; TamIA: C after F-full.
