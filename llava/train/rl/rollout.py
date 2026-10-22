@@ -45,7 +45,7 @@ from typing import Callable, Dict, List, Optional, Sequence
 import torch
 from transformers import LogitsProcessor, LogitsProcessorList
 
-from llava.train.rl.grpo import KIND_IMG, KIND_NONE, KIND_TXT
+from llava.train.rl.grpo import KIND_CRIT, KIND_IMG, KIND_NONE, KIND_TXT
 
 ITERATIVE_PROMPT_PREFIX = "Generate an image iteratively by self-reflecting and correcting.\n"
 SYSTEM_PROMPT = "You are a helpful assistant."
@@ -80,6 +80,10 @@ class RolloutConfig:
     # 1 = every child samples its own critique and image (t4). Ignored with a
     # critique_fn, where the children of a parent already share one critique.
     images_per_critique: int = 1
+    # Frozen critiques (critique_fn) are spliced as KIND_CRIT instead of
+    # KIND_NONE: build_training_rows puts them in the loss with advantage 0
+    # (KL anchor only). The fixed reflect_splice template stays KIND_NONE.
+    anchor_critiques: bool = False
 
     @property
     def num_rounds(self) -> int:
@@ -363,13 +367,19 @@ class TreeRollout:
             children: List[Node] = []
             for n, crit in zip(live, crits):
                 splice = self.reflect_splice
+                splice_kinds = [KIND_NONE] * len(splice)
                 if crit is not None:
                     # Spliced like the eval script splices decoded reflection
-                    # text; untrained, so the child's segment is just its image.
-                    splice = splice + self._encode(" " + crit.text)
+                    # text; untrained (no advantage), so the child's segment
+                    # is just its image. With anchor_critiques the critique
+                    # tokens still enter the loss through the KL term.
+                    crit_ids = self._encode(" " + crit.text)
+                    splice = splice + crit_ids
+                    splice_kinds = splice_kinds + [
+                        KIND_CRIT if self.cfg.anchor_critiques else KIND_NONE] * len(crit_ids)
                 for g in range(branch[k]):
                     seq = n.seq + splice
-                    kinds = n.kinds + [KIND_NONE] * len(splice)
+                    kinds = n.kinds + splice_kinds
                     child = Node(prompt_idx=n.prompt_idx, round=k, parent=n, first_born=(g == 0),
                                  seq=seq, kinds=kinds, seg_start=len(seq), sibling_idx=g,
                                  critique_idx=g, teacher_forced=crit is not None,
@@ -468,7 +478,7 @@ class TreeRollout:
 
     def build_training_rows(self, leaves: List[Node], reflect_token_weight: float,
                             train_drafts: bool = True, train_images: bool = True,
-                            image_adv_scale: float = 1.0):
+                            image_adv_scale: float = 1.0, critique_anchor_weight: float = 1.0):
         """Right-padded tensors for a list of leaves.
 
         Returns dict(input_ids, attention_mask, train_mask, pos_kind, adv, weight);
@@ -480,7 +490,11 @@ class TreeRollout:
         ``image_adv_scale`` multiplies the image tokens' advantages; at 0 the
         images stay in the loss with the KL term only, i.e. they are anchored
         to the reference instead of dropped (dropping them lets the shared
-        LoRA drift them freely: t10).
+        LoRA drift them freely: t10). ``KIND_CRIT`` positions (frozen
+        critiques under ``cfg.anchor_critiques``) are trained with advantage
+        0 and weight ``critique_anchor_weight`` whatever ``train_drafts`` /
+        ``train_images`` say: they sit in the parent's segment, so each
+        critique is anchored once, through the first-born chain.
         """
         width = max(len(n.seq) for n in leaves)
         B = len(leaves)
@@ -498,14 +512,21 @@ class TreeRollout:
             trained = set(leaf.trained_rounds())
             chain = leaf.ancestors()
             for j, node in enumerate(chain):
-                if node.round not in trained or (node.round == 0 and not train_drafts):
+                if node.round not in trained:
                     continue
+                skip_own = node.round == 0 and not train_drafts
                 # A node's segment runs from its seg_start up to the child's
-                # seg_start (the forced splice in between is KIND_NONE).
+                # seg_start (the forced splice in between is KIND_NONE, or
+                # KIND_CRIT for the critique text under anchor_critiques).
                 end = chain[j + 1].seg_start if j + 1 < len(chain) else L
                 for pos in range(node.seg_start, end):
                     kind = leaf.kinds[pos]
-                    if kind == KIND_NONE or (kind == KIND_IMG and not train_images):
+                    if kind == KIND_CRIT:
+                        train_mask[i, pos] = True
+                        adv[i, pos] = 0.0
+                        weight[i, pos] = critique_anchor_weight
+                        continue
+                    if kind == KIND_NONE or skip_own or (kind == KIND_IMG and not train_images):
                         continue
                     train_mask[i, pos] = True
                     adv[i, pos] = node.adv_txt if kind == KIND_TXT else node.adv * image_adv_scale

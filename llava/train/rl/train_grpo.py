@@ -177,6 +177,16 @@ def parse_args():
                         "the policy's own critic.")
     p.add_argument("--hybrid_oracle_frac", type=float, default=0.5,
                    help="--critique_source hybrid: fraction of parents given the oracle critique.")
+    p.add_argument("--anchor_critiques", action=argparse.BooleanOptionalAction, default=False,
+                   help="--critique_source oracle | hybrid: put the spliced critique tokens in "
+                        "the loss with advantage 0, so only the KL-to-reference term touches "
+                        "them (KIND_CRIT). Pins the untrained critic's log-probs of real "
+                        "critiques to the SFT init instead of letting the shared LoRA drift "
+                        "them (t4: greedy 'looks good' 0.12 -> 0.60 after step 280). "
+                        "train/kl_crit logs the anchor's own KL.")
+    p.add_argument("--critique_anchor_weight", type=float, default=1.0,
+                   help="Token weight of the anchored critique tokens (--anchor_critiques), "
+                        "relative to 1.0 per image token.")
     p.add_argument("--oracle_fail_threshold", type=float, default=0.5,
                    help="A question fails when the judge's answer probability is below this "
                         "(oracle critique, and the fix/break rates in the stats).")
@@ -212,6 +222,12 @@ def parse_args():
                         "keep proportionally small advantages instead of unit scale.")
     p.add_argument("--clip_eps", type=float, default=0.2)
     p.add_argument("--kl_coef", type=float, default=0.01)
+    p.add_argument("--kl_ratio_max", type=float, default=0.0,
+                   help="Cap exp(ref_logp - logp) inside the k3 KL estimator at this value "
+                        "(grpo.GRPOConfig.kl_ratio_max). 0 = exact k3, unbounded: t4 logged "
+                        "kl 21.7 / pre-clip grad_norm 545 at step 280 (usual 0.3 / 0.07) and "
+                        "the critic collapsed in the 24 steps after. train/kl_capped_frac "
+                        "logs how many tokens the cap bound.")
     p.add_argument("--reflect_token_weight", type=float, default=1.0)
     p.add_argument("--num_ppo_epochs", type=int, default=1)
     p.add_argument("--train_micro_batch", type=int, default=2)
@@ -773,7 +789,8 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
         leaves = [n for n in leaves if n.critique_leader]
     micro = [leaves[i:i + args.train_micro_batch] for i in range(0, len(leaves), args.train_micro_batch)]
     rows = [rollout.build_training_rows(m, args.reflect_token_weight, args.train_drafts,
-                                        args.train_images, args.image_adv_scale) for m in micro]
+                                        args.train_images, args.image_adv_scale,
+                                        args.critique_anchor_weight) for m in micro]
     denom = max(float(sum(r["weight"].sum() for r in rows)), 1.0)
     n_tokens = int(sum(r["train_mask"].sum() for r in rows))
 
@@ -1036,8 +1053,11 @@ def main():
         reflect_temperature=args.reflect_temperature, reflect_top_k=args.reflect_top_k,
         reflect_top_p=args.reflect_top_p, gen_batch_size=args.gen_batch_size,
         min_refines=args.min_refines, refine_resample_tries=args.refine_resample_tries,
-        images_per_critique=args.images_per_critique)
+        images_per_critique=args.images_per_critique,
+        anchor_critiques=args.anchor_critiques)
     assert args.images_per_critique >= 1
+    assert not args.anchor_critiques or args.critique_source != "policy", \
+        "--anchor_critiques needs frozen critiques (--critique_source oracle | hybrid)"
     assert args.images_per_critique == 1 or args.critique_source == "policy", \
         "--images_per_critique > 1 needs sampled critiques (--critique_source policy)"
     rollout = TreeRollout(tokenizer, rcfg, image_start_id, num_image_tokens, device)
@@ -1056,7 +1076,10 @@ def main():
                 f"images_per_critique={args.images_per_critique} "
                 f"hybrid_oracle_frac={args.hybrid_oracle_frac} break_weight={args.break_weight} "
                 f"critique_break_weight={args.critique_break_weight} stop_reward={args.stop_reward} "
-                f"fail_threshold={args.oracle_fail_threshold}")
+                f"fail_threshold={args.oracle_fail_threshold} "
+                f"anchor_critiques={args.anchor_critiques} "
+                f"critique_anchor_weight={args.critique_anchor_weight} "
+                f"kl_ratio_max={args.kl_ratio_max}")
 
     base = model.get_base_model()
 
@@ -1087,7 +1110,8 @@ def main():
                                      num_image_tokens, device)
     gcfg = GRPOConfig(clip_eps=args.clip_eps, kl_coef=args.kl_coef, adv_norm=args.adv_norm,
                       adv_std_floor=args.adv_std_floor,
-                      reflect_token_weight=args.reflect_token_weight)
+                      reflect_token_weight=args.reflect_token_weight,
+                      kl_ratio_max=args.kl_ratio_max)
 
     train_ds = GenEval2PromptDataset(args.data_path, seed=args.seed, rank=rank,
                                      world_size=world_size, max_atoms=args.max_atoms)

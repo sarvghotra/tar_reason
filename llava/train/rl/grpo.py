@@ -7,6 +7,7 @@ training are normalised over the same restricted support the sampler used, so
 the policy gradient is taken w.r.t. the distribution that was actually sampled.
 """
 
+import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -17,6 +18,10 @@ import torch.utils.checkpoint
 KIND_NONE = 0   # prompt / forced splice tokens: never trained
 KIND_IMG = 1    # image token sampled from the image vocab
 KIND_TXT = 2    # reflection token sampled from the non-image vocab
+KIND_CRIT = 3   # frozen critique text (oracle / policy, spliced): trained with
+                # advantage 0, i.e. only the KL-to-reference term touches it.
+                # An anchor for the untrained critic, which otherwise drifts
+                # through the shared LoRA (t4: 'looks good' 0.12 -> 0.60).
 
 # Rows of hidden states pushed through lm_head at once; with the 217K vocab
 # this bounds the fp32 logits buffer to ~0.9 GB.
@@ -33,6 +38,12 @@ class GRPOConfig:
     # less than the floor (e.g. de-tokenizer noise) is not blown up to unit scale.
     adv_std_floor: float = 0.0
     reflect_token_weight: float = 1.0
+    # k3 estimator exp(d) - d - 1, d = ref_logp - logp: exp(d) is unbounded when
+    # the policy sampled a token the reference likes far more (t4 step 280:
+    # kl 21.7, grad_norm 545 from a usual 0.07). > 0 caps exp(d) at this value
+    # (the -d term keeps the loss growing, the gradient coefficient exp(d) - 1
+    # is capped at kl_ratio_max - 1, same direction). 0 = exact k3.
+    kl_ratio_max: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +172,14 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
     pg = -torch.min(pg1, pg2)
 
     d = ref_logp - logp
-    kl = d.exp() - d - 1.0
+    if cfg.kl_ratio_max > 0:
+        # Straight-through clamp: the value of exp(d) is capped, its gradient
+        # keeps the sign of the exact term (a plain clamp would zero it where
+        # it is capped and leave only the -d term, which points the wrong way).
+        d_exp = d + (d.clamp(max=math.log(cfg.kl_ratio_max)) - d).detach()
+    else:
+        d_exp = d
+    kl = d_exp.exp() - d - 1.0
 
     tok = weight * (pg + cfg.kl_coef * kl)
     loss = tok.sum() / denom
@@ -171,6 +189,7 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
         wsum = w.sum().clamp(min=1.0)
         img = kinds == KIND_IMG
         txt = kinds == KIND_TXT
+        crit = kinds == KIND_CRIT
         metrics = {
             "pg_loss": float((w * pg).sum() / wsum),
             "kl": float((w * kl).sum() / wsum),
@@ -180,5 +199,8 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
             "pg_txt": float((pg[txt]).mean()) if txt.any() else 0.0,
             "kl_txt": float((kl[txt]).mean()) if txt.any() else 0.0,
             "kl_img": float((kl[img]).mean()) if img.any() else 0.0,
+            "kl_crit": float((kl[crit]).mean()) if crit.any() else 0.0,
+            # Share of trained tokens whose KL gradient the cap bounded.
+            "kl_capped_frac": float((w * (d_exp < d)).sum() / wsum),
         }
     return loss, metrics
