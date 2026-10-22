@@ -9,7 +9,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   `--nice=100`). Ids `$SCRATCH/tar_reason/jn5_jobs.txt`; watcher `tools/watch/watch_jobs_final.sh` (ignores preemptions). Results in
   `results_jeet/<set>/iter_adhoc_MDP_n5_<model>_512px_repeat1/`. The n5 runs report images 1–5, superseding the n4 tables in `runs.md`.
 - Next: F-250 and base Tar-7B (single pass) through the same pipeline.
-- Bad nodes: cn-g028, cn-g029. Waiting: t11 (copy).
+- Bad nodes: cn-g008, cn-g028, cn-g029. Waiting: t11 (copy).
 - Watcher: background in this session.
 
 ## Setup
@@ -32,7 +32,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 - Partitions: `main` caps a user at 2 GPUs / 8 CPUs / 48 GB; `long` has no cap but is preemptible (requeued jobs
   resume); `short-unkillable` allows 4 GPUs for 3 h, not preempted (QoS: 4 GPUs per user). Use `a100l` (80 GB);
   the 2 `h100` nodes are usually full. A full `a100l` node with 4 free GPUs is rare on `long`.
-- Bad nodes (scratch `Remote I/O error`, jobs die in ~1 min): **cn-g028, cn-g029** (2026-10-15/21). Submit with `--exclude=cn-g028,cn-g029`.
+- Bad nodes (scratch `Remote I/O error`, jobs die in ~1 min): **cn-g008, cn-g028, cn-g029** (2026-10-15/21). Submit with `--exclude=cn-g008,cn-g028,cn-g029`.
 - On A100, t7 is ~7.3 min/step (rollout ~225 s, decode+judge ~130 s, train ~95 s); a val800 validation with
   `--eval_oracle` takes 1 h 46 min on 3 ranks. Judge loads in ~50 s.
 - sbatch copies the script at submission: editing a launcher does not change already-queued jobs.
