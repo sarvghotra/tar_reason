@@ -33,7 +33,7 @@
 #   RL_FT        optional folder suffix, as in his scripts (e.g. _rl_ft_oracle_t8_500); default empty
 #   MDP          1 (default) = *_MDP generator: each correction sees only the prompt + the previous image;
 #                0 = full history (draft, critique, image, critique, ...)
-#   N_ITERS      images per sample INCLUDING the draft (default 4 = draft + 3 corrections). With
+#   N_ITERS      images per sample INCLUDING the draft (default 5 = draft + 4 corrections, as in training). With
 #                N_ITERS=2 MDP and full history are identical.
 #   SEEDS        space-separated (defaults = his: geneval2 "2213 713 13", genai "13 17 91", tiif "17 91 13")
 #   NUM_PROMPTS  GenAI-Bench prompts: 1600 (default, the full official set) or 800 (jeet's subset, same ids)
@@ -74,7 +74,7 @@ MODEL_PATH=${MODEL_PATH:-${MODELS}/sft/slf_ref_edit_t21_ckpt17000}
 LORA_PATH=${LORA_PATH:-}
 RL_FT=${RL_FT:-}
 MDP=${MDP:-1}
-N_ITERS=${N_ITERS:-4}
+N_ITERS=${N_ITERS:-5}   # official: draft + 4 corrections (user, 2026-10-21; jeet used 4)
 NUM_PROMPTS=${NUM_PROMPTS:-1600}   # full official GenAI-Bench (jeet used 800)
 SINGLE_PASS=${SINGLE_PASS:-0}
 OUT_ROOT=${OUT_ROOT:-/network/scratch/s/singhsd/tar_reason/results_jeet}
