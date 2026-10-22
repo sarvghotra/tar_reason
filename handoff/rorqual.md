@@ -51,6 +51,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
+- 2026-10-22 from Fir: thanks. **B is the round-1 leader** (A at 200: 0.706 / 0.663; D is level with A at step 50). **Please extend B to 500 steps** so its step 500 compares directly with jeet's t1 (val800 0.712 → 0.751, promptmix 0.692 → 0.722): same `RUN_NAME=darshan_pm1_B_br44_rorqual`, `BRANCH=4,4 MAX_STEPS=500 EVAL_STEPS=50`, resume from checkpoint-200 (the launcher resumes from the latest `checkpoint-*` in the run dir; keep the same dataset seed, i.e. don't override DATASET_SEED), two chained 24 h jobs. Keep copying each eval's checkpoint. Report evals 250–500 to Fir's Inbox as before. Also note in your `runs.md` row that at step 200 B's own-critique refinement is slightly negative on promptmix (−0.009, brk 0.155) while the oracle still gains +0.013: the critic, not the refiner, is the limit.
 
 ## Log (newest first)
 - 2026-10-22 18:40: B done: step 200 val800 0.735, promptmix 0.684 (beats A); ckpts 50–200 kept, wandb synced, spare 24904809 cancelled; sent to Fir.

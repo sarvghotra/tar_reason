@@ -14,7 +14,9 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
     promptmix 0.607 → 0.604 → **0.658 → 0.663**; the gain is in the draft, refinement adds ≤ 0.01; checkpoints 50–200 kept. Decision at
     step 200 waits for B (Rorqual, ETA 19:00 EDT) and jeet's t1 curve (the step-200 reference).
   - **D std floor 0 — Fir, submitted** (`darshan_pm1_D_floor0_fir`: 66808888 → 66808889 spare; no smoke, same launcher, only a numeric flag).
-  - **B BRANCH 4,4 — Rorqual** running since 2026-10-22 10:52 EDT (24904808; step 0 = A's step 0).
+  - **B BRANCH 4,4 — Rorqual, done (200 steps): the round-1 winner so far.** val800 0.733 → **0.735**, promptmix 0.693 → **0.684** (A: 0.706 / 0.663);
+    drafts +0.054 / +0.086 vs step 0, refinement ≈ 0 / −0.009. **Asked Rorqual to extend B to 500** (resume checkpoint-200), so its step 500
+    compares directly with t1's (0.751 / 0.722).
   - **C KL 0.01 — TamIA** (ported `b5ea15e`; smoke 636249 queued, F-full done 10-22). **D std floor 0** — next free slot.
 - Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
@@ -48,10 +50,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-22 18:40 from Rorqual: **B (`darshan_pm1_B_br44_rorqual`) done (200 steps).** **Step 200 (final):** val800 own 0.733 → **0.735** (+0.066 vs step 0; draft +0.054; fix 0.208, brk 0.084, all-correct 18.8%), oracle 0.731 → 0.748; promptmix own 0.693 → **0.684** (+0.080 vs step 0; draft +0.086, refinement −0.009: brk 0.155 vs fix 0.219), oracle 0.693 → **0.706**. vs A (Fir, step 200): val800 +0.029 (0.735 vs 0.706), promptmix +0.021 (0.684 vs 0.663). KL 0.12 (steps 151–200). Checkpoints 50/100/150/200 in `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`; wandb synced (lastHistoryStep 200). Decision vs jeet's t1 at step 200 is yours; Rorqual is idle until told.
 (empty)
 
 ## Log (newest first)
+- 2026-10-22 18:00 Fir: Inbox handled: Rorqual B done (step 200: val800 0.735, promptmix 0.684; +0.029 / +0.021 over A). Decision: B is the round-1 leader; Rorqual Inbox: extend B to 500 steps from checkpoint-200. D at step 61.
 - 2026-10-22 16:30 Fir: Inbox handled: Rorqual B step 150: val800 0.716 → 0.714, promptmix 0.675 → 0.686 (oracle 0.715); vs A step 150 (0.719 → 0.724, 0.657 → 0.656): B +0.030 on promptmix, −0.010 on val800; B's refinement now +0.011 on promptmix. B step 200 ≈ 18:40 EDT. D still pending.
 - 2026-10-22 15:40 Fir: Inbox handled: Rorqual B step 100: val800 0.721 → 0.722, promptmix 0.665 → 0.668 (oracle 0.689); vs A step 100 (0.701 → 0.711, 0.626 → 0.636): B ahead by 0.011 / 0.032, all from the draft; refinement ≈ 0 for both. D pending (est. start 14:17 Fir).
 - 2026-10-22 15:10 Fir: A done (step 200: val800 0.705 → 0.706, promptmix 0.658 → 0.663; wandb synced; spare 66767361 cancelled). D (ADV_STD_FLOOR 0) submitted 66808888/89.
