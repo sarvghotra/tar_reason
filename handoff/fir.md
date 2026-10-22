@@ -12,7 +12,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   steps, settings may be changed at a resume (every setting is re-read), then jeet's official pipeline on Mila.
   - **A oracle frac 0.75 — Fir, running:** `darshan_pm1_A_orc75_fir`: smoke 66734951 (1 node) → 66734952 (afterok, 24 h) → 66734953 (spare, 12 h).
   - **B BRANCH 4,4 — Rorqual** (Inbox; after stopping `darshan_mr_f800pm_rorqual`, user's ok 10-21).
-  - **C KL 0.01 — TamIA** (Inbox; after F-full). **D std floor 0** — next free slot.
+  - **C KL 0.01 — TamIA** (ported `b5ea15e`; smoke 636249 queued, F-full done 10-22). **D std floor 0** — next free slot.
 - Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
   Mila shared F-800 / pm-run-500 merged with jeet (ACL) and runs N_ITERS=5 evals.
@@ -45,10 +45,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-22 02:50 EDT from TamIA: **F-full done** (full-history training, 300 steps). Step 300, val800 depth-4 full history: own 0.789/0.840/0.839/0.840/**0.833**, oracle **0.897** (step 0 0.796 / 0.863; F-mdp step 300 0.848 / 0.896): most of the full-history handicap is trained away. mdp eval of its checkpoint-300 queued (636248). **Promptmix C** (KL 0.01): `bash_tamia_promptmix.sh` ported (`b5ea15e`), data verified, smoke 636249 queued; the 200-step run follows.
 (empty)
 
 ## Log (newest first)
+- 2026-10-22 00:10 PDT: session resumed in tmux (login2); watcher re-armed. Inbox handled: TamIA F-full done (step 300 full-history own 0.833 / oracle 0.897 vs F-mdp 0.848 / 0.896; mdp eval of ckpt-300 queued), C (KL 0.01) ported, smoke queued. A smoke 66734951 still pending (priority).
 - 2026-10-21 21:30: user: no E2 (start from SFT); jeet has no hparam recipe → round-1 screen (A/B/C/D). Cancelled E2 chain 66733473–75 unrun. Launcher: HYBRID_ORACLE_FRAC/KL_COEF/ADV_STD_FLOOR/BREAK_WEIGHT/ALPHA overridable. A submitted (66734951 → 52 → 53). Rorqual: stop f800pm + B; TamIA: C after F-full.
 - 2026-10-21 20:00: jeet/user: single-round promptmix first. `bash_fir_promptmix.sh` (untested until now: its 10-17 smoke was cancelled) got the speed settings + EVAL_STEPS 100; submitted E2 `darshan_pm1_t8_fir` (smoke 66733473 → 66733474 → 66733475). E1 → Rorqual Inbox, E3 → TamIA Inbox. OPAL (reactive optimizers) looked at: not applicable now (needs an online agent on rank 0, single node only).
 - 2026-10-21 18:30: Inbox handled: Rorqual f800pm steps 100/200 (declining: val800 0.858 → 0.850 → 0.845, promptmix 0.712 → 0.712 → 0.694, drafts falling; no report since step 200); Mila: jeet's pipeline ported (t8 sanity 76.62 vs 76.8), F-800 vs pm-run-500 (MDP n4, 3 seeds): GenEval2 80.1 vs 72.5, GenAI-1600 43.3 vs 42.7, TIIF 71.4/67.7 vs 73.2/67.8; user chose GenAI full 1,600.
