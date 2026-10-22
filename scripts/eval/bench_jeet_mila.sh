@@ -215,14 +215,32 @@ geneval2_seed() {
   if iters_have "$RESULT_DIR" results_geneval2.jsonl && grep -q "GenEval2 soft-TIFA scores" "$LOG_FILE" 2>/dev/null; then
     echo "seed ${SEED}: done, skipping"; return 0
   fi
+  # Images are scored from wherever they are complete: the scratch copy (.gen_done) or, when this job
+  # generated them, the local copy. Some scratch folders refuse new files even on retry (BeeGFS, 2026-10-22),
+  # so copying the images to scratch is best effort; only the score files and logs must reach scratch.
+  local SCORE_DIR=$RESULT_DIR
   if [ ! -f "$RESULT_DIR/.gen_done" ]; then
     # Success = all iteration outputs on disk, not torchrun's exit code: a rank can segfault at
-    # teardown after writing everything (seen 2026-10-20), and a rerun would wipe the finished images.
-    echo "$(date +%H:%M:%S) seed ${SEED}: generation"
-    gen_retry 'iters_have "$RESULT_DIR" geneval2_results.json' \
-        --out_dir "$RESULT_DIR" --prompts_file "$EVAL_SET" --geneval2 --seed "$SEED" \
-      && touch "$RESULT_DIR/.gen_done" \
-      || { echo "GenEval2 generation failed (seed ${SEED})"; exit 1; }
+    # teardown after writing everything (seen 2026-10-20).
+    echo "$(date +%H:%M:%S) seed ${SEED}: generation (local disk)"
+    local LRES=${RESULT_DIR/#$OUT_ROOT/$LOCAL_ROOT} T OK=0
+    for T in $(seq 1 $GEN_TRIES); do
+      rm -rf "$LRES"; mkdir -p "$LRES"
+      run_gen --out_dir "$LRES" --prompts_file "$EVAL_SET" --geneval2 --seed "$SEED"
+      iters_have "$LRES" geneval2_results.json && { OK=1; break; }
+      echo "$(date +%H:%M:%S) generation attempt $T/${GEN_TRIES} failed"; sleep 60
+    done
+    [ $OK = 1 ] || { echo "GenEval2 generation failed (seed ${SEED})"; exit 1; }
+    SCORE_DIR=$LRES
+    mkdir -p "$RESULT_DIR"
+    for T in 1 2 3; do
+      if rsync -a "$LRES/" "$RESULT_DIR/"; then
+        local f; for f in "$RESULT_DIR"/*/geneval2_results.json; do sed -i "s|$LRES|$RESULT_DIR|g" "$f"; done
+        touch "$RESULT_DIR/.gen_done"; break
+      fi
+      echo "$(date +%H:%M:%S) rsync of images attempt $T failed (scoring uses the local copy)"; sleep 30
+    done
+    local k; for k in $(seq 1 $N_ITERS); do mkdir -p "$RESULT_DIR/$k" 2>/dev/null; done
   fi
   echo "$(date +%H:%M:%S) seed ${SEED}: scoring ITER-1..ITER-${N_ITERS} (evaluation_optz.py soft_tifa, one iteration per GPU)"
   local FAILED="" START ITER STATUS
@@ -236,7 +254,7 @@ geneval2_seed() {
       ( L=${LOCAL_ROOT}/geneval2_score_${SEED}_${ITER}; mkdir -p "$L"
         (cd ${BENCH_DIR}/GenEval2 && CUDA_VISIBLE_DEVICES=$(( ITER - START )) env -u PYTHONPATH $JUDGE_PY evaluation_optz.py \
           --benchmark_data "$EVAL_SET" \
-          --image_filepath_data "${RESULT_DIR}/${ITER}/geneval2_results.json" \
+          --image_filepath_data "${SCORE_DIR}/${ITER}/geneval2_results.json" \
           --method soft_tifa \
           --output_file "$L/results_geneval2.jsonl") > "$L/eval_log.txt" 2>&1; rc=$?
         copy_retry "$L/eval_log.txt" "${RESULT_DIR}/${ITER}/eval_log.txt" || rc=1
