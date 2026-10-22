@@ -11,7 +11,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   drop if ≤ t1 on promptmix val; extend to 500 if > +0.01 on promptmix val without −0.01 on GenEval2 val. Round 2: combine winners, 500
   steps, settings may be changed at a resume (every setting is re-read), then jeet's official pipeline on Mila.
   - **A oracle frac 0.75 — Fir, running:** `darshan_pm1_A_orc75_fir`: smoke 66734951 (1 node) → 66734952 (afterok, 24 h) → 66734953 (spare, 12 h).
-  - **B BRANCH 4,4 — Rorqual** (Inbox; after stopping `darshan_mr_f800pm_rorqual`, user's ok 10-21).
+  - **B BRANCH 4,4 — Rorqual** (ported; smoke 24902055 queued; f800pm had already finished 500 steps: val800 0.849, promptmix 0.730).
   - **C KL 0.01 — TamIA** (ported `b5ea15e`; smoke 636249 queued, F-full done 10-22). **D std floor 0** — next free slot.
 - Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
@@ -45,10 +45,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-22 from Rorqual: `darshan_mr_f800pm_rorqual` **had already finished 500 steps (2026-10-21 20:21) when the stop arrived.** **Step 300:** val800 own 0.763/0.819/0.836/0.841/**0.838**, all-correct 38.1%, oracle 0.890; promptmix own 0.645/0.695/0.693/0.695/**0.705**, oracle 0.753 (low point). **Step 400:** val800 own 0.797/0.836/0.845/0.845/**0.851**, all-correct 43.0%, oracle 0.892; promptmix own 0.686/0.711/0.721/0.718/**0.718**, oracle 0.774. **Step 500 (final):** val800 own 0.803/0.844/0.843/0.847/**0.849** (−0.009 vs step 0 = F-800; draft −0.010), all-correct 31.6 → 41.5%, oracle 0.895 (−0.010); promptmix own 0.691/0.716/0.726/0.733/**0.730** (**+0.018**; draft +0.018), all-correct 16.1 → 18.8%, oracle **0.778** (+0.012). Drafts dipped to step 300 and recovered by 400–500. Net: promptmix up, GenEval2 slightly down (vs `darshan_mr_pm_fir` step 500: val800 0.784, promptmix 0.744). KL 0.12–0.19, 3.2–3.7 min/step. wandb synced (2 pieces, lastHistoryStep 500). **Only checkpoint-500 kept** (`~/scratch/tar_reason_kept/darshan_mr_f800pm_rorqual/`): `--save_total_limit 5` deleted 100–400 before they were copied (the 'kept' notes at 100/200 were wrong). Variant B (`darshan_pm1_B_br44_rorqual`): launcher `bash_rorqual_promptmix.sh` pushed, smoke 24902055 queued; full run after the smoke's step time. Correction to my 2026-10-20 lines: checkpoints 100/200 were NOT kept.
 (empty)
 
 ## Log (newest first)
+- 2026-10-22 01:00 PDT: Inbox handled: Rorqual f800pm had finished 500 steps before the stop: final val800 0.849 (−0.009 vs F-800), promptmix 0.730 (+0.018; vs pm-run-500 from t1: 0.784 / 0.744); only ckpt-500 kept (100–400 pruned by save_total_limit). B (BRANCH 4,4) ported, smoke 24902055 queued.
 - 2026-10-22 00:10 PDT: session resumed in tmux (login2); watcher re-armed. Inbox handled: TamIA F-full done (step 300 full-history own 0.833 / oracle 0.897 vs F-mdp 0.848 / 0.896; mdp eval of ckpt-300 queued), C (KL 0.01) ported, smoke queued. A smoke 66734951 still pending (priority).
 - 2026-10-21 21:30: user: no E2 (start from SFT); jeet has no hparam recipe → round-1 screen (A/B/C/D). Cancelled E2 chain 66733473–75 unrun. Launcher: HYBRID_ORACLE_FRAC/KL_COEF/ADV_STD_FLOOR/BREAK_WEIGHT/ALPHA overridable. A submitted (66734951 → 52 → 53). Rorqual: stop f800pm + B; TamIA: C after F-full.
 - 2026-10-21 20:00: jeet/user: single-round promptmix first. `bash_fir_promptmix.sh` (untested until now: its 10-17 smoke was cancelled) got the speed settings + EVAL_STEPS 100; submitted E2 `darshan_pm1_t8_fir` (smoke 66733473 → 66733474 → 66733475). E1 → Rorqual Inbox, E3 → TamIA Inbox. OPAL (reactive optimizers) looked at: not applicable now (needs an online agent on rank 0, single node only).
