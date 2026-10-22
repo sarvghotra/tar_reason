@@ -2,14 +2,18 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-20 12:30 PDT)
-- **Nothing running on Fir.** `darshan_mr_pm_fir` (F's multi-round MDP recipe on promptmix from jeet's promptmix t1) **done**: step 500
-  val800 own **0.784** (step 0 0.761), promptmix own **0.744** (0.721), all-correct 25.1% / 19.4%; checkpoints 100–500 kept; wandb synced.
-- **F-800 → promptmix runs on Rorqual** (`darshan_mr_f800pm_rorqual`, Rorqual Inbox). F-800 merged on Fir too
-  (`models/tar/sft/darshan_mr_fir_merged800`) for the critique plan (C0 diagnostic on Mila; C1 checklist SFT; C2 critic RL).
-- Code: main checkout pulled to the merged code (no jobs left on the old one); worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2`)
-  still exists, identical content, can be removed. Launchers: jeet's speed settings default, dataset seed from RUN_NAME.
-- Watcher: none (nothing running).
+## Now (2026-10-21 20:00 PDT)
+- **New direction (user + jeet, 2026-10-21): get single-round promptmix right before multi-round** (as t8 did for GenEval2). Promptmix t1
+  (t8 recipe from SFT t21, 500 steps) is well below t8: GenEval2 val800 draft → 1 round 0.712 → 0.751 (t8 0.776 → 0.825), promptmix val
+  0.692 → 0.722. Single-round experiments (launcher `bash_fir_promptmix.sh` = jeet's t1 recipe, speed settings, EVAL_STEPS 100):
+  **E2 from t8** (Fir, running), **E1 continue t1** (Rorqual Inbox), **E3 promptmix + GenEval2 mixed data** (TamIA Inbox, after F-full).
+- **`darshan_pm1_t8_fir` (E2)**: t1 recipe (BRANCH 2,4, one round, hybrid critiques, LR 1e-4, fresh LoRA) on promptmix train_17K from
+  **t8 merged** (`rl_ft_oracle_t8_merged500`), val GenEval2 val800 + promptmix val400 (`EVAL_BRANCH 1,1`, + oracle) every 100, 500 steps.
+  Chain: smoke 66733473 (1 node, `pm1_t8_smoke_fir`, 2 steps) → 66733474 (afterok) → 66733475 (afterany), 4 nodes × 4 H100.
+- Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept).
+  F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`). Mila shared F-800 / pm-run-500 merged with jeet (ACL) and runs N_ITERS=5 evals.
+- Code: main checkout at origin; worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2`) can be removed.
+- Watcher: to arm for the smoke/E2 (self-terminating `watch.sh`).
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
@@ -40,6 +44,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-21 20:00: jeet/user: single-round promptmix first. `bash_fir_promptmix.sh` (untested until now: its 10-17 smoke was cancelled) got the speed settings + EVAL_STEPS 100; submitted E2 `darshan_pm1_t8_fir` (smoke 66733473 → 66733474 → 66733475). E1 → Rorqual Inbox, E3 → TamIA Inbox. OPAL (reactive optimizers) looked at: not applicable now (needs an online agent on rank 0, single node only).
 - 2026-10-21 18:30: Inbox handled: Rorqual f800pm steps 100/200 (declining: val800 0.858 → 0.850 → 0.845, promptmix 0.712 → 0.712 → 0.694, drafts falling; no report since step 200); Mila: jeet's pipeline ported (t8 sanity 76.62 vs 76.8), F-800 vs pm-run-500 (MDP n4, 3 seeds): GenEval2 80.1 vs 72.5, GenAI-1600 43.3 vs 42.7, TIIF 71.4/67.7 vs 73.2/67.8; user chose GenAI full 1,600.
 - 2026-10-20 15:00: merged jeet's latest main (judge one-prefix scoring, --siglip2_path) keeping the SIGLIP2_PATH override (offline TA-Tok load tested); bash_fir_mr.sh: REWARD_QUESTION_BATCH 64, TRAIN_MICRO_BATCH 2. Inboxes TamIA/Rorqual/Mila. Mila: jeet's eval pipeline.
 - 2026-10-20 12:40: Inbox handled: Rorqual f800pm running (3.7 min/step at 4 nodes with jeet's settings vs ~5; step 0 = F-800: val800 0.858, promptmix 0.712 < promptmix t1's 0.721); Mila 3-seed error bars (F-800 > t8 on GenEval2 79.1±0.2 vs 76.5±0.7 and GenAI 43.1 vs 41.4; TIIF differences are noise); **C0: the critic is limited by perception, and RL fine-tuning eroded it** (judge-failed atoms rejected: base Tar 73%, F-800 69%; position 74→52%, object 62→49% = chance).

@@ -20,6 +20,11 @@
 # val_oracle_promptmix/). Differences from his script: paths, account/wandb (darshan-singh, offline),
 # node-local staging (STAGE_LOCAL), SAVE_STEPS=10 (resume granularity), logging every step, --val_dump_dir.
 #
+# Single-round promptmix experiments (2026-10-21, jeet: get single-round right before multi-round):
+#   E1 continue t1:  PREV_STAGE_CHECKPOINT=${MODELS}/sft/rl_ft_promptsmix_t1_merged500 (t1 ckpt-500 merged; fresh LoRA)
+#   E2 from t8:      PREV_STAGE_CHECKPOINT=${MODELS}/sft/rl_ft_oracle_t8_merged500 RUN_NAME=darshan_pm1_t8_fir (Fir, 10-21)
+#   E3 mixed data:   TRAIN_JSONL=<promptmix 17K + 17K GenEval2 rows concatenated> (dataset.py ignores ratio: pool rows)
+#
 #   smoke:   MAX_STEPS=2 EVAL_STEPS=2 SAVE_STEPS=2 EVAL_MAX_PROMPTS=24 RUN_NAME=pm_smoke_fir \
 #              sbatch --nodes=1 --time=01:00:00 scripts/rl_ft/bash_fir_promptmix.sh
 #   resume:  resubmit the same command (or chain with --dependency=afterany:<jobid>).
@@ -59,9 +64,9 @@ WORLD_SIZE_GPUS=$((N_TRAIN_GPUS * N_NODES))
 
 PREV_STAGE_CHECKPOINT=${PREV_STAGE_CHECKPOINT:-${MODELS}/sft/slf_ref_edit_t21_ckpt17000}   # SFT t21: base + KL reference; fresh LoRA
 
-REWARD_QUESTION_BATCH=32
+REWARD_QUESTION_BATCH=${REWARD_QUESTION_BATCH:-64}   # jeet's speed settings (2026-10-20)
 REWARD_IMAGES_PER_REQ=8
-REWARD_DECODE_BATCH=24
+REWARD_DECODE_BATCH=${REWARD_DECODE_BATCH:-32}
 REWARD_LOAD_TIMEOUT=1800
 
 PROMPTS_PER_GPU=${PROMPTS_PER_GPU:-3}
@@ -73,7 +78,7 @@ TRAIN_DRAFTS=1
 TRAIN_IMAGES=1
 IMAGE_ADV_SCALE=1.0            # image tokens trained (t8 recipe)
 EVAL_BRANCH=${EVAL_BRANCH:-1,1}   # greedy draft -> critique -> refine
-GEN_BATCH_SIZE=16
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-48}
 TRAIN_MICRO_BATCH=${TRAIN_MICRO_BATCH:-2}   # refine rows ~1.6k tokens
 
 LR=${LR:-1e-4}
@@ -104,7 +109,7 @@ REFLECT_TEMPERATURE=1.0
 ANSWER_SUFFIX=geneval2
 
 MAX_STEPS=${MAX_STEPS:-500}
-EVAL_STEPS=${EVAL_STEPS:-50}
+EVAL_STEPS=${EVAL_STEPS:-100}   # jeet's t1: 50
 SAVE_STEPS=${SAVE_STEPS:-10}
 EVAL_MAX_PROMPTS=${EVAL_MAX_PROMPTS:-}     # empty = full val set
 WARMUP_RATIO=0.05
