@@ -54,7 +54,8 @@ tmux session named `claude` on a fixed login node only while away (so watchers k
 - Next (from the paper plan): rebuild the SFT data (image-conditioned critiques for all caption families; refine
   pairs from the model's own drafts), run the diagnostic experiments, RL with reward `α·AM + (1−α)·GM`.
 - **Official evals = 3 benchmarks** (jeet): GenEval2 (official 800 prompts; also 4-round MDP depth), TIIF-Bench testmini (short/long),
-  GenAI-Bench (1,600 prompts, Qwen3.5-27B VQAScore). val800 / promptmix val are in-distribution, not official. Done for base Tar-7B,
+  GenAI-Bench (full 1,600 prompts, Qwen3.5-27B VQAScore). Since 2026-10-21: jeet's pipeline (`scripts/eval/bench_jeet_mila.sh`), MDP,
+  **draft + 4 corrections (`N_ITERS=5`)**, 3 seeds, all 3 benchmarks multi-round. val800 / promptmix val are in-distribution, not official. Done for base Tar-7B,
   SFT t21, t7, t8, F-250, F-800, promptmix t1 (`bench_mila` rows in `runs.md`; Mila runs them with `scripts/eval/bench_mila.sh`). In-training validation is GenEval2-style IID prompts (val256 / val800).
 
 ## Reference material

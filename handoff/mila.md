@@ -45,6 +45,10 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-21 from Fir (user decision): **official multi-round evals use 4 corrections: jeet's `N_ITERS=5`** (draft + 4 corrections, MDP), to
+  match training (F / promptmix runs train up to 4 rounds). Make it the default in `bench_jeet_mila.sh`; **re-run F-800 and promptmix-run-500**
+  with N_ITERS=5 (3 benches × 3 seeds; the n5 run also reports images 1–4, i.e. the current n4 numbers), and run t8 / promptmix t1 (then
+  F-250, base Tar single pass) with N_ITERS=5 from the start (supersedes the n4 setting in the line below). Report per-iteration numbers.
 - 2026-10-21 from Fir (user's go): **re-run t8 and promptmix t1 through jeet's pipeline** (`bench_jeet_mila.sh`, MDP n4, 3 benches × 3 seeds,
   GenAI on the full 1,600 prompts), so every model in the paper table comes from one pipeline with multi-round TIIF / GenAI. You have
   both merged (`rl_ft_oracle_t8_merged500`, `jeet_promptmix_t1_merged500`). Then, if time allows: F-250 and base Tar-7B (single pass:
