@@ -181,6 +181,9 @@ copy_to_scratch() {
   done
   return 1
 }
+copy_retry() {   # copy_retry <src> <dst>: cp to scratch, retried (same BeeGFS errors)
+  local t; for t in 1 2 3 4 5 6; do cp -f "$1" "$2" && return 0; sleep 30; done; return 1
+}
 gen_retry() {
   local check=$1 t rc a f; shift
   local args=(); for a in "$@"; do args+=("${a//$OUT_ROOT/$LOCAL_ROOT}"); done
@@ -229,11 +232,16 @@ geneval2_seed() {
       if [ -s "${RESULT_DIR}/${ITER}/results_geneval2.jsonl" ] && grep -q "^GM Score" "${RESULT_DIR}/${ITER}/eval_log.txt" 2>/dev/null; then
         continue
       fi
-      (cd ${BENCH_DIR}/GenEval2 && CUDA_VISIBLE_DEVICES=$(( ITER - START )) env -u PYTHONPATH $JUDGE_PY evaluation_optz.py \
+      # Score into local files, then copy them to scratch (scratch file creation fails intermittently).
+      ( L=${LOCAL_ROOT}/geneval2_score_${SEED}_${ITER}; mkdir -p "$L"
+        (cd ${BENCH_DIR}/GenEval2 && CUDA_VISIBLE_DEVICES=$(( ITER - START )) env -u PYTHONPATH $JUDGE_PY evaluation_optz.py \
           --benchmark_data "$EVAL_SET" \
           --image_filepath_data "${RESULT_DIR}/${ITER}/geneval2_results.json" \
           --method soft_tifa \
-          --output_file "${RESULT_DIR}/${ITER}/results_geneval2.jsonl") > "${RESULT_DIR}/${ITER}/eval_log.txt" 2>&1 &
+          --output_file "$L/results_geneval2.jsonl") > "$L/eval_log.txt" 2>&1; rc=$?
+        copy_retry "$L/eval_log.txt" "${RESULT_DIR}/${ITER}/eval_log.txt" || rc=1
+        [ $rc -eq 0 ] && { copy_retry "$L/results_geneval2.jsonl" "${RESULT_DIR}/${ITER}/results_geneval2.jsonl" || rc=1; }
+        exit $rc ) &
       PIDS[$ITER]=$!
     done
     for ITER in "${!PIDS[@]}"; do
@@ -286,14 +294,19 @@ genai_seed() {
     if [ -s "${SEED_DIR}/${ITER}/${PT}" ] && grep -q '^Tag Group: overall' "$ITER_LOG" 2>/dev/null; then
       continue
     fi
-    (cd ${T2V_DIR} && CUDA_VISIBLE_DEVICES=$((I % N_GPUS)) env -u PYTHONPATH PATH=$(dirname $GENAI_PY):$PATH \
+    # Scores (.pt) and log go to local disk, then are copied to scratch (scratch file creation fails intermittently).
+    ( L=${LOCAL_ROOT}/genai_score_${SEED}_${ITER}; mkdir -p "$L"
+      (cd ${T2V_DIR} && CUDA_VISIBLE_DEVICES=$((I % N_GPUS)) env -u PYTHONPATH PATH=$(dirname $GENAI_PY):$PATH \
         $GENAI_PY -m genai_bench.evaluate \
         --model ${SCORE_MODEL} \
         --root_dir ${GENAI_ROOT} \
         --output_dir ${OUTPUT_DIR} \
         --gen_model ${GEN_MODEL}/${ITER} \
         --num_prompts ${NUM_PROMPTS} \
-        --result_dir ${OUTPUT_DIR}) > "$ITER_LOG" 2>&1 &
+        --result_dir "$L") > "$L/eval_log.txt" 2>&1; rc=$?
+      copy_retry "$L/eval_log.txt" "$ITER_LOG" || rc=1
+      [ $rc -eq 0 ] && { copy_retry "$L/${GEN_MODEL}/${ITER}/${PT}" "${SEED_DIR}/${ITER}/${PT}" || rc=1; }
+      exit $rc ) &
     PIDS+=($!)
     if [ ${#PIDS[@]} -eq $N_GPUS ]; then
       for PID in "${PIDS[@]}"; do wait $PID || STATUS=$?; done
