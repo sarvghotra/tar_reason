@@ -6,8 +6,8 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - **`darshan_pm1_B_br44_rorqual`** (Fir Inbox 2026-10-21, single-round promptmix hyper-parameter screen, variant **B = BRANCH 4,4**):
   `scripts/rl_ft/bash_rorqual_promptmix.sh` (copy of `bash_fir_promptmix.sh`: jeet's t1 recipe from SFT t21, fresh LoRA, one round,
   hybrid 0.5, children, LR 1e-4, KL 0.05, std floor 0.04, EVAL_BRANCH 1,1, speed settings), train promptmix train_17K,
-  val GenEval2 val800 + promptmix val_400 (= first 400 of val_800, md5 checked). **Smoke `pm1_B_smoke_rorqual` 24902055** (1 node, 2 steps)
-  → then the full run: `BRANCH=4,4 MAX_STEPS=200 EVAL_STEPS=50 RUN_NAME=darshan_pm1_B_br44_rorqual`, 4 nodes (PROMPTS_PER_GPU=2 if a step > ~5 min).
+  val GenEval2 val800 + promptmix val_400 (= first 400 of val_800, md5 checked). **Smoke `pm1_B_smoke_rorqual` 24902055 passed** (48 min; ≈ 2 min/step at 1 node: rollout 65 + reward 28 + train 27 s; staging took 1500 s, first read of SFT t21 on Rorqual)
+  → **full run 24904808 (4 nodes) → 24904809 (afterany spare)**: `BRANCH=4,4 MAX_STEPS=200 EVAL_STEPS=50 RUN_NAME=darshan_pm1_B_br44_rorqual`, 4 nodes (PROMPTS_PER_GPU=2 if a step > ~5 min).
   Jobs named `darshan_pm_rorqual`. Report every eval (val + val_promptmix: am_0, am_final, oracle, fix/brk/looks_good) to Fir's Inbox
   + `runs.md`; decision at step 200 (rule in `fir.md` Now). Fir runs A (oracle 0.75), TamIA C (KL 0.01).
   **Copy each eval's checkpoint to `~/scratch/tar_reason_kept/<run>/` right after the eval: `--save_total_limit 5` deletes it
@@ -56,6 +56,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-22 03:45: B smoke passed (≈ 2 min/step, PROMPTS_PER_GPU stays 3); full B 24904808 → 24904809 submitted.
 - 2026-10-22 02:50: Inbox handled: f800pm had finished 500 steps on 2026-10-21 20:21 (23887485, resumed at 350); spare 24413404 cancelled; wandb synced (2 pieces); step 300/400/500 evals to Fir + runs.md; only checkpoint-500 survived (save_total_limit 5). `bash_rorqual_mr.sh` re-synced (Fir's 2026-10-20 merge Inbox: jeet's settings, SIGLIP2_PATH). Variant B: `bash_rorqual_promptmix.sh`, smoke 24902055.
 - 2026-10-21 09:05: f800pm job 1 (23887484) TIMEOUT at ~350; 23887485 resumed (11:07).
 - 2026-10-20 23:10: step-200 eval: val800 own 0.845 (−0.013), promptmix 0.694 (−0.018), drafts −0.04; flagged to Fir (continue or stop?).
