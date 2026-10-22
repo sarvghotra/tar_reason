@@ -402,6 +402,8 @@ tiif_seed() {
     JUDGED=$(find ${RESULT_DIR}/${MODEL_NAME}_iter${ITER} -name '*.json' 2>/dev/null | wc -l)
     echo "iter-${ITER}: judged ${JUDGED}/${EXPECTED} (prompt, register) pairs"
   done
+  # A partial copy back (scratch errors) must not be summarised: fail, so a rerun judges the rest.
+  tiif_complete || { echo "ERROR: judgments incomplete on scratch after the copy; rerun this seed"; exit 1; }
   # TIIF-Bench's own summary scripts.
   (cd ${TIIF_DIR} && env -u PYTHONPATH $JUDGE_PY eval/summary_results.py --input_dir ${RESULT_DIR}) | tee ${RESULT_FILE}
   # summary_dimension_results.py exits non-zero even on success (its Tee flushes a closed file at
