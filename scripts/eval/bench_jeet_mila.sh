@@ -335,13 +335,14 @@ tiif_seed() {
   local DIM_TXT=${RESULT_DIR}/result_summary_dimension.txt RESULT_FILE=${SAVE_DIR}/tiif_bench_log.txt
   local EXPECTED ITER JUDGED
   EXPECTED=$(grep -c . ${EVAL_PROMPTS_DIR}/*.jsonl | awk -F: '{n+=$2} END {print 2*n}')
-  tiif_complete() {
+  tiif_complete() {   # tiif_complete [dir]: every iteration has all judgments (default: scratch results)
+    local d=${1:-$RESULT_DIR}
     for ITER in $(seq 1 $N_ITERS); do
-      JUDGED=$(find ${RESULT_DIR}/${MODEL_NAME}_iter${ITER} -name '*.json' 2>/dev/null | wc -l)
+      JUDGED=$(find ${d}/${MODEL_NAME}_iter${ITER} -name '*.json' 2>/dev/null | wc -l)
       [ "$JUDGED" -ge "$EXPECTED" ] || return 1
     done
   }
-  if [ -s "$DIM_TXT" ] && [ -s "$RESULT_FILE" ] && tiif_complete; then
+  if [ -s "$DIM_TXT" ] && [ -s "$RESULT_FILE" ] && { [ -f "$SAVE_DIR/.judge_done" ] || tiif_complete; }; then
     echo "seed ${SEED}: done, skipping"; return 0
   fi
   if [ ! -f "$SAVE_DIR/.gen_done" ]; then
@@ -390,30 +391,37 @@ tiif_seed() {
     done
     for PID in "${PIDS[@]}"; do wait ${PID} || STATUS=$?; done
   done
-  local T; for T in 1 2 3 4 5 6; do rsync -a "$JUDGE_DIR/" "$RESULT_DIR/" && break
-    echo "$(date +%H:%M:%S) rsync of judge results attempt $T failed; retrying in 60 s"; sleep 60; done
-  rm -rf "$JUDGE_DIR"
+  # Copy all judgments back (best effort: some scratch folders refuse new files); everything below
+  # (completeness check, summaries, viz) runs on the local copy, and only the few summary files are copied.
+  local T; for T in 1 2 3; do rsync -a "$JUDGE_DIR/" "$RESULT_DIR/" && break
+    echo "$(date +%H:%M:%S) rsync of judge results attempt $T failed (summaries use the local copy)"; sleep 30; done
   if [ $STATUS -ne 0 ]; then
     echo "ERROR: at least one judging run failed (exit $STATUS)"
     for ITER in "${ITERS[@]}"; do echo "--- iter ${ITER} tail ---"; tail -30 ${SAVE_DIR}/judge_log_iter${ITER}.txt; done
     exit $STATUS
   fi
   for ITER in "${ITERS[@]}"; do
-    JUDGED=$(find ${RESULT_DIR}/${MODEL_NAME}_iter${ITER} -name '*.json' 2>/dev/null | wc -l)
+    JUDGED=$(find ${JUDGE_DIR}/${MODEL_NAME}_iter${ITER} -name '*.json' 2>/dev/null | wc -l)
     echo "iter-${ITER}: judged ${JUDGED}/${EXPECTED} (prompt, register) pairs"
   done
-  # A partial copy back (scratch errors) must not be summarised: fail, so a rerun judges the rest.
-  tiif_complete || { echo "ERROR: judgments incomplete on scratch after the copy; rerun this seed"; exit 1; }
+  tiif_complete "$JUDGE_DIR" || { echo "ERROR: judgments incomplete; rerun this seed (judged prompts are kept)"; exit 1; }
+  local LOG_LOCAL=${JUDGE_DIR}.log DIM_LOCAL=${JUDGE_DIR}/result_summary_dimension.txt
   # TIIF-Bench's own summary scripts.
-  (cd ${TIIF_DIR} && env -u PYTHONPATH $JUDGE_PY eval/summary_results.py --input_dir ${RESULT_DIR}) | tee ${RESULT_FILE}
+  (cd ${TIIF_DIR} && env -u PYTHONPATH $JUDGE_PY eval/summary_results.py --input_dir ${JUDGE_DIR}) | tee ${LOG_LOCAL}
   # summary_dimension_results.py exits non-zero even on success (its Tee flushes a closed file at
   # shutdown): success = the report exists.
-  rm -f ${DIM_TXT}
+  rm -f ${DIM_LOCAL}
   (cd ${TIIF_DIR} && env -u PYTHONPATH $JUDGE_PY eval/summary_dimension_results.py \
-      --input_excel ${RESULT_DIR}/result_summary.xlsx --output_txt ${DIM_TXT}) 2>&1 | tee -a ${RESULT_FILE} || true
-  if [ ! -s ${DIM_TXT} ]; then echo "ERROR: summary_dimension_results.py produced no report"; exit 1; fi
+      --input_excel ${JUDGE_DIR}/result_summary.xlsx --output_txt ${DIM_LOCAL}) 2>&1 | tee -a ${LOG_LOCAL} || true
+  if [ ! -s ${DIM_LOCAL} ]; then echo "ERROR: summary_dimension_results.py produced no report"; exit 1; fi
+  local VIZ=${LOCAL_ROOT}/tiif_viz_seed_${SEED}; rm -rf ${VIZ}; mkdir -p ${VIZ}; ln -s ${JUDGE_DIR} ${VIZ}/eval_results
   $TAR_PY ${REPO}/eval/analyze/viz_tiif_bench_iter_results.py \
-      --results-dir ${SAVE_DIR} --model-name ${MODEL_NAME} --delta-threshold 0.1 --no_images | tee -a ${RESULT_FILE}
+      --results-dir ${VIZ} --model-name ${MODEL_NAME} --delta-threshold 0.1 --no_images | tee -a ${LOG_LOCAL}
+  copy_retry ${JUDGE_DIR}/result_summary.xlsx ${RESULT_DIR}/result_summary.xlsx \
+    && copy_retry ${DIM_LOCAL} ${DIM_TXT} && copy_retry ${LOG_LOCAL} ${RESULT_FILE} \
+    || { echo "ERROR: could not copy the summary files to scratch"; exit 1; }
+  : > ${LOCAL_ROOT}/.judge_done; copy_retry ${LOCAL_ROOT}/.judge_done ${SAVE_DIR}/.judge_done
+  rm -rf "$JUDGE_DIR" ${VIZ} ${LOG_LOCAL}
   echo "OUTPUT DIR: ${SAVE_DIR}"
 }
 
