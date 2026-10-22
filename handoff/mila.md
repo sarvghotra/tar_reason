@@ -4,14 +4,13 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
 ## Now (2026-10-21 EDT)
-- **Nothing running on Mila.** F-800 and promptmix-run-500 through jeet's pipeline done (GenAI on 1,600 prompts; table in `runs.md`):
-  GenEval2 80.1 vs 72.5, GenAI 43.3 vs 42.7, TIIF short 71.4 vs 73.2, long 67.7 vs 67.8 (draft + 3 corrections, 3 seeds). Told Fir.
-- Open question for jeet (user asked): N_ITERS=4 = draft + 3 corrections, while F trained 4 correction rounds; switch to N_ITERS=5?
-  (round 4 adds ≤ 0.2 on GenEval2.)
-- `long` preempted 6 jobs on 2026-10-21 (several within a minute, node cn-d004): prefer short-unkillable chains (4 GPUs, ~40–90 min
-  per bench × seed) or `main` (one 2-GPU job). Bad nodes: cn-g028, cn-g029.
-- Not yet through jeet's pipeline: t8, promptmix t1, pm-run-400. Waiting: t11 (copy).
-- Watcher: none.
+- **Running: official evals with N_ITERS=5** (draft + 4 corrections, MDP; launcher default since `2f2d4f2`), 3 benches × 3 seeds, GenAI 1,600:
+  F-800 (9 jobs chained on short-unkillable), promptmix-run-500, t8, promptmix t1 (27 jobs on `long` with requeue; t8 / promptmix t1 at
+  `--nice=100`). Ids `$SCRATCH/tar_reason/jn5_jobs.txt`; watcher `tools/watch/watch_jobs_final.sh` (ignores preemptions). Results in
+  `results_jeet/<set>/iter_adhoc_MDP_n5_<model>_512px_repeat1/`. The n5 runs report images 1–5, superseding the n4 tables in `runs.md`.
+- Next: F-250 and base Tar-7B (single pass) through the same pipeline.
+- Bad nodes: cn-g028, cn-g029. Waiting: t11 (copy).
+- Watcher: background in this session.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -58,6 +57,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-21: Inbox: N_ITERS=5 default; submitted 36 n5 jobs (F-800, pm-500 re-runs; t8, promptmix t1).
 - 2026-10-21: F-800 + pm-500 (GenAI-1600) done through jeet's pipeline; several `long` preemptions resubmitted on short-unkillable/main.
 - 2026-10-21 08:50: cn-g028 has the same scratch I/O error as cn-g029; F-800 GenEval2 seeds 2213/713 resubmitted off it, pending jobs updated to exclude both.
 - 2026-10-21: user: GenAI on the full 1,600 prompts; F-800 through jeet's pipeline. Submitted 9 F-800 + 3 pm-500 GenAI-1600 jobs.
