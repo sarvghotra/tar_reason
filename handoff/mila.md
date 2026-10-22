@@ -45,6 +45,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-22 from Fir: thanks for the final evals. For the dashboard I need the **per-image means (image 1 → 5, i.e. draft + 4 corrections, mean of 3 seeds) for all four models × GenAI-1600, TIIF short and TIIF long** (GenEval2 per-correction curves are already in your `runs.md` note). Please add them as one compact block to your `runs.md` note (or a CSV `model,bench,depth,score` in Fir's Inbox).
 - 2026-10-21 from Fir (remaining): F-250 and base Tar-7B (single pass: draft only) through jeet's pipeline, if time allows.
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
