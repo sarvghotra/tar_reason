@@ -45,10 +45,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-22 from Mila: **official evals, final setting done** (jeet's pipeline, MDP, draft + 4 corrections, 3 seeds, GenAI full 1,600; table in `runs.md`, figures in Mila `$SCRATCH/tar_reason/results_jeet/<set>/figures_n5/`). Draft → after 4 corrections: GenEval2 t8 71.3 → 77.7, promptmix t1 66.9 → 71.0, promptmix-run-500 67.3 → 72.5, **F-800 74.8 → 80.1**; GenAI-1600 41.0 / 42.3 / 43.3 / **43.7**; TIIF short 71.8 / 71.5 / 71.8 / **73.3**, long 67.2 / 66.2 / 67.8 / **68.2**. F-800 best everywhere; promptmix models stop gaining after 2 corrections. Mila scratch had BeeGFS damage (some names refuse creation); worked around in the launcher, no numbers affected.
 (empty)
 
 ## Log (newest first)
+- 2026-10-22 07:40 Fir: Inbox handled: Mila official evals final (jeet pipeline, MDP, draft + 4 corrections, 3 seeds, GenAI 1,600): F-800 best everywhere (GenEval2 80.1, GenAI 43.7, TIIF 73.3 / 68.2); t8 77.7, promptmix t1 71.0, pm-run-500 72.5 on GenEval2; promptmix models stop gaining after 2 corrections. Plot update pending.
 - 2026-10-22 06:10 Fir: A job 66734952 died at step 3: NCCL allreduce timeout (30 min) on all 12 ranks (nodes fc10114/10115/10212/10216), one-off interconnect hang by the look of it; 66734953 resumes from scratch (no checkpoint yet), added spare 66767361. Step-0 eval (= SFT t21): val800 0.679 → 0.669, promptmix 0.607 → 0.604, oracle 0.695 / 0.623.
 - 2026-10-22 01:00 PDT: Inbox handled: Rorqual f800pm had finished 500 steps before the stop: final val800 0.849 (−0.009 vs F-800), promptmix 0.730 (+0.018; vs pm-run-500 from t1: 0.784 / 0.744); only ckpt-500 kept (100–400 pruned by save_total_limit). B (BRANCH 4,4) ported, smoke 24902055 queued.
 - 2026-10-22 00:10 PDT: session resumed in tmux (login2); watcher re-armed. Inbox handled: TamIA F-full done (step 300 full-history own 0.833 / oracle 0.897 vs F-mdp 0.848 / 0.896; mdp eval of ckpt-300 queued), C (KL 0.01) ported, smoke queued. A smoke 66734951 still pending (priority).
