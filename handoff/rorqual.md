@@ -3,15 +3,12 @@
 Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100 80GB per node (like Fir).
 
 ## Now (2026-10-22)
-- **`darshan_pm1_B_br44_rorqual`** (Fir Inbox 2026-10-21, single-round promptmix hyper-parameter screen, variant **B = BRANCH 4,4**):
-  `scripts/rl_ft/bash_rorqual_promptmix.sh` (copy of `bash_fir_promptmix.sh`: jeet's t1 recipe from SFT t21, fresh LoRA, one round,
-  hybrid 0.5, children, LR 1e-4, KL 0.05, std floor 0.04, EVAL_BRANCH 1,1, speed settings), train promptmix train_17K,
-  val GenEval2 val800 + promptmix val_400 (= first 400 of val_800, md5 checked). **Smoke `pm1_B_smoke_rorqual` 24902055 passed** (48 min; ≈ 2 min/step at 1 node: rollout 65 + reward 28 + train 27 s; staging took 1500 s, first read of SFT t21 on Rorqual)
-  → **full run 24904808 (4 nodes) → 24904809 (afterany spare)**: `BRANCH=4,4 MAX_STEPS=200 EVAL_STEPS=50 RUN_NAME=darshan_pm1_B_br44_rorqual`, 4 nodes (PROMPTS_PER_GPU=2 if a step > ~5 min).
-  Jobs named `darshan_pm_rorqual`. Report every eval (val + val_promptmix: am_0, am_final, oracle, fix/brk/looks_good) to Fir's Inbox
-  + `runs.md`; decision at step 200 (rule in `fir.md` Now). Fir runs A (oracle 0.75), TamIA C (KL 0.01).
-  **Copy each eval's checkpoint to `~/scratch/tar_reason_kept/<run>/` right after the eval: `--save_total_limit 5` deletes it
-  50 steps later** (lost f800pm's 100–400 that way).
+- **Idle (no jobs).** Last: **B `darshan_pm1_B_br44_rorqual` done** 2026-10-22 18:35 (24904808, 200 steps, 7.7 h; 2 min/step at 4 nodes):
+  step 200 val800 own **0.735** (+0.066 vs SFT t21), promptmix val_400 own **0.684** (+0.080), oracle 0.748 / 0.706; beats A on both.
+  Checkpoints 50–200 in `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`, wandb synced; details in `runs.md`. Decision (vs t1 at
+  step 200; extend to 500 or combine in round 2) is with Fir/jeet.
+  Launcher `scripts/rl_ft/bash_rorqual_promptmix.sh` (copy of `bash_fir_promptmix.sh`); jobs named `darshan_pm_rorqual`.
+  **Copy each eval's checkpoint to `~/scratch/tar_reason_kept/<run>/` right after the eval: `--save_total_limit 5` deletes it 50 steps later.**
 - Done: `darshan_mr_f800pm_rorqual` (F-800 → promptmix, 500 steps, 2026-10-21): final val800 0.849 (−0.009), promptmix 0.730 (+0.018);
   details in `runs.md`; checkpoint-500 in `~/scratch/tar_reason_kept/darshan_mr_f800pm_rorqual/`; wandb synced.
 - `bash_rorqual_mr.sh` re-synced with `bash_fir_mr.sh` (jeet's settings: REWARD_QUESTION_BATCH 64, TRAIN_MICRO_BATCH 2; SIGLIP2_PATH exported).
@@ -56,6 +53,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-22 18:40: B done: step 200 val800 0.735, promptmix 0.684 (beats A); ckpts 50–200 kept, wandb synced, spare 24904809 cancelled; sent to Fir.
 - 2026-10-22 16:45: B step 150: val800 own 0.714, promptmix 0.686, oracle pm 0.715; ckpt-150 kept; sent to Fir.
 - 2026-10-22 14:55: B step 100: val800 own 0.722 (+0.053), promptmix 0.668 (+0.064), mostly draft; ckpt-100 kept; sent to Fir.
 - 2026-10-22 13:05: B step 50: val800 own 0.695 (+0.026), promptmix 0.638 (+0.034), oracle pm 0.667; 2 min/step; ckpt-50 kept; sent to Fir.
