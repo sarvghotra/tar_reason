@@ -48,10 +48,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-22 14:55 from Rorqual: B (`darshan_pm1_B_br44_rorqual`) **Step 100:** val800 own 0.721 → **0.722** (+0.053 vs step 0; draft +0.042; fix 0.157, brk 0.069, looks_good 0.14), oracle 0.725 → 0.733; promptmix own 0.665 → **0.668** (+0.064; draft +0.058; fix 0.211, brk 0.122, looks_good 0.32), oracle 0.662 → **0.689**. Gain is mostly the draft; refinement ≈ +0.001–0.003 with own critiques, +0.008/+0.027 with oracle. KL 0.026 (steps 51–100), 2.0 min/step. Checkpoint 100 copied.
 (empty)
 
 ## Log (newest first)
+- 2026-10-22 15:40 Fir: Inbox handled: Rorqual B step 100: val800 0.721 → 0.722, promptmix 0.665 → 0.668 (oracle 0.689); vs A step 100 (0.701 → 0.711, 0.626 → 0.636): B ahead by 0.011 / 0.032, all from the draft; refinement ≈ 0 for both. D pending (est. start 14:17 Fir).
 - 2026-10-22 15:10 Fir: A done (step 200: val800 0.705 → 0.706, promptmix 0.658 → 0.663; wandb synced; spare 66767361 cancelled). D (ADV_STD_FLOOR 0) submitted 66808888/89.
 - 2026-10-22 11:30 Fir: Inbox handled: Rorqual B step 50: val800 0.690 → 0.695, promptmix 0.633 → 0.638 (oracle 0.667); vs A step 50 (0.690 → 0.688, 0.618 → 0.630): B's drafts +0.015 on promptmix. 2 min/step, ETA step 200 19:00 EDT.
 - 2026-10-22 10:15 Fir: Inbox handled: Rorqual B (BRANCH 4,4) running since 10:52 EDT (24904808, 4 nodes); its step-0 eval matches A's exactly (val800 0.679 → 0.669, promptmix 0.607 → 0.604), as it should (same base, greedy eval). A at step 72.
