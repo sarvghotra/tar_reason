@@ -201,3 +201,20 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   F-800 leads on GenEval2 by ~7.6 (draft already +7.5) and slightly on GenAI (+0.6, advanced skills); promptmix-run-500 leads on TIIF short
   (+1.8, refinement +5.1 vs +2.6); TIIF long is a tie. Same-pipeline sanity: F-800 GenEval2 80.1 here vs 80.2 ± 0.4 in our depth runs
   (draft + 4 corrections). Results: `$SCRATCH/tar_reason/results_jeet/{GenEval2,genai-bench-1600,tiif-bench-testmini_eval}/`, figures in `figures/`.
+- **Official evals, final setting (Mila 2026-10-22): jeet's pipeline, MDP, draft + 4 corrections (N_ITERS=5), own greedy critique,
+  3 seeds, mean ± se, draft → after 4 corrections.** GenAI-Bench = full 1,600 prompts (Qwen3.5-27B VQAScore; jeet's log rounds to 0.01).
+  Supersedes the n4 tables above. Results `$SCRATCH/tar_reason/results_jeet/{GenEval2,genai-bench-1600,tiif-bench-testmini_eval}/iter_adhoc_MDP_n5_<model>_512px_repeat1/`
+  (F-800 GenEval2: `…_repeat1_v2`, see below).
+  | model | GenEval2 AM | GenEval2 GM / all-correct (final) | GenAI-1600 | TIIF short | TIIF long |
+  |---|---|---|---|---|---|
+  | t8 | 71.3 → **77.7 ± 0.2** | 34.9 / 23.2% | 38.7 → 41.0 ± 0.0 | 67.7 → 71.8 ± 0.4 | 64.5 → 67.2 ± 0.8 |
+  | promptmix t1 | 66.9 → 71.0 ± 0.1 | 23.9 / 15.1% | 39.3 → 42.3 ± 0.3 | 67.4 → 71.5 ± 0.4 | 65.2 → 66.2 ± 0.7 |
+  | promptmix-run-500 | 67.3 → 72.5 ± 0.1 | 25.3 / 16.7% | 39.3 → 43.3 ± 0.3 | 67.7 → 71.8 ± 0.6 | 66.3 → 67.8 ± 0.7 |
+  | **F-800** | 74.8 → **80.3 ± 0.1** (2 seeds; 3rd running) | 41.2 / 27.4% | 41.0 → **43.7 ± 0.7** | 69.3 → **73.3 ± 0.6** | 65.1 → **68.2 ± 1.2** |
+  Per-correction curves (GenEval2 AM): t8 71.3 / 76.7 / 77.2 / 77.5 / 77.7; promptmix t1 66.9 / 70.3 / 71.1 / 70.7 / 71.0;
+  promptmix-run-500 67.3 / 71.9 / 72.7 / 72.6 / 72.5; F-800 74.8 / 79.3 / 80.1 / 80.4 / 80.3. Gains stop after 2 corrections for the
+  promptmix models; F-800 and t8 still gain a little at 3–4. **F-800 is best on every benchmark.** Multi-round training on promptmix
+  (run-500) beats promptmix t1 everywhere (+1.5 GenEval2, +1.0 GenAI, +1.6 TIIF long) but stays ~8 below F-800 on GenEval2.
+  Scratch trouble during these runs (BeeGFS Errno 121: some folder/file names refuse creation, even from the login node): the
+  launcher now generates, judges and scores on local disk and copies only results (`94402ac` … `33c12f2`); damaged folders were set
+  aside as `.broken_*` next to the results. Four TIIF summaries had been computed on partial judgments and were redone.
