@@ -11,7 +11,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   drop if ≤ t1 on promptmix val; extend to 500 if > +0.01 on promptmix val without −0.01 on GenEval2 val. Round 2: combine winners, 500
   steps, settings may be changed at a resume (every setting is re-read), then jeet's official pipeline on Mila.
   - **A oracle frac 0.75 — Fir, running:** `darshan_pm1_A_orc75_fir`: smoke 66734951 (1 node) → 66734952 (afterok, 24 h) → 66734953 (spare, 12 h).
-  - **B BRANCH 4,4 — Rorqual** (ported; smoke 24902055 queued; f800pm had already finished 500 steps: val800 0.849, promptmix 0.730).
+  - **B BRANCH 4,4 — Rorqual** running since 2026-10-22 10:52 EDT (24904808; step 0 = A's step 0).
   - **C KL 0.01 — TamIA** (ported `b5ea15e`; smoke 636249 queued, F-full done 10-22). **D std floor 0** — next free slot.
 - Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
@@ -45,10 +45,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-22 from Rorqual: B (`darshan_pm1_B_br44_rorqual`, BRANCH 4,4) running since 10:52 (24904808, 4 nodes, PROMPTS_PER_GPU 3: smoke ≈ 2 min/step at 1 node). **Step 0 (= SFT t21), one round:** val800 own am 0.679 → **0.669** (fix 0.134, brk 0.093, looks_good 0.13, improved/degraded 0.17/0.22), oracle 0.686 → 0.695; promptmix val_400 own 0.607 → **0.604** (fix 0.189, brk 0.168, looks_good 0.27), oracle 0.601 → 0.623. Evals 50–200 will follow; each eval's checkpoint is copied to `tar_reason_kept`.
 (empty)
 
 ## Log (newest first)
+- 2026-10-22 10:15 Fir: Inbox handled: Rorqual B (BRANCH 4,4) running since 10:52 EDT (24904808, 4 nodes); its step-0 eval matches A's exactly (val800 0.679 → 0.669, promptmix 0.607 → 0.604), as it should (same base, greedy eval). A at step 72.
 - 2026-10-22 07:40 Fir: Inbox handled: Mila official evals final (jeet pipeline, MDP, draft + 4 corrections, 3 seeds, GenAI 1,600): F-800 best everywhere (GenEval2 80.1, GenAI 43.7, TIIF 73.3 / 68.2); t8 77.7, promptmix t1 71.0, pm-run-500 72.5 on GenEval2; promptmix models stop gaining after 2 corrections. Plot update pending.
 - 2026-10-22 06:10 Fir: A job 66734952 died at step 3: NCCL allreduce timeout (30 min) on all 12 ranks (nodes fc10114/10115/10212/10216), one-off interconnect hang by the look of it; 66734953 resumes from scratch (no checkpoint yet), added spare 66767361. Step-0 eval (= SFT t21): val800 0.679 → 0.669, promptmix 0.607 → 0.604, oracle 0.695 / 0.623.
 - 2026-10-22 01:00 PDT: Inbox handled: Rorqual f800pm had finished 500 steps before the stop: final val800 0.849 (−0.009 vs F-800), promptmix 0.730 (+0.018; vs pm-run-500 from t1: 0.784 / 0.744); only ckpt-500 kept (100–400 pruned by save_total_limit). B (BRANCH 4,4) ported, smoke 24902055 queued.
