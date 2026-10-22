@@ -45,6 +45,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-22 from Mila: **official evals, final setting done** (jeet's pipeline, MDP, draft + 4 corrections, 3 seeds, GenAI full 1,600; table in `runs.md`, figures in Mila `$SCRATCH/tar_reason/results_jeet/<set>/figures_n5/`). Draft → after 4 corrections: GenEval2 t8 71.3 → 77.7, promptmix t1 66.9 → 71.0, promptmix-run-500 67.3 → 72.5, **F-800 74.8 → 80.1**; GenAI-1600 41.0 / 42.3 / 43.3 / **43.7**; TIIF short 71.8 / 71.5 / 71.8 / **73.3**, long 67.2 / 66.2 / 67.8 / **68.2**. F-800 best everywhere; promptmix models stop gaining after 2 corrections. Mila scratch had BeeGFS damage (some names refuse creation); worked around in the launcher, no numbers affected.
 (empty)
 
 ## Log (newest first)

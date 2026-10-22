@@ -3,14 +3,15 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-21 EDT)
-- **Running: official evals with N_ITERS=5** (draft + 4 corrections, MDP; launcher default since `2f2d4f2`), 3 benches × 3 seeds, GenAI 1,600:
-  F-800 (9 jobs chained on short-unkillable), promptmix-run-500, t8, promptmix t1 (27 jobs on `long` with requeue; t8 / promptmix t1 at
-  `--nice=100`). Ids `$SCRATCH/tar_reason/jn5_jobs.txt`; watcher `tools/watch/watch_jobs_final.sh` (ignores preemptions). Results in
-  `results_jeet/<set>/iter_adhoc_MDP_n5_<model>_512px_repeat1/`. The n5 runs report images 1–5, superseding the n4 tables in `runs.md`.
-- Next: F-250 and base Tar-7B (single pass) through the same pipeline.
-- Bad nodes: cn-g008, cn-g028, cn-g029. Waiting: t11 (copy).
-- Watcher: background in this session.
+## Now (2026-10-22 EDT)
+- **Nothing running on Mila.** Official evals with the final setting (jeet's pipeline, MDP, draft + 4 corrections, 3 seeds, GenAI on
+  1,600) done for t8, promptmix t1, promptmix-run-500 and F-800: table in `runs.md`, figures in `results_jeet/<set>/figures_n5/`.
+  F-800 best everywhere (GenEval2 80.1, GenAI 43.7, TIIF 73.3 / 68.2). Told Fir.
+- Launcher `scripts/eval/bench_jeet_mila.sh` (`33c12f2`) works around Mila scratch damage (BeeGFS Errno 121: some names cannot be
+  created): generation, judging and scoring run on local disk; only results are copied. If a result folder name is unusable, use
+  `RL_FT=_v2` (F-800 GenEval2 lives in `…_repeat1_v2`). Damaged folders are set aside as `.broken_*` (do not delete; report to Mila IT).
+- Next (Inbox): F-250 and base Tar-7B (single pass) through the same pipeline, if wanted. Waiting: t11 (copy).
+- Watcher: none.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -44,19 +45,12 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-21 from Fir (user decision): **official multi-round evals use 4 corrections: jeet's `N_ITERS=5`** (draft + 4 corrections, MDP), to
-  match training (F / promptmix runs train up to 4 rounds). Make it the default in `bench_jeet_mila.sh`; **re-run F-800 and promptmix-run-500**
-  with N_ITERS=5 (3 benches × 3 seeds; the n5 run also reports images 1–4, i.e. the current n4 numbers), and run t8 / promptmix t1 (then
-  F-250, base Tar single pass) with N_ITERS=5 from the start (supersedes the n4 setting in the line below). Report per-iteration numbers.
-- 2026-10-21 from Fir (user's go): **re-run t8 and promptmix t1 through jeet's pipeline** (`bench_jeet_mila.sh`, MDP n4, 3 benches × 3 seeds,
-  GenAI on the full 1,600 prompts), so every model in the paper table comes from one pipeline with multi-round TIIF / GenAI. You have
-  both merged (`rl_ft_oracle_t8_merged500`, `jeet_promptmix_t1_merged500`). Then, if time allows: F-250 and base Tar-7B (single pass:
-  draft only). Aggregate with `eval/stats/*` next to F-800 and promptmix-run-500; results to `runs.md` + Fir's Inbox (Fir adds them
-  to the plot page).
+- 2026-10-21 from Fir (remaining): F-250 and base Tar-7B (single pass: draft only) through jeet's pipeline, if time allows.
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-22: n5 official evals done for 4 models (runs.md); scratch damage worked around in the launcher; told Fir.
 - 2026-10-21: shared two merged models read-only with jeet (`sarvjeet-singh.ghotra`) by ACL (user request): `/network/scratch/s/singhsd/models/tar/sft/darshan_mr_fir_merged800` (F-800 on t8) and `/network/scratch/s/singhsd/models/tar/sft/darshan_mr_pm_fir_merged500` (promptmix-run-500 on promptmix t1): `u:jeet:rX` recursive on the two folders, `u:jeet:--x` on `$SCRATCH`, `models/`, `models/tar/`, `models/tar/sft/`. To keep everything else private, removed 'other' permissions (o-rwx) on every sibling along that path (benchmarks, data, git, hf_home, tar_reason, .uv_cache, slurm-*.out, models/vlm, models/tar/{Tar-7B, siglip2…, *.pth, .cache}, the other sft/* models) and on the path folders; nobody else could reach them anyway (`$SCRATCH` was already 750). Verified with getfacl. Revoke: `setfacl -R -x u:sarvjeet-singh.ghotra <dir>`.
 - 2026-10-21: Inbox: N_ITERS=5 default; submitted 36 n5 jobs (F-800, pm-500 re-runs; t8, promptmix t1).
 - 2026-10-21: F-800 + pm-500 (GenAI-1600) done through jeet's pipeline; several `long` preemptions resubmitted on short-unkillable/main.
