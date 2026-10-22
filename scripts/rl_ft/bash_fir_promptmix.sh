@@ -20,10 +20,11 @@
 # val_oracle_promptmix/). Differences from his script: paths, account/wandb (darshan-singh, offline),
 # node-local staging (STAGE_LOCAL), SAVE_STEPS=10 (resume granularity), logging every step, --val_dump_dir.
 #
-# Single-round promptmix experiments (2026-10-21, jeet: get single-round right before multi-round):
-#   E1 continue t1:  PREV_STAGE_CHECKPOINT=${MODELS}/sft/rl_ft_promptsmix_t1_merged500 (t1 ckpt-500 merged; fresh LoRA)
-#   E2 from t8:      PREV_STAGE_CHECKPOINT=${MODELS}/sft/rl_ft_oracle_t8_merged500 RUN_NAME=darshan_pm1_t8_fir (Fir, 10-21)
-#   E3 mixed data:   TRAIN_JSONL=<promptmix 17K + 17K GenEval2 rows concatenated> (dataset.py ignores ratio: pool rows)
+# Single-round promptmix hyper-parameter screen (2026-10-21, jeet/user: get single-round right before multi-round).
+# Each variant = t1's recipe from SFT t21 with ONE setting changed, 200 steps, evals every 50 (round 1); winners combined
+# to 500 steps (round 2). Overridable: HYBRID_ORACLE_FRAC, BRANCH, KL_COEF, ADV_STD_FLOOR, BREAK_WEIGHT, ALPHA, LR, ...
+#   A (Fir):    HYBRID_ORACLE_FRAC=0.75 MAX_STEPS=200 EVAL_STEPS=50 RUN_NAME=darshan_pm1_A_orc75_fir
+#   B (Rorqual): BRANCH=4,4      C (TamIA): KL_COEF=0.01      D: ADV_STD_FLOOR=0
 #
 #   smoke:   MAX_STEPS=2 EVAL_STEPS=2 SAVE_STEPS=2 EVAL_MAX_PROMPTS=24 RUN_NAME=pm_smoke_fir \
 #              sbatch --nodes=1 --time=01:00:00 scripts/rl_ft/bash_fir_promptmix.sh
@@ -84,20 +85,20 @@ TRAIN_MICRO_BATCH=${TRAIN_MICRO_BATCH:-2}   # refine rows ~1.6k tokens
 LR=${LR:-1e-4}
 LORA_R=64
 LORA_ALPHA=128
-KL_COEF=0.05
+KL_COEF=${KL_COEF:-0.05}
 CLIP_EPS=0.2
-ALPHA=1.0
+ALPHA=${ALPHA:-1.0}
 NUM_PPO_EPOCHS=1
 REFLECT_TOKEN_WEIGHT=1.0
 GROUP=parent
 ADV_NORM=std
-ADV_STD_FLOOR=0.04
+ADV_STD_FLOOR=${ADV_STD_FLOOR:-0.04}
 
 CRITIQUE_SOURCE=hybrid
-HYBRID_ORACLE_FRAC=0.5
+HYBRID_ORACLE_FRAC=${HYBRID_ORACLE_FRAC:-0.5}
 ORACLE_FAIL_THRESHOLD=0.5
 
-BREAK_WEIGHT=2.0
+BREAK_WEIGHT=${BREAK_WEIGHT:-2.0}
 DRAFT_REWARD=${DRAFT_REWARD:-children}  # t8 (one round: = children_r1)
 STOP_PENALTY=0.5
 STOP_THRESHOLD=0.8

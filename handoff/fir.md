@@ -2,18 +2,22 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-10-21 20:00 PDT)
-- **New direction (user + jeet, 2026-10-21): get single-round promptmix right before multi-round** (as t8 did for GenEval2). Promptmix t1
-  (t8 recipe from SFT t21, 500 steps) is well below t8: GenEval2 val800 draft → 1 round 0.712 → 0.751 (t8 0.776 → 0.825), promptmix val
-  0.692 → 0.722. Single-round experiments (launcher `bash_fir_promptmix.sh` = jeet's t1 recipe, speed settings, EVAL_STEPS 100):
-  **E2 from t8** (Fir, running), **E1 continue t1** (Rorqual Inbox), **E3 promptmix + GenEval2 mixed data** (TamIA Inbox, after F-full).
-- **`darshan_pm1_t8_fir` (E2)**: t1 recipe (BRANCH 2,4, one round, hybrid critiques, LR 1e-4, fresh LoRA) on promptmix train_17K from
-  **t8 merged** (`rl_ft_oracle_t8_merged500`), val GenEval2 val800 + promptmix val400 (`EVAL_BRANCH 1,1`, + oracle) every 100, 500 steps.
-  Chain: smoke 66733473 (1 node, `pm1_t8_smoke_fir`, 2 steps) → 66733474 (afterok) → 66733475 (afterany), 4 nodes × 4 H100.
-- Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept).
-  F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`). Mila shared F-800 / pm-run-500 merged with jeet (ACL) and runs N_ITERS=5 evals.
+## Now (2026-10-21 21:30 PDT)
+- **Direction (user + jeet, 2026-10-21): single-round promptmix first; jeet has no hyper-parameter recipe, we search.** Baseline = jeet's
+  promptmix t1 (t8 recipe from SFT t21, 500 steps): GenEval2 val800 draft → 1 round 0.712 → 0.751 (t8 0.776 → 0.825), promptmix val
+  0.692 → 0.722. Jeet's t1 curve (per 50 steps) expected from him 2026-10-22 morning.
+- **Round 1 screen** (`bash_fir_promptmix.sh`, all settings overridable): t1's recipe from SFT t21, promptmix train_17K, one setting changed
+  per variant, **200 steps, evals every 50** (val800 + promptmix val400, 1 round, own + oracle). Rule at step 200 vs t1 at the same step:
+  drop if ≤ t1 on promptmix val; extend to 500 if > +0.01 on promptmix val without −0.01 on GenEval2 val. Round 2: combine winners, 500
+  steps, settings may be changed at a resume (every setting is re-read), then jeet's official pipeline on Mila.
+  - **A oracle frac 0.75 — Fir, running:** `darshan_pm1_A_orc75_fir`: smoke 66734951 (1 node) → 66734952 (afterok, 24 h) → 66734953 (spare, 12 h).
+  - **B BRANCH 4,4 — Rorqual** (Inbox; after stopping `darshan_mr_f800pm_rorqual`, user's ok 10-21).
+  - **C KL 0.01 — TamIA** (Inbox; after F-full). **D std floor 0** — next free slot.
+- Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
+  E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
+  Mila shared F-800 / pm-run-500 merged with jeet (ACL) and runs N_ITERS=5 evals.
 - Code: main checkout at origin; worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2`) can be removed.
-- Watcher: to arm for the smoke/E2 (self-terminating `watch.sh`).
+- Watcher: self-terminating `pm1/watch.sh` on the A chain (re-armed every 30 min while the session is open).
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
@@ -44,6 +48,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-21 21:30: user: no E2 (start from SFT); jeet has no hparam recipe → round-1 screen (A/B/C/D). Cancelled E2 chain 66733473–75 unrun. Launcher: HYBRID_ORACLE_FRAC/KL_COEF/ADV_STD_FLOOR/BREAK_WEIGHT/ALPHA overridable. A submitted (66734951 → 52 → 53). Rorqual: stop f800pm + B; TamIA: C after F-full.
 - 2026-10-21 20:00: jeet/user: single-round promptmix first. `bash_fir_promptmix.sh` (untested until now: its 10-17 smoke was cancelled) got the speed settings + EVAL_STEPS 100; submitted E2 `darshan_pm1_t8_fir` (smoke 66733473 → 66733474 → 66733475). E1 → Rorqual Inbox, E3 → TamIA Inbox. OPAL (reactive optimizers) looked at: not applicable now (needs an online agent on rank 0, single node only).
 - 2026-10-21 18:30: Inbox handled: Rorqual f800pm steps 100/200 (declining: val800 0.858 → 0.850 → 0.845, promptmix 0.712 → 0.712 → 0.694, drafts falling; no report since step 200); Mila: jeet's pipeline ported (t8 sanity 76.62 vs 76.8), F-800 vs pm-run-500 (MDP n4, 3 seeds): GenEval2 80.1 vs 72.5, GenAI-1600 43.3 vs 42.7, TIIF 71.4/67.7 vs 73.2/67.8; user chose GenAI full 1,600.
 - 2026-10-20 15:00: merged jeet's latest main (judge one-prefix scoring, --siglip2_path) keeping the SIGLIP2_PATH override (offline TA-Tok load tested); bash_fir_mr.sh: REWARD_QUESTION_BATCH 64, TRAIN_MICRO_BATCH 2. Inboxes TamIA/Rorqual/Mila. Mila: jeet's eval pipeline.
