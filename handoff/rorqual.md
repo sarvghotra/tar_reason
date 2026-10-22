@@ -3,12 +3,14 @@
 Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100 80GB per node (like Fir).
 
 ## Now (2026-10-22)
-- **Idle (no jobs).** Last: **B `darshan_pm1_B_br44_rorqual` done** 2026-10-22 18:35 (24904808, 200 steps, 7.7 h; 2 min/step at 4 nodes):
-  step 200 val800 own **0.735** (+0.066 vs SFT t21), promptmix val_400 own **0.684** (+0.080), oracle 0.748 / 0.706; beats A on both.
-  Checkpoints 50–200 in `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`, wandb synced; details in `runs.md`. Decision (vs t1 at
-  step 200; extend to 500 or combine in round 2) is with Fir/jeet.
+- **B `darshan_pm1_B_br44_rorqual` extended to 500 steps** (Fir Inbox 2026-10-22: B is the round-1 leader; its step 500 compares with jeet's
+  t1 at 500: val800 0.751, promptmix 0.722). Same RUN_NAME and dataset seed, `BRANCH=4,4 MAX_STEPS=500 EVAL_STEPS=50`, resumes from
+  checkpoint-200: **24981206 → 24981207** (afterany), submitted 19:00. ≈ 2 min/step + ~15 min/eval → ≈ 12 h.
+  Step 200: val800 own 0.735 (+0.066 vs SFT t21), promptmix 0.684 (+0.080), oracle 0.748 / 0.706. Checkpoints 50–200 in
+  `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`; the watcher copies each new eval's checkpoint there. Report evals 250–500 to Fir.
   Launcher `scripts/rl_ft/bash_rorqual_promptmix.sh` (copy of `bash_fir_promptmix.sh`); jobs named `darshan_pm_rorqual`.
   **Copy each eval's checkpoint to `~/scratch/tar_reason_kept/<run>/` right after the eval: `--save_total_limit 5` deletes it 50 steps later.**
+  wandb: the first piece (steps 0–200) is synced; sync the extension's folder(s) with `--append`.
 - Done: `darshan_mr_f800pm_rorqual` (F-800 → promptmix, 500 steps, 2026-10-21): final val800 0.849 (−0.009), promptmix 0.730 (+0.018);
   details in `runs.md`; checkpoint-500 in `~/scratch/tar_reason_kept/darshan_mr_f800pm_rorqual/`; wandb synced.
 - `bash_rorqual_mr.sh` re-synced with `bash_fir_mr.sh` (jeet's settings: REWARD_QUESTION_BATCH 64, TRAIN_MICRO_BATCH 2; SIGLIP2_PATH exported).
@@ -51,9 +53,9 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
-- 2026-10-22 from Fir: thanks. **B is the round-1 leader** (A at 200: 0.706 / 0.663; D is level with A at step 50). **Please extend B to 500 steps** so its step 500 compares directly with jeet's t1 (val800 0.712 → 0.751, promptmix 0.692 → 0.722): same `RUN_NAME=darshan_pm1_B_br44_rorqual`, `BRANCH=4,4 MAX_STEPS=500 EVAL_STEPS=50`, resume from checkpoint-200 (the launcher resumes from the latest `checkpoint-*` in the run dir; keep the same dataset seed, i.e. don't override DATASET_SEED), two chained 24 h jobs. Keep copying each eval's checkpoint. Report evals 250–500 to Fir's Inbox as before. Also note in your `runs.md` row that at step 200 B's own-critique refinement is slightly negative on promptmix (−0.009, brk 0.155) while the oracle still gains +0.013: the critic, not the refiner, is the limit.
 
 ## Log (newest first)
+- 2026-10-22 19:00: Inbox (Fir: extend B to 500) handled: 24981206 → 24981207 submitted (resume from 200); critic-limit note added to runs.md.
 - 2026-10-22 18:40: B done: step 200 val800 0.735, promptmix 0.684 (beats A); ckpts 50–200 kept, wandb synced, spare 24904809 cancelled; sent to Fir.
 - 2026-10-22 16:45: B step 150: val800 own 0.714, promptmix 0.686, oracle pm 0.715; ckpt-150 kept; sent to Fir.
 - 2026-10-22 14:55: B step 100: val800 own 0.722 (+0.053), promptmix 0.668 (+0.064), mostly draft; ckpt-100 kept; sent to Fir.
