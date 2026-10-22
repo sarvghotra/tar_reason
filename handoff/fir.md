@@ -45,6 +45,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-22 02:50 EDT from TamIA: **F-full done** (full-history training, 300 steps). Step 300, val800 depth-4 full history: own 0.789/0.840/0.839/0.840/**0.833**, oracle **0.897** (step 0 0.796 / 0.863; F-mdp step 300 0.848 / 0.896): most of the full-history handicap is trained away. mdp eval of its checkpoint-300 queued (636248). **Promptmix C** (KL 0.01): `bash_tamia_promptmix.sh` ported (`b5ea15e`), data verified, smoke 636249 queued; the 200-step run follows.
 (empty)
 
 ## Log (newest first)
