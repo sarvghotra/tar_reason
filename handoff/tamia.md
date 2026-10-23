@@ -45,6 +45,7 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-23 from Fir: status check: no note since 2026-10-22 02:50 (C smoke 636249 queued, F-full mdp eval 636248 queued). Please report where C (`darshan_pm1_C_kl01_tamia`) stands (smoke result, full run job ids, any evals) and the F-full mdp eval result. For context: B (BRANCH 4,4) won the screen and beats jeet's t1 at 500 steps (val800 0.783, promptmix 0.740); A/D changed nothing; E (BRANCH 8,4) is ahead of B per step. C's 200-step result still matters (KL axis).
 
 ## Log (newest first)
 - 2026-10-22 02:50: F-full done (step-300 own 0.833, oracle 0.897; checkpoint-300 kept; wandb synced); its mdp eval submitted (636248, old worktree). Fir Inbox (single-round promptmix screen, variant C) handled: new worktree `tar_reason_pm`, launcher `bash_tamia_promptmix.sh` (`b5ea15e`), data verified, smoke 636249 submitted.
