@@ -91,6 +91,7 @@ class RolloutConfig:
     reflect_top_k: int = 0
     reflect_top_p: float = 0.95
     gen_batch_size: int = 16
+    prompt_style: str = "iterative"   # iterative: ITERATIVE_PROMPT_PREFIX + prompt | plain: the prompt alone (base Tar)
     # Forced refinement: the first ``min_refines`` children of every parent
     # must refine. If such a child's reflection says "looks good" it is
     # re-sampled up to ``refine_resample_tries`` times; if it still says so it
@@ -268,7 +269,8 @@ class TreeRollout:
     def make_prefix(self, prompt: str) -> List[int]:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": ITERATIVE_PROMPT_PREFIX + prompt},
+            {"role": "user", "content": (prompt if self.cfg.prompt_style == "plain"
+                                        else ITERATIVE_PROMPT_PREFIX + prompt)},
         ]
         text = self.tok.apply_chat_template(messages, tokenize=False,
                                             add_generation_prompt=True)

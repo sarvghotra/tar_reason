@@ -38,6 +38,8 @@ class RewardConfig:
     answer_suffix: str = "llava"
     scale: int = 0
     alpha: float = 1.0          # reward = alpha * AM + (1 - alpha) * GM
+    combine: str = "linear"    # linear: alpha*AM + (1-alpha)*GM | geomean: sqrt(AM*GM) (AlphaGRPO's DVReward,
+                                # with GM = the quality-question mean when rows carry a quality_list)
 
 
 def answer_variants(question: str, answer: str) -> List[str]:
@@ -50,6 +52,12 @@ def answer_variants(question: str, answer: str) -> List[str]:
     if answer.strip().lower() == "no":
         return ["No", "no", " no", " No"]
     return ["Yes", "yes", " yes", " Yes"]
+
+
+def combine_scores(cfg, am: float, gm: float) -> float:
+    if cfg.combine == "geomean":
+        return (max(am, 0.0) * max(gm, 0.0)) ** 0.5
+    return cfg.alpha * am + (1.0 - cfg.alpha) * gm
 
 
 def geometric_mean(values: Sequence[float]) -> float:
@@ -154,4 +162,4 @@ class TarLatentVQAReward:
         return am, gm, per_question
 
     def combine(self, am: float, gm: float) -> float:
-        return self.cfg.alpha * am + (1.0 - self.cfg.alpha) * gm
+        return combine_scores(self.cfg, am, gm)

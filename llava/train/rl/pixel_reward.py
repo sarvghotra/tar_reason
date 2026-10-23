@@ -28,7 +28,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, List, Optional, Sequence, Tuple
 
-from llava.train.rl.reward import RewardConfig, geometric_mean
+from llava.train.rl.reward import RewardConfig, geometric_mean, combine_scores
 
 
 def _png_b64(image) -> str:
@@ -120,4 +120,4 @@ class PixelVQAReward:
         return am, gm, per_question
 
     def combine(self, am: float, gm: float) -> float:
-        return self.cfg.alpha * am + (1.0 - self.cfg.alpha) * gm
+        return combine_scores(self.cfg, am, gm)

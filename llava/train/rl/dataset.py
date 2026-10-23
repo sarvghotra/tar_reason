@@ -85,6 +85,9 @@ class GenEval2PromptDataset:
                         "vqa_list": vqa_list,
                         "skills": skills,
                         "atom_count": int(obj.get("atom_count", len(vqa_list))),
+                        # Optional quality questions (AlphaGRPO's DVReward): scored like the
+                        # semantic ones but kept out of per_question / skills / oracle critiques.
+                        "quality_list": [tuple(qa) for qa in obj.get("quality_list") or []],
                         "set": name,
                     })
         return rows

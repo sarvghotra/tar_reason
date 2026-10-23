@@ -119,6 +119,11 @@ def parse_args():
                    help="Decoded images per POST to the reward server.")
     p.add_argument("--reward_decode_batch", type=int, default=8,
                    help="Images de-tokenized per de-tokenizer forward pass.")
+    p.add_argument("--reward_combine", default="linear", choices=["linear", "geomean"],
+                   help="linear: alpha*AM + (1-alpha)*GM. geomean: sqrt(AM*GM), AlphaGRPO's DVReward when the data "
+                        "rows carry a quality_list (then GM is the mean quality-question probability).")
+    p.add_argument("--prompt_style", default="iterative", choices=["iterative", "plain"],
+                   help="plain: no 'Generate an image iteratively...' prefix (base Tar, single-pass training).")
     p.add_argument("--draft_reward", default="own", choices=["own", "children", "children_r1"],
                    help="own: a draft is rewarded with its own score. children: with the "
                         "mean final score of its leaves, so it is credited for the outcome "
@@ -446,10 +451,19 @@ def score_nodes(nodes: List[Node], prompts: List[Dict], reward):
     todo = [n for n in nodes if n.per_question is None]
     if not todo:
         return
-    am, gm, pq = reward.score_images(
-        [n.codes for n in todo], [prompts[n.prompt_idx]["vqa_list"] for n in todo])
-    for n, a, g, q in zip(todo, am, gm, pq):
-        n.am, n.gm, n.per_question = a, g, list(q)
+    # Rows with a quality_list (AlphaGRPO data) send both question lists in one request;
+    # per_question / am keep the semantic part only and gm becomes the quality mean.
+    sem = [list(prompts[n.prompt_idx]["vqa_list"]) for n in todo]
+    qual = [list(prompts[n.prompt_idx].get("quality_list") or []) for n in todo]
+    am, gm, pq = reward.score_images([n.codes for n in todo], [s + q for s, q in zip(sem, qual)])
+    for n, a, g, q, s, ql in zip(todo, am, gm, pq, sem, qual):
+        q = list(q)
+        if ql:
+            qs, qq = q[:len(s)], q[len(s):]
+            n.am, n.per_question = sum(qs) / len(qs), qs
+            n.gm = sum(qq) / len(qq)
+        else:
+            n.am, n.gm, n.per_question = a, g, q
 
 
 def refine_reward(n: Node, reward, fail_threshold: float, break_weight: float) -> float:
@@ -1056,7 +1070,7 @@ def build_latent_reward(args, model, base, tokenizer, image_start_id,
     return TarLatentVQAReward(
         reward_tokenizer, forward_hidden, reward_lm_head, device,
         RewardConfig(batch_size=args.reward_batch_size, answer_suffix=args.answer_suffix,
-                     scale=args.scale, alpha=args.alpha),
+                     scale=args.scale, alpha=args.alpha, combine=args.reward_combine),
         reward_image_start_id)
 
 
@@ -1123,7 +1137,7 @@ def main():
         img_temperature=args.img_temperature, img_top_k=args.img_top_k, img_top_p=args.img_top_p,
         reflect_tokens=args.reflect_tokens, reflect_sample=True,
         reflect_temperature=args.reflect_temperature, reflect_top_k=args.reflect_top_k,
-        reflect_top_p=args.reflect_top_p, gen_batch_size=args.gen_batch_size,
+        reflect_top_p=args.reflect_top_p, gen_batch_size=args.gen_batch_size, prompt_style=args.prompt_style,
         min_refines=args.min_refines, refine_resample_tries=args.refine_resample_tries,
         images_per_critique=args.images_per_critique, context_mode=args.context_mode,
         chain_siblings=args.chain_siblings)
@@ -1168,7 +1182,7 @@ def main():
         reward = PixelVQAReward(
             decoder.decode_pils, args.reward_server_url,
             RewardConfig(batch_size=args.reward_batch_size, answer_suffix=args.answer_suffix,
-                         scale=args.scale, alpha=args.alpha),
+                         scale=args.scale, alpha=args.alpha, combine=args.reward_combine),
             images_per_request=args.reward_images_per_request,
             decode_chunk=args.reward_decode_batch)
         info = reward.health()      # fail fast (per rank) if the judge is not up
