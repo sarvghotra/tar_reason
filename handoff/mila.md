@@ -3,15 +3,14 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-22 EDT)
-- **Nothing running on Mila.** Official evals with the final setting (jeet's pipeline, MDP, draft + 4 corrections, 3 seeds, GenAI on
-  1,600) done for t8, promptmix t1, promptmix-run-500 and F-800: table in `runs.md`, figures in `results_jeet/<set>/figures_n5{,_promptmix}/`.
-  F-800 best everywhere (GenEval2 80.1, GenAI 43.7, TIIF 73.3 / 68.2). Told Fir.
-- Launcher `scripts/eval/bench_jeet_mila.sh` (`33c12f2`) works around Mila scratch damage (BeeGFS Errno 121: some names cannot be
-  created): generation, judging and scoring run on local disk; only results are copied. If a result folder name is unusable, use
-  `RL_FT=_v2` (F-800 GenEval2 lives in `…_repeat1_v2`). Damaged folders are set aside as `.broken_*` (do not delete; report to Mila IT).
-- Next (Inbox): F-250 and base Tar-7B (single pass) through the same pipeline, if wanted. Waiting: t11 (copy).
-- Watcher: none.
+## Now (2026-10-23 EDT)
+- **Nothing running.** Mila's Slurm controller unreachable at 14:00 ("Unable to contact slurm controller"); jobs wait for it.
+- **Janus-Pro-R1 baseline (Inbox)**: setup in progress (repo + weights in `$SCRATCH/baselines/janus_pro_r1/`, env `~/envs/janus`,
+  generator `eval/baselines/janus_pro_r1_gen.py` writing jeet's layouts with iteration 1 = first image, 2 = loop's final image,
+  launcher hook `GEN_FAMILY=janus`). Then 3 seeds × 3 benches for R1 loop and Janus-Pro-7B single.
+- **B-450 (Inbox)**: waiting for the user's copy to `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450`; then 9 jobs (n5, GenAI 1,600).
+- Done 2026-10-23: per-image means for the dashboard (`runs.md` + `results_jeet/per_image_n5.csv`).
+- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: none.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
