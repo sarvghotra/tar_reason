@@ -55,6 +55,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-23 05:20: B step 450: val800 own 0.787, promptmix 0.744 (best so far); ckpt-450 kept; sent to Fir.
 - 2026-10-23 03:30: B step 400: val800 own 0.760, promptmix 0.734 (refinement +0.037); KL spikes to 0.70 at 395 (recovered); ckpt-400 kept; sent to Fir.
 - 2026-10-23 01:40: B step 350: val800 own 0.766, promptmix 0.727; ckpt-350 kept; sent to Fir.
 - 2026-10-22 23:45: B step 300: val800 own 0.762, promptmix 0.736; refinement positive; ckpt-300 kept; sent to Fir.
