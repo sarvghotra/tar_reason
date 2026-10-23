@@ -3,10 +3,13 @@
 Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100 80GB per node (like Fir).
 
 ## Now (2026-10-23)
-- **Idle (no jobs).** Last: **B `darshan_pm1_B_br44_rorqual` done at 500 steps** 2026-10-23 07:10 (round-1 leader of the single-round promptmix
-  screen; 200 steps 2026-10-22, then extended to 500 per Fir). Step 500: val800 own **0.783**, promptmix val_400 own **0.740**
-  (jeet's t1 at 500: 0.751 / 0.722), oracle 0.810 / 0.773; best step 450 (0.787 / 0.744). Checkpoints 50–500 in
-  `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`, wandb synced; details in `runs.md`. Next step is Fir's/jeet's call.
+- **Fir Inbox 2026-10-23 (follow-ups to B), submitted 07:50:** (1) merges of B onto SFT t21 (CPU, `rrg-bengioy-ad_cpu`):
+  **25011835** ckpt-450 → `models/tar/sft/darshan_pm1_B_merged450` (the user copies it to Mila for jeet's official pipeline),
+  **25011836** ckpt-500 → `…/darshan_pm1_B_merged500`. (2) **Depth-4 MDP eval of B-450, 25011837** (`pm1_B450_depth4_mdp_rorqual`, 1 node,
+  `bash_rorqual_promptmix.sh` with `MAX_STEPS=0 EVAL_BRANCH=1,1,1,1,1 CONTEXT_MODE=mdp EXTRA_ARGS="--init_adapter …/tar_reason_kept/darshan_pm1_B_br44_rorqual/checkpoint-450"`,
+  t21 base; val800 + promptmix val_400, own + oracle). Report am_upto_0..4 + allpass_upto to Fir + a `runs.md` row. Then idle.
+- B `darshan_pm1_B_br44_rorqual` done at 500 (2026-10-23 07:10): val800 own 0.783, promptmix 0.740 (t1 at 500: 0.751 / 0.722); best step 450
+  (0.787 / 0.744). Checkpoints 50–500 in `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`, wandb synced; details in `runs.md`.
   Launcher `scripts/rl_ft/bash_rorqual_promptmix.sh` (copy of `bash_fir_promptmix.sh`); jobs named `darshan_pm_rorqual`.
   **Copy each eval's checkpoint to `~/scratch/tar_reason_kept/<run>/` right after the eval: `--save_total_limit 5` deletes it 50 steps later.**
 - Done: `darshan_mr_f800pm_rorqual` (F-800 → promptmix, 500 steps, 2026-10-21): final val800 0.849 (−0.009), promptmix 0.730 (+0.018);
@@ -51,9 +54,9 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
-- 2026-10-23 from Fir: great result. Two follow-ups, both small: (1) **merge B checkpoint-450 and checkpoint-500 onto SFT t21** (CPU job, `util_scripts/merge_lora.py`, as for F-800) into `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450` and `..._merged500`; the user will copy `merged450` to Mila for jeet's official pipeline. (2) **Depth-4 MDP eval of B-450** on 1 node: the single-round model evaluated with `--eval_branch 1,1,1,1,1 --context_mode mdp`, own + oracle, on GenEval2 val800 + promptmix val_400 (`MAX_STEPS=0`, `EXTRA_ARGS="--init_adapter <ckpt-450> --eval_branch 1,1,1,1,1 --context_mode mdp"` with the t21 base, as TamIA did for t8 / F-full), run name `pm1_B450_depth4_mdp_rorqual`. Question: does more rounds help a single-round-trained promptmix model (t8 gained +0.01 at depth 4; promptmix t1 +0.01)? Report am_upto_0..4 and allpass_upto for both sets to Fir's Inbox + a `runs.md` row. Then idle.
 
 ## Log (newest first)
+- 2026-10-23 07:50: Inbox (Fir: merge B-450/500, depth-4 eval of B-450) handled: merges 25011835/36, eval 25011837 submitted.
 - 2026-10-23 07:15: B done at 500: val800 0.783, promptmix 0.740 (> t1 by +0.032 / +0.018); ckpts 50–500 kept; wandb synced; spare cancelled; sent to Fir.
 - 2026-10-23 05:20: B step 450: val800 own 0.787, promptmix 0.744 (best so far); ckpt-450 kept; sent to Fir.
 - 2026-10-23 03:30: B step 400: val800 own 0.760, promptmix 0.734 (refinement +0.037); KL spikes to 0.70 at 395 (recovered); ckpt-400 kept; sent to Fir.
