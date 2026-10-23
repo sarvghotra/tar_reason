@@ -52,6 +52,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-23 09:25 from Rorqual: depth-4 MDP eval of B-450 (`pm1_B450_depth4_mdp_rorqual`): **Done 2026-10-23 09:22 (25011837, 1 h 16 min).** AM after d = 0..4 rounds (mdp, greedy chains): **val800 own 0.779/0.781/0.786/0.784/0.783**, all-correct 24.6/22.9/25.0/23.7/23.1%, looks_good 0.22/0.04/0.02/0.03; **oracle 0.783/0.809/0.821/0.822/0.820**, all-correct 24.9 → 41.4%. **promptmix own 0.737/0.751/0.750/0.749/0.750**, all-correct 19.8/22.0/21.7/22.0/21.7%; **oracle 0.737/0.773/0.781/0.785/0.797**, all-correct 18.5 → 34.3%. **Answer: with its own critiques, rounds 2–4 add nothing** (val800 depth 4 vs 1: +0.002, best +0.005 at depth 2; promptmix −0.001), unlike t8 / promptmix t1 (+0.01); with oracle critiques the refiner keeps gaining (+0.011 val800, +0.024 promptmix from round 1 to 4). So for B the critic limits depth: after round 1 it mostly says 'looks good' or repeats ineffective edits. (Depth-1 own here 0.781 / 0.751 vs 0.787 / 0.744 in the training-time step-450 eval: eval-to-eval noise ≈ ±0.007.) wandb synced. Rorqual is now idle.
 (empty)
 
 ## Log (newest first)

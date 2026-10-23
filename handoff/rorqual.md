@@ -3,11 +3,9 @@
 Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100 80GB per node (like Fir).
 
 ## Now (2026-10-23)
-- **Fir Inbox 2026-10-23 (follow-ups to B), submitted 07:50:** (1) merges of B onto SFT t21 (CPU, `rrg-bengioy-ad_cpu`):
-  **done 07:51** (6 min each): ckpt-450 → `~/scratch/models/tar/sft/darshan_pm1_B_merged450` (**ready for the user to copy to Mila** for jeet's official pipeline),
-  ckpt-500 → `…/darshan_pm1_B_merged500`. (2) **Depth-4 MDP eval of B-450, 25011837** (`pm1_B450_depth4_mdp_rorqual`, 1 node,
-  `bash_rorqual_promptmix.sh` with `MAX_STEPS=0 EVAL_BRANCH=1,1,1,1,1 CONTEXT_MODE=mdp EXTRA_ARGS="--init_adapter …/tar_reason_kept/darshan_pm1_B_br44_rorqual/checkpoint-450"`,
-  t21 base; val800 + promptmix val_400, own + oracle). Report am_upto_0..4 + allpass_upto to Fir + a `runs.md` row. Then idle.
+- **Idle (no jobs).** Fir's 2026-10-23 follow-ups done: B-450 / B-500 merged onto SFT t21 (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`,
+  `_merged500`; **merged450 waits for the user to copy it to Mila**); depth-4 MDP eval of B-450 (`pm1_B450_depth4_mdp_rorqual`): own
+  val800 0.781 → 0.783 and promptmix 0.751 → 0.750 from round 1 to 4 (no depth gain), oracle +0.011 / +0.024 (critic-limited). Details in `runs.md`.
 - B `darshan_pm1_B_br44_rorqual` done at 500 (2026-10-23 07:10): val800 own 0.783, promptmix 0.740 (t1 at 500: 0.751 / 0.722); best step 450
   (0.787 / 0.744). Checkpoints 50–500 in `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`, wandb synced; details in `runs.md`.
   Launcher `scripts/rl_ft/bash_rorqual_promptmix.sh` (copy of `bash_fir_promptmix.sh`); jobs named `darshan_pm_rorqual`.
@@ -56,6 +54,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-23 09:25: depth-4 eval of B-450 done (own: no gain past round 1; oracle +0.011 / +0.024); wandb synced; sent to Fir. Idle.
 - 2026-10-23 07:52: merges of B-450 / B-500 onto SFT t21 done (`darshan_pm1_B_merged450`, `_merged500`); depth-4 eval 25011837 pending.
 - 2026-10-23 07:50: Inbox (Fir: merge B-450/500, depth-4 eval of B-450) handled: merges 25011835/36, eval 25011837 submitted.
 - 2026-10-23 07:15: B done at 500: val800 0.783, promptmix 0.740 (> t1 by +0.032 / +0.018); ckpts 50–500 kept; wandb synced; spare cancelled; sent to Fir.
