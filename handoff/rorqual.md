@@ -2,15 +2,13 @@
 
 Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100 80GB per node (like Fir).
 
-## Now (2026-10-22)
-- **B `darshan_pm1_B_br44_rorqual` extended to 500 steps** (Fir Inbox 2026-10-22: B is the round-1 leader; its step 500 compares with jeet's
-  t1 at 500: val800 0.751, promptmix 0.722). Same RUN_NAME and dataset seed, `BRANCH=4,4 MAX_STEPS=500 EVAL_STEPS=50`, resumes from
-  checkpoint-200: **24981206 → 24981207** (afterany), submitted 19:00. ≈ 2 min/step + ~15 min/eval → ≈ 12 h.
-  Step 200: val800 own 0.735 (+0.066 vs SFT t21), promptmix 0.684 (+0.080), oracle 0.748 / 0.706. Checkpoints 50–200 in
-  `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`; the watcher copies each new eval's checkpoint there. Report evals 250–500 to Fir.
+## Now (2026-10-23)
+- **Idle (no jobs).** Last: **B `darshan_pm1_B_br44_rorqual` done at 500 steps** 2026-10-23 07:10 (round-1 leader of the single-round promptmix
+  screen; 200 steps 2026-10-22, then extended to 500 per Fir). Step 500: val800 own **0.783**, promptmix val_400 own **0.740**
+  (jeet's t1 at 500: 0.751 / 0.722), oracle 0.810 / 0.773; best step 450 (0.787 / 0.744). Checkpoints 50–500 in
+  `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`, wandb synced; details in `runs.md`. Next step is Fir's/jeet's call.
   Launcher `scripts/rl_ft/bash_rorqual_promptmix.sh` (copy of `bash_fir_promptmix.sh`); jobs named `darshan_pm_rorqual`.
   **Copy each eval's checkpoint to `~/scratch/tar_reason_kept/<run>/` right after the eval: `--save_total_limit 5` deletes it 50 steps later.**
-  wandb: the first piece (steps 0–200) is synced; sync the extension's folder(s) with `--append`.
 - Done: `darshan_mr_f800pm_rorqual` (F-800 → promptmix, 500 steps, 2026-10-21): final val800 0.849 (−0.009), promptmix 0.730 (+0.018);
   details in `runs.md`; checkpoint-500 in `~/scratch/tar_reason_kept/darshan_mr_f800pm_rorqual/`; wandb synced.
 - `bash_rorqual_mr.sh` re-synced with `bash_fir_mr.sh` (jeet's settings: REWARD_QUESTION_BATCH 64, TRAIN_MICRO_BATCH 2; SIGLIP2_PATH exported).
@@ -55,6 +53,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-23 07:15: B done at 500: val800 0.783, promptmix 0.740 (> t1 by +0.032 / +0.018); ckpts 50–500 kept; wandb synced; spare cancelled; sent to Fir.
 - 2026-10-23 05:20: B step 450: val800 own 0.787, promptmix 0.744 (best so far); ckpt-450 kept; sent to Fir.
 - 2026-10-23 03:30: B step 400: val800 own 0.760, promptmix 0.734 (refinement +0.037); KL spikes to 0.70 at 395 (recovered); ckpt-400 kept; sent to Fir.
 - 2026-10-23 01:40: B step 350: val800 own 0.766, promptmix 0.727; ckpt-350 kept; sent to Fir.
