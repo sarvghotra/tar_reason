@@ -14,11 +14,11 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
     promptmix 0.607 → 0.604 → **0.658 → 0.663**; the gain is in the draft, refinement adds ≤ 0.01; checkpoints 50–200 kept. Decision at
     step 200 waits for B (Rorqual, ETA 19:00 EDT) and jeet's t1 curve (the step-200 reference).
   - **D std floor 0 — Fir, done** (`darshan_pm1_D_floor0_fir`, 200 steps): val800 0.696 → **0.699**, promptmix 0.651 → **0.662** = A within noise; the floor does not matter.
-- Round 1 so far: B (BRANCH 4,4) ≫ A ≈ D; C (KL 0.01) pending on TamIA. **E BRANCH 8,4 — Fir, submitted** (`darshan_pm1_E_br84_fir`: 66905806 → 66905807 spare; probes the draft-count axis past B; ~2× B's rollout cost). Cancel if the user prefers another use of Fir.
+- Round 1 so far: B (BRANCH 4,4) ≫ A ≈ D; C (KL 0.01) pending on TamIA. **E BRANCH 8,4 — Fir, 200 steps done, extended to 500** (`darshan_pm1_E_br84_fir`: step 200 val800 0.752 → **0.767**, promptmix 0.713 → **0.724** = B at step 350–400; extension 66985146 → 66985147, resume from 200, ~3.3 min/step). **R BRANCH 4,8 — Rorqual** (Inbox): the refine-count axis.
   - **B BRANCH 4,4 — Rorqual, done to 500 steps: beats jeet's t1 on one round.** Step 500: val800 0.765 → **0.783** (t1 0.751), promptmix
     0.728 → **0.740** (t1 0.722); best eval step 450 (0.787 / 0.744); oracle 0.810 / 0.773; own-critique refinement +0.018 / +0.012. Checkpoints
     every 50 kept on Rorqual. Asked Rorqual to merge 450 + 500 onto t21 (CPU) and run a depth-4 MDP eval of B-450 (does the single-round
-    model gain from more rounds, as t8 did?) → **done: no.** B-450 depth-4 mdp, AM after 0..4 rounds: val800 own 0.779/0.781/0.786/0.784/0.783, oracle 0.783 → 0.820; promptmix own 0.737/0.751/0.750/0.749/0.750, oracle 0.737 → 0.797. Own critiques stop after round 1 (looks_good 0.22 → 0.04); the oracle keeps gaining, so the critic is the depth limit. Merged `darshan_pm1_B_merged450` on Rorqual; official evals on Mila once the user copies it. **Rorqual idle; next run decided after E's step 200.**
+    model gain from more rounds, as t8 did?) → **done: no.** B-450 depth-4 mdp, AM after 0..4 rounds: val800 own 0.779/0.781/0.786/0.784/0.783, oracle 0.783 → 0.820; promptmix own 0.737/0.751/0.750/0.749/0.750, oracle 0.737 → 0.797. Own critiques stop after round 1 (looks_good 0.22 → 0.04); the oracle keeps gaining, so the critic is the depth limit. Merged `darshan_pm1_B_merged450` on Rorqual; official evals on Mila once the user copies it. Rorqual next: R (BRANCH 4,8).
   - **C KL 0.01 — TamIA** (ported `b5ea15e`; smoke 636249 queued, F-full done 10-22). **D std floor 0** — next free slot.
 - Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
@@ -55,6 +55,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-23 08:20 Fir: E done at 200 (val800 0.767, promptmix 0.724 ≈ B @350–400); wandb synced; extended to 500 (66985146/66985147). Rorqual Inbox: R = BRANCH 4,8 screen (my call: draft axis won, test the refine axis).
 - 2026-10-23 06:40 Fir: Inbox handled: Rorqual depth-4 mdp eval of B-450: own critiques add nothing past round 1 (val800 0.781 → 0.783, promptmix 0.751 → 0.750), oracle +0.011 / +0.024: critic-limited. Rorqual idle. E at step 180.
 - 2026-10-23 05:10 Fir: Inbox handled: Rorqual merged B-450/500 onto t21 (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`, `_merged500`); depth-4 mdp eval of B-450 queued (25011837). Mila Inbox: official evals of B-450 once the user copies it.
 - 2026-10-23 04:30 Fir: Inbox handled: Rorqual B done at 500 (val800 0.783, promptmix 0.740; best 450: 0.787 / 0.744): +0.032 / +0.018 over jeet's t1. Rorqual Inbox: merge 450/500, depth-4 mdp eval of B-450. E at step 147.

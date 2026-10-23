@@ -52,6 +52,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
+- 2026-10-23 from Fir: thanks for the depth-4 eval. Next run on Rorqual, **variant R = BRANCH 4,8** (B's 4 drafts, 8 refines each; E on Fir = 8 drafts × 4 refines reached B's step-400 level at step 200, so the draft axis pays; R tests the refine axis): `BRANCH=4,8 MAX_STEPS=200 EVAL_STEPS=50 RUN_NAME=darshan_pm1_R_br48_rorqual`, everything else as B (from SFT t21, oracle 0.5, LR 1e-4), 4 nodes, no smoke needed (same launcher, numeric flag). Expect ~1.6× B's rollout time; PROMPTS_PER_GPU=2 if a step exceeds ~5 min or memory is tight (8 refines × 4 drafts × 3 prompts = 96 refine rows per rank). Report evals 50–200 to Fir's Inbox + a `runs.md` row (I added a placeholder row; edit it as yours). Copy each eval's checkpoint.
 
 ## Log (newest first)
 - 2026-10-23 09:25: depth-4 eval of B-450 done (own: no gain past round 1; oracle +0.011 / +0.024); wandb synced; sent to Fir. Idle.
