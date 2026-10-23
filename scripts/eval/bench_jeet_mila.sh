@@ -23,6 +23,10 @@
 #     LORA_PATH=$SCRATCH/tar_reason/kept/<run>/checkpoint-500 BENCH=genai sbatch scripts/eval/bench_jeet_mila.sh
 #   base Tar (plain prompt, draft only, every later iteration repeats the draft):
 #   MODEL_NAME=7B MODEL_PATH=$SCRATCH/models/tar/Tar-7B SINGLE_PASS=1 BENCH=tiif sbatch scripts/eval/bench_jeet_mila.sh
+#   Janus baselines (eval/baselines/janus_pro_r1_gen.py, env ~/envs/janus, N_ITERS forced to 2:
+#   iteration 1 = first image, iteration 2 = the R1 loop's final image; single = iteration 2 repeats 1):
+#   MODEL_NAME=janus_pro_r1 GEN_FAMILY=janus JANUS_MODE=r1_loop BENCH=geneval2 SEEDS=713 sbatch scripts/eval/bench_jeet_mila.sh
+#   MODEL_NAME=janus_pro_7b GEN_FAMILY=janus JANUS_MODE=single  BENCH=geneval2 SEEDS=713 sbatch scripts/eval/bench_jeet_mila.sh
 #
 # Env vars:
 #   MODEL_NAME   required. Folder label (jeet's convention: <ckpt>_greedy_slf_ref_draft_S0; his TIIF
@@ -39,6 +43,13 @@
 #   NUM_PROMPTS  GenAI-Bench prompts: 1600 (default, the full official set) or 800 (jeet's subset, same ids)
 #   SINGLE_PASS  1 = base-model baseline (--single_pass)
 #   OUT_ROOT     default $SCRATCH/tar_reason/results_jeet
+#   GEN_FAMILY   tar (default) | janus. janus: GEN_SCRIPT=eval/baselines/janus_pro_r1_gen.py run with ~/envs/janus,
+#                no CUDA module, N_ITERS=2; MODEL_PATH / LORA_PATH / MDP / SINGLE_PASS are not used.
+#   JANUS_MODE   r1_loop (default: generate, self-check, regenerate if "No") | single (plain text-to-image)
+#   JANUS_MODEL  HF id or dir (default midbee/Janus-Pro-R1-7B for r1_loop, deepseek-ai/Janus-Pro-7B for single)
+#   JANUS_MAX_IMAGES  images in the R1 loop incl. the first (default 2, as Janus-Pro-R1's inference.py)
+#   JANUS_ARGS   extra generator flags (e.g. "--janus_batch_size 8")
+#   GEN_FAMILY=janus folders: GEN_PREFIX = janus_<JANUS_MODE>_n2, resolution tag 384px (Janus' native size).
 #
 # Output layout (identical to his, OUTPUT_DIR = OUT_ROOT/<eval set name>):
 #   geneval2: $OUT_ROOT/GenEval2/<GEN_MODEL>/seed_<S>/{1..N}/{geneval2_results.json,results_geneval2.jsonl,eval_log.txt}, log.txt
@@ -80,6 +91,20 @@ SINGLE_PASS=${SINGLE_PASS:-0}
 OUT_ROOT=${OUT_ROOT:-/network/scratch/s/singhsd/tar_reason/results_jeet}
 REPEAT=1
 AR_RES=512
+GEN_FAMILY=${GEN_FAMILY:-tar}
+case $GEN_FAMILY in
+  tar) ;;
+  janus)
+    JANUS_MODE=${JANUS_MODE:-r1_loop}
+    case $JANUS_MODE in
+      r1_loop) JANUS_MODEL=${JANUS_MODEL:-midbee/Janus-Pro-R1-7B} ;;
+      single)  JANUS_MODEL=${JANUS_MODEL:-deepseek-ai/Janus-Pro-7B} ;;
+      *) echo "JANUS_MODE must be r1_loop or single (got '$JANUS_MODE')"; exit 1 ;;
+    esac
+    JANUS_MAX_IMAGES=${JANUS_MAX_IMAGES:-2}
+    N_ITERS=2 ;;
+  *) echo "GEN_FAMILY must be tar or janus (got '$GEN_FAMILY')"; exit 1 ;;
+esac
 case $BENCH in
   geneval2) DEFAULT_SEEDS="2213 713 13" ;;
   genai)    DEFAULT_SEEDS="13 17 91" ;;
@@ -102,7 +127,7 @@ GENAI_PY=/home/mila/s/singhsd/envs/genai_judge/bin/python   # t2v_metrics (Qwen3
 export HF_HOME=/network/scratch/s/singhsd/hf_home            # all judge weights are in $HF_HOME/hub
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
 TMP_DIR=${SLURM_TMPDIR:-/tmp}
-[ -f ${TMP_DIR}/ta_tok.pth ] || cp ${MODELS}/ta_tok.pth ${TMP_DIR}/
+[ "$GEN_FAMILY" = janus ] || [ -f ${TMP_DIR}/ta_tok.pth ] || cp ${MODELS}/ta_tok.pth ${TMP_DIR}/   # Tar only
 AR_MODEL=${MODELS}/ar_dtok_lp_${AR_RES}px.pth
 cd "$REPO"
 
@@ -139,8 +164,14 @@ case $BENCH in
     GEN_PREFIX=iter_adhoc${MDP_SUFFIX}_n${N_ITERS}
     BATCH_SIZE=64; [ "$MDP" = 0 ] && VERBOSE_ARG=(--verbose) ;;
 esac
+RES_TAG=${AR_RES}px
+if [ "$GEN_FAMILY" = janus ]; then
+  GEN_SCRIPT=eval/baselines/janus_pro_r1_gen.py
+  GEN_PREFIX=janus_${JANUS_MODE}_n${N_ITERS}
+  RES_TAG=384px
+fi
 OUTPUT_DIR=${OUT_ROOT}/${EVAL_SET_NAME}
-RUN_DIR=${OUTPUT_DIR}/${GEN_PREFIX}_${MODEL_NAME}_${AR_RES}px_repeat${REPEAT}${RL_FT}
+RUN_DIR=${OUTPUT_DIR}/${GEN_PREFIX}_${MODEL_NAME}_${RES_TAG}_repeat${REPEAT}${RL_FT}
 
 LORA_ARG=(); [ -n "$LORA_PATH" ] && LORA_ARG=(--lora_path "$LORA_PATH")
 SP_ARG=(); [ "$SINGLE_PASS" = 1 ] && SP_ARG=(--single_pass)
@@ -153,6 +184,16 @@ GEN_COMMON=(--model "$MODEL_PATH" --n_iters "$N_ITERS" --repeat $REPEAT
             --ar_path "$AR_MODEL" --encoder_path ${TMP_DIR}/ta_tok.pth --decoder_path ${MODELS}/vq_ds16_t2i.pt
             --draft_img_scale 0 --draft_gen_seq_len 729
             "${VERBOSE_ARG[@]}" "${SP_ARG[@]}" "${LORA_ARG[@]}")
+# Generation env (Tar: the tar env + CUDA module). The Janus generator ignores the Tar-only flags above.
+GEN_ENV=$TAR_ENV
+GEN_CUDA_MODULE=cuda/12.2.2
+if [ "$GEN_FAMILY" = janus ]; then
+  GEN_ENV=/home/mila/s/singhsd/envs/janus   # torch 2.5.1+cu121 wheel bundles its CUDA libs: no module
+  GEN_CUDA_MODULE=""
+  read -r -a JANUS_EXTRA <<< "${JANUS_ARGS:-}"
+  GEN_COMMON+=(--model_path "$JANUS_MODEL" --mode "$JANUS_MODE" --max_images "$JANUS_MAX_IMAGES" "${JANUS_EXTRA[@]}")
+  echo "GEN_FAMILY=janus JANUS_MODE=${JANUS_MODE} JANUS_MODEL=${JANUS_MODEL} JANUS_MAX_IMAGES=${JANUS_MAX_IMAGES} (N_ITERS forced to 2; MODEL_PATH unused)"
+fi
 
 echo "BENCH=${BENCH} MDP=${MDP} N_ITERS=${N_ITERS} SEEDS=${SEEDS[*]} N_GPUS=${N_GPUS} MODEL_NAME=${MODEL_NAME} MODEL_PATH=${MODEL_PATH}" \
      "LORA_PATH=${LORA_PATH:-none} RL_FT=${RL_FT:-none} SINGLE_PASS=${SINGLE_PASS} job=${SLURM_JOB_ID:-local} host=$(hostname)"
@@ -161,7 +202,7 @@ echo "RUN_DIR=${RUN_DIR}"
 # Generation runs in a subshell with the tar env + CUDA module, so the judges below start from a
 # clean environment (the module's CUDA libraries break the judge envs' torch).
 run_gen() {
-  ( set +u; source ${TAR_ENV}/bin/activate && module load cuda/12.2.2 \
+  ( set +u; source ${GEN_ENV}/bin/activate && { [ -z "$GEN_CUDA_MODULE" ] || module load $GEN_CUDA_MODULE; } \
     && export PYTHONPATH=${REPO} \
     && torchrun --standalone --nproc_per_node=$N_GPUS "$GEN_SCRIPT" "${GEN_COMMON[@]}" "$@" )
 }
