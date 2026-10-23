@@ -14,7 +14,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
     promptmix 0.607 → 0.604 → **0.658 → 0.663**; the gain is in the draft, refinement adds ≤ 0.01; checkpoints 50–200 kept. Decision at
     step 200 waits for B (Rorqual, ETA 19:00 EDT) and jeet's t1 curve (the step-200 reference).
   - **D std floor 0 — Fir, done** (`darshan_pm1_D_floor0_fir`, 200 steps): val800 0.696 → **0.699**, promptmix 0.651 → **0.662** = A within noise; the floor does not matter.
-- **Fir is idle.** Round 1 so far: B (BRANCH 4,4) ≫ A ≈ D; C (KL 0.01) pending on TamIA. Next on Fir: to be decided with the user (candidates: B + oracle 0.75 combined, or B with a second seed).
+- Round 1 so far: B (BRANCH 4,4) ≫ A ≈ D; C (KL 0.01) pending on TamIA. **E BRANCH 8,4 — Fir, submitted** (`darshan_pm1_E_br84_fir`: 66905806 → 66905807 spare; probes the draft-count axis past B; ~2× B's rollout cost). Cancel if the user prefers another use of Fir.
   - **B BRANCH 4,4 — Rorqual, done (200 steps): the round-1 winner so far.** val800 0.733 → **0.735**, promptmix 0.693 → **0.684** (A: 0.706 / 0.663);
     drafts +0.054 / +0.086 vs step 0, refinement ≈ 0 / −0.009. **Asked Rorqual to extend B to 500** (resume checkpoint-200), so its step 500
     compares directly with t1's (0.751 / 0.722). **Step 250: val800 0.752 → 0.760, promptmix 0.731 → 0.732, already above t1 @500.**
@@ -23,7 +23,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
   Mila shared F-800 / pm-run-500 merged with jeet (ACL) and runs N_ITERS=5 evals.
 - Code: main checkout at origin; worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2`) can be removed.
-- Watcher: none (nothing running) (re-armed every 30 min while the session is open).
+- Watcher: self-terminating `~/scratch/watch/pmE/watch.sh` on the E chain (re-armed every 30 min while the session is open).
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
@@ -54,6 +54,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-22 23:25 Fir: E (BRANCH 8,4) submitted 66905806/66905807 (my call while the user is away: B won through drafts, so push that axis).
 - 2026-10-22 23:15 Fir: D done (step 200: val800 0.699, promptmix 0.662 = A); spare cancelled, wandb synced. Fir idle.
 - 2026-10-22 19:15 Fir: Inbox handled: Rorqual B extension step 250: val800 0.752 → 0.760, promptmix 0.731 → 0.732 (oracle 0.786 / 0.764): **above jeet's t1 at step 500 (0.751 / 0.722) after 250 steps.** D at step 186.
 - 2026-10-22 18:00 Fir: Inbox handled: Rorqual B done (step 200: val800 0.735, promptmix 0.684; +0.029 / +0.021 over A). Decision: B is the round-1 leader; Rorqual Inbox: extend B to 500 steps from checkpoint-200. D at step 61.
