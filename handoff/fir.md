@@ -14,7 +14,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
     promptmix 0.607 → 0.604 → **0.658 → 0.663**; the gain is in the draft, refinement adds ≤ 0.01; checkpoints 50–200 kept. Decision at
     step 200 waits for B (Rorqual, ETA 19:00 EDT) and jeet's t1 curve (the step-200 reference).
   - **D std floor 0 — Fir, done** (`darshan_pm1_D_floor0_fir`, 200 steps): val800 0.696 → **0.699**, promptmix 0.651 → **0.662** = A within noise; the floor does not matter.
-- Round 1 so far: B (BRANCH 4,4) ≫ A ≈ D; C (KL 0.01) pending on TamIA. **E BRANCH 8,4 — Fir, 200 steps done, extended to 500** (`darshan_pm1_E_br84_fir`: step 200 val800 0.752 → **0.767**, promptmix 0.713 → **0.724** = B at step 350–400; extension 66985146 → 66985147, resume from 200, ~3.3 min/step). **R BRANCH 4,8 — Rorqual** (Inbox): the refine-count axis.
+- Round 1 so far: B (BRANCH 4,4) ≫ A ≈ D; C (KL 0.01) pending on TamIA. **E BRANCH 8,4 — Fir, 200 steps done, extended to 500** (`darshan_pm1_E_br84_fir`: step 200 val800 0.752 → **0.767**, promptmix 0.713 → **0.724** = B at step 350–400; extension 66985146 (hung at step 221, 09:18 Fir: no log output, judges idle; NCCL 30-min timeout expected) → 67008189 → 67008190 (both `--exclude=fc10212`, the node common to both hangs), resume from checkpoint-220, ~3.3 min/step). **R BRANCH 4,8 — Rorqual** (Inbox): the refine-count axis.
   - **B BRANCH 4,4 — Rorqual, done to 500 steps: beats jeet's t1 on one round.** Step 500: val800 0.765 → **0.783** (t1 0.751), promptmix
     0.728 → **0.740** (t1 0.722); best eval step 450 (0.787 / 0.744); oracle 0.810 / 0.773; own-critique refinement +0.018 / +0.012. Checkpoints
     every 50 kept on Rorqual. Asked Rorqual to merge 450 + 500 onto t21 (CPU) and run a depth-4 MDP eval of B-450 (does the single-round
@@ -55,6 +55,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-23 10:00 Fir: E extension job 66985146 hung after step 220 (same signature as the step-3 hang on 10-22: log silent, judges idle, nodes fc10112/10116/10207/10212; fc10212 was in both). Replaced the spare with 67008189 → 67008190 excluding fc10212; they resume from checkpoint-220 once the NCCL watchdog kills the job.
 - 2026-10-23 08:20 Fir: E done at 200 (val800 0.767, promptmix 0.724 ≈ B @350–400); wandb synced; extended to 500 (66985146/66985147). Rorqual Inbox: R = BRANCH 4,8 screen (my call: draft axis won, test the refine axis).
 - 2026-10-23 06:40 Fir: Inbox handled: Rorqual depth-4 mdp eval of B-450: own critiques add nothing past round 1 (val800 0.781 → 0.783, promptmix 0.751 → 0.750), oracle +0.011 / +0.024: critic-limited. Rorqual idle. E at step 180.
 - 2026-10-23 05:10 Fir: Inbox handled: Rorqual merged B-450/500 onto t21 (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`, `_merged500`); depth-4 mdp eval of B-450 queued (25011837). Mila Inbox: official evals of B-450 once the user copies it.
