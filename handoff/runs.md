@@ -224,3 +224,7 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   Scratch trouble during these runs (BeeGFS Errno 121: some folder/file names refuse creation, even from the login node): the
   launcher now generates, judges and scores on local disk and copies only results (`94402ac` … `33c12f2`); damaged folders were set
   aside as `.broken_*` next to the results. Four TIIF summaries had been computed on partial judgments and were redone.
+- **Per-image means, final setting (image 1 → 5 = draft + 4 corrections, mean of 3 seeds; Fir dashboard request 2026-10-22).** CSV : Mila  (GenEval2 curves in the note above).
+  GenAI-1600: t8 38.7 / 41.3 / 41.7 / 41.7 / 41.0; promptmix_t1 39.3 / 41.0 / 42.3 / 42.3 / 42.3; promptmix_run_500 39.3 / 42.0 / 42.7 / 43.0 / 43.3; F-800 41.0 / 42.7 / 43.0 / 43.7 / 43.7
+  TIIF short: t8 67.7 / 70.8 / 71.4 / 72.0 / 71.8; promptmix_t1 67.4 / 70.3 / 70.3 / 71.4 / 71.5; promptmix_run_500 67.7 / 70.8 / 71.1 / 71.0 / 71.8; F-800 69.3 / 71.7 / 71.4 / 71.7 / 73.3
+  TIIF long: t8 64.5 / 67.9 / 67.4 / 68.4 / 67.2; promptmix_t1 65.2 / 66.4 / 66.5 / 66.3 / 66.2; promptmix_run_500 66.3 / 67.0 / 67.9 / 66.9 / 67.8; F-800 65.1 / 67.5 / 68.1 / 68.7 / 68.2
