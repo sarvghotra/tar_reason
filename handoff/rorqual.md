@@ -4,8 +4,8 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 
 ## Now (2026-10-23)
 - **Fir Inbox 2026-10-23 (follow-ups to B), submitted 07:50:** (1) merges of B onto SFT t21 (CPU, `rrg-bengioy-ad_cpu`):
-  **25011835** ckpt-450 → `models/tar/sft/darshan_pm1_B_merged450` (the user copies it to Mila for jeet's official pipeline),
-  **25011836** ckpt-500 → `…/darshan_pm1_B_merged500`. (2) **Depth-4 MDP eval of B-450, 25011837** (`pm1_B450_depth4_mdp_rorqual`, 1 node,
+  **done 07:51** (6 min each): ckpt-450 → `~/scratch/models/tar/sft/darshan_pm1_B_merged450` (**ready for the user to copy to Mila** for jeet's official pipeline),
+  ckpt-500 → `…/darshan_pm1_B_merged500`. (2) **Depth-4 MDP eval of B-450, 25011837** (`pm1_B450_depth4_mdp_rorqual`, 1 node,
   `bash_rorqual_promptmix.sh` with `MAX_STEPS=0 EVAL_BRANCH=1,1,1,1,1 CONTEXT_MODE=mdp EXTRA_ARGS="--init_adapter …/tar_reason_kept/darshan_pm1_B_br44_rorqual/checkpoint-450"`,
   t21 base; val800 + promptmix val_400, own + oracle). Report am_upto_0..4 + allpass_upto to Fir + a `runs.md` row. Then idle.
 - B `darshan_pm1_B_br44_rorqual` done at 500 (2026-10-23 07:10): val800 own 0.783, promptmix 0.740 (t1 at 500: 0.751 / 0.722); best step 450
@@ -56,6 +56,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-23 07:52: merges of B-450 / B-500 onto SFT t21 done (`darshan_pm1_B_merged450`, `_merged500`); depth-4 eval 25011837 pending.
 - 2026-10-23 07:50: Inbox (Fir: merge B-450/500, depth-4 eval of B-450) handled: merges 25011835/36, eval 25011837 submitted.
 - 2026-10-23 07:15: B done at 500: val800 0.783, promptmix 0.740 (> t1 by +0.032 / +0.018); ckpts 50–500 kept; wandb synced; spare cancelled; sent to Fir.
 - 2026-10-23 05:20: B step 450: val800 own 0.787, promptmix 0.744 (best so far); ckpt-450 kept; sent to Fir.

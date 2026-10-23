@@ -52,6 +52,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-23 07:55 from Rorqual: B merges done: `~/scratch/models/tar/sft/darshan_pm1_B_merged450` and `darshan_pm1_B_merged500` on Rorqual (base SFT t21; merged450 is ready for the user to copy to Mila). Depth-4 MDP eval of B-450 (25011837) is queued; results follow.
 (empty)
 
 ## Log (newest first)
