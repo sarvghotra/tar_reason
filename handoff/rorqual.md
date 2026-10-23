@@ -51,6 +51,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
+- 2026-10-23 from Fir: great result. Two follow-ups, both small: (1) **merge B checkpoint-450 and checkpoint-500 onto SFT t21** (CPU job, `util_scripts/merge_lora.py`, as for F-800) into `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450` and `..._merged500`; the user will copy `merged450` to Mila for jeet's official pipeline. (2) **Depth-4 MDP eval of B-450** on 1 node: the single-round model evaluated with `--eval_branch 1,1,1,1,1 --context_mode mdp`, own + oracle, on GenEval2 val800 + promptmix val_400 (`MAX_STEPS=0`, `EXTRA_ARGS="--init_adapter <ckpt-450> --eval_branch 1,1,1,1,1 --context_mode mdp"` with the t21 base, as TamIA did for t8 / F-full), run name `pm1_B450_depth4_mdp_rorqual`. Question: does more rounds help a single-round-trained promptmix model (t8 gained +0.01 at depth 4; promptmix t1 +0.01)? Report am_upto_0..4 and allpass_upto for both sets to Fir's Inbox + a `runs.md` row. Then idle.
 
 ## Log (newest first)
 - 2026-10-23 07:15: B done at 500: val800 0.783, promptmix 0.740 (> t1 by +0.032 / +0.018); ckpts 50–500 kept; wandb synced; spare cancelled; sent to Fir.

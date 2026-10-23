@@ -15,9 +15,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
     step 200 waits for B (Rorqual, ETA 19:00 EDT) and jeet's t1 curve (the step-200 reference).
   - **D std floor 0 — Fir, done** (`darshan_pm1_D_floor0_fir`, 200 steps): val800 0.696 → **0.699**, promptmix 0.651 → **0.662** = A within noise; the floor does not matter.
 - Round 1 so far: B (BRANCH 4,4) ≫ A ≈ D; C (KL 0.01) pending on TamIA. **E BRANCH 8,4 — Fir, submitted** (`darshan_pm1_E_br84_fir`: 66905806 → 66905807 spare; probes the draft-count axis past B; ~2× B's rollout cost). Cancel if the user prefers another use of Fir.
-  - **B BRANCH 4,4 — Rorqual, done (200 steps): the round-1 winner so far.** val800 0.733 → **0.735**, promptmix 0.693 → **0.684** (A: 0.706 / 0.663);
-    drafts +0.054 / +0.086 vs step 0, refinement ≈ 0 / −0.009. **Asked Rorqual to extend B to 500** (resume checkpoint-200), so its step 500
-    compares directly with t1's (0.751 / 0.722). **Step 250: val800 0.752 → 0.760, promptmix 0.731 → 0.732, already above t1 @500. Step 300: 0.743 → 0.762, 0.726 → 0.736; own-critique refinement now +0.019 / +0.010. Step 350: 0.756 → 0.766, 0.720 → 0.727. Step 400: 0.735 → 0.760, 0.697 → 0.734: drafts falling (−0.02 since 350), refinement up (+0.025 / +0.037); KL spikes to 0.5–0.7, baseline 0.20. Step 450 (best): 0.775 → 0.787, 0.731 → 0.744 (oracle 0.812 / 0.769): the step-400 draft dip was noise; drafts +0.04 back up.**
+  - **B BRANCH 4,4 — Rorqual, done to 500 steps: beats jeet's t1 on one round.** Step 500: val800 0.765 → **0.783** (t1 0.751), promptmix
+    0.728 → **0.740** (t1 0.722); best eval step 450 (0.787 / 0.744); oracle 0.810 / 0.773; own-critique refinement +0.018 / +0.012. Checkpoints
+    every 50 kept on Rorqual. Asked Rorqual to merge 450 + 500 onto t21 (CPU) and run a depth-4 MDP eval of B-450 (does the single-round
+    model gain from more rounds, as t8 did?). Next: official evals of B-450 on Mila (the user copies the merged model).
   - **C KL 0.01 — TamIA** (ported `b5ea15e`; smoke 636249 queued, F-full done 10-22). **D std floor 0** — next free slot.
 - Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
@@ -51,10 +52,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-23 07:15 from Rorqual: **B (`darshan_pm1_B_br44_rorqual`) done, 500 steps.** **Step 500 (final):** val800 own 0.765 → **0.783** (−0.004 vs 450; +0.114 vs SFT t21; fix 0.252, brk 0.056, all-correct 22.1%), oracle 0.763 → **0.810**; promptmix own 0.728 → **0.740** (−0.004 vs 450; +0.136 vs SFT t21; fix 0.279, brk 0.089, looks_good 0.40), oracle 0.726 → **0.773**. **vs jeet's t1 at step 500: val800 +0.032 (0.783 vs 0.751), promptmix +0.018 (0.740 vs 0.722).** Best eval step 450 (0.787 / 0.744). Refinement with own critiques +0.018 / +0.012 (step 200: +0.002 / −0.009). KL mean 0.17 over 451–500 with short spikes (max 0.89), each recovering the next step. Done 2026-10-23 07:10 (24981206, 11.3 h; spare 24981207 cancelled). Checkpoints 50–500 (every 50) in `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`; wandb synced (2 pieces, lastHistoryStep 500). Rorqual is idle until told.
 (empty)
 
 ## Log (newest first)
+- 2026-10-23 04:30 Fir: Inbox handled: Rorqual B done at 500 (val800 0.783, promptmix 0.740; best 450: 0.787 / 0.744): +0.032 / +0.018 over jeet's t1. Rorqual Inbox: merge 450/500, depth-4 mdp eval of B-450. E at step 147.
 - 2026-10-23 02:30 Fir: Inbox handled: Rorqual B step 450 (best so far): val800 0.775 → 0.787, promptmix 0.731 → 0.744; the 400 draft dip was noise. E at step 111, KL baseline up to 0.12–0.2 since step 99 (spikes 0.41).
 - 2026-10-23 01:00 Fir: Inbox handled: Rorqual B step 400: val800 0.735 → 0.760, promptmix 0.697 → 0.734; drafts down 0.02, refinement up; KL spikes 0.5–0.7 (steps 361, 394–395), baseline 0.20. Final at 500 ≈ 07:15 EDT. E at step 78.
 - 2026-10-23 02:00 Fir: Inbox handled: Rorqual B step 350: val800 0.756 → 0.766, promptmix 0.720 → 0.727 (oracle 0.791 / 0.754); plateau-ish since 250. E at step 45.
