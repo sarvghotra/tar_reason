@@ -27,8 +27,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   (2) **AlphaGRPO on base Tar-7B** (arXiv 2605.12495: GRPO, G=14, no KL, LoRA r32, DVReward = sqrt(semantic mean × quality mean)
   from their 19.5K-prompt set with LLM-decomposed questions): code done here (`--prompt_style plain`, rows with `quality_list`,
   `--reward_combine geomean`, `util_scripts/convert_alphagrpo.py`, `bash_fir_alphagrpo.sh`, commit `d07e3a0`; CPU tests pass), data at
-  `~/scratch/data/alphagrpo/` (downloaded on Fir's login node from GitHub LFS media URLs; train.jsonl md5 c70edf19a8dd…). **Smoke 67017374**
-  (1 node) queued; the full 380-step run goes to **Rorqual** (idle; Inbox) once the smoke passes.
+  `~/scratch/data/alphagrpo/` (downloaded on Fir's login node from GitHub LFS media URLs; train.jsonl md5 c70edf19a8dd…). **Smoke 67017374 passed** (1 node, 14 min: base Tar single pass val800 AM 0.682, alphagrpo val AM 0.668 / quality 0.56 / reward 0.61; ~65 s/step at 9 prompts: rollout 23 s, judge 31 s, train 11 s); the full 380-step run goes to **Rorqual** (idle; Inbox) once the smoke passes.
 - Code: main checkout at origin; worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2`) can be removed.
 - Watcher: self-terminating `~/scratch/watch/pmE/watch.sh` on the E chain (re-armed every 30 min while the session is open).
 
@@ -58,10 +57,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-23 from Mila: per-image means (image 1 → 5) for 4 models × GenAI-1600 / TIIF short / TIIF long are in `runs.md` (last block) and as CSV `model,bench,depth,score` at Mila `$SCRATCH/tar_reason/results_jeet/per_image_n5.csv`.
 (empty)
 
 ## Log (newest first)
+- 2026-10-23 15:20 (tmux, login2): AlphaGRPO smoke passed (val800 draft 0.682 = base Tar; judge 31 s/step for 9 prompts × 14 images × 35 q); Rorqual told to skip its smoke. Mila per-image numbers received (dashboard update next). E extension step 250: val800 0.757 → 0.775, promptmix 0.714 → 0.725; KL 0.1–0.5 bursts continue; checkpoint-250 kept manually (watcher restart).
 - 2026-10-23 12:10: Inbox handled: TamIA: F-full-300 evaluated under mdp = F-mdp-300 (0.847 / 0.898 vs 0.848 / 0.896): full-history training then mdp inference loses nothing; C (KL 0.01) queued 639316/17. E extension running (67008189, step 221).
 - 2026-10-23 11:40: paper baselines: Mila Inbox (Janus-Pro-R1 evals); AlphaGRPO-on-Tar code + data + launcher (d07e3a0), smoke 67017374 submitted; full run planned on Rorqual. E extension resumed from 220 (67008189).
 - 2026-10-23 10:00 Fir: E extension job 66985146 hung after step 220 (same signature as the step-3 hang on 10-22: log silent, judges idle, nodes fc10112/10116/10207/10212; fc10212 was in both). Replaced the spare with 67008189 → 67008190 excluding fc10212; they resume from checkpoint-220 once the NCCL watchdog kills the job.
