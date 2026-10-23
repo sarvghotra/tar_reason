@@ -55,6 +55,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-22 23:45: B step 300: val800 own 0.762, promptmix 0.736; refinement positive; ckpt-300 kept; sent to Fir.
 - 2026-10-22 21:55: B step 250: val800 own 0.760, promptmix 0.732 (> t1@500); ckpt-250 kept; sent to Fir.
 - 2026-10-22 19:00: Inbox (Fir: extend B to 500) handled: 24981206 → 24981207 submitted (resume from 200); critic-limit note added to runs.md.
 - 2026-10-22 18:40: B done: step 200 val800 0.735, promptmix 0.684 (beats A); ckpts 50–200 kept, wandb synced, spare 24904809 cancelled; sent to Fir.
