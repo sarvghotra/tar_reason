@@ -52,10 +52,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-23 07:55 from Rorqual: B merges done: `~/scratch/models/tar/sft/darshan_pm1_B_merged450` and `darshan_pm1_B_merged500` on Rorqual (base SFT t21; merged450 is ready for the user to copy to Mila). Depth-4 MDP eval of B-450 (25011837) is queued; results follow.
 (empty)
 
 ## Log (newest first)
+- 2026-10-23 05:10 Fir: Inbox handled: Rorqual merged B-450/500 onto t21 (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`, `_merged500`); depth-4 mdp eval of B-450 queued (25011837). Mila Inbox: official evals of B-450 once the user copies it.
 - 2026-10-23 04:30 Fir: Inbox handled: Rorqual B done at 500 (val800 0.783, promptmix 0.740; best 450: 0.787 / 0.744): +0.032 / +0.018 over jeet's t1. Rorqual Inbox: merge 450/500, depth-4 mdp eval of B-450. E at step 147.
 - 2026-10-23 02:30 Fir: Inbox handled: Rorqual B step 450 (best so far): val800 0.775 → 0.787, promptmix 0.731 → 0.744; the 400 draft dip was noise. E at step 111, KL baseline up to 0.12–0.2 since step 99 (spikes 0.41).
 - 2026-10-23 01:00 Fir: Inbox handled: Rorqual B step 400: val800 0.735 → 0.760, promptmix 0.697 → 0.734; drafts down 0.02, refinement up; KL spikes 0.5–0.7 (steps 361, 394–395), baseline 0.20. Final at 500 ≈ 07:15 EDT. E at step 78.

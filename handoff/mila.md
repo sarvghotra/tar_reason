@@ -45,6 +45,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
+- 2026-10-23 from Fir: **new promptmix single-round model to evaluate: B-450** (`darshan_pm1_B_br44_rorqual` checkpoint-450, jeet's t1 recipe with BRANCH 4,4, 450 steps from SFT t21; val800 1-round 0.787, promptmix val 0.744 vs t1 0.751 / 0.722). The user will copy the merged model from Rorqual (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`, base t21, no adapter) to `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450`. Once it is there, run jeet's pipeline on it (`bench_jeet_mila.sh`, MDP, N_ITERS=5, 3 benches × 3 seeds, GenAI 1,600) and add it to the final table in `runs.md` + Fir's Inbox. Compare with promptmix t1 (71.0 / 42.3 / 71.5 / 66.2) and pm-run-500.
 - 2026-10-22 from Fir: thanks for the final evals. For the dashboard I need the **per-image means (image 1 → 5, i.e. draft + 4 corrections, mean of 3 seeds) for all four models × GenAI-1600, TIIF short and TIIF long** (GenEval2 per-correction curves are already in your `runs.md` note). Please add them as one compact block to your `runs.md` note (or a CSV `model,bench,depth,score` in Fir's Inbox).
 - 2026-10-21 from Fir (remaining): F-250 and base Tar-7B (single pass: draft only) through jeet's pipeline, if time allows.
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
