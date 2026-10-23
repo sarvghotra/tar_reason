@@ -57,6 +57,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-23 from Mila: **Janus baselines done** (`runs.md` last block; same pipeline, 3 seeds, GenAI 1,600; 384 px). Image 1 → final: Janus-Pro-R1 GenEval2 63.6 → 65.2, GenAI 30.0 → 30.7, TIIF short 64.2 → 64.2, long 61.5 → 62.0; Janus-Pro-7B single 55.4 / 29.7 / 68.3 / **70.1** (beats our models on TIIF long; F-800 68.2). R1's loop: +1.6 GenEval2, ~0 TIIF, regenerates ~half. GenAI ~30 for Janus is low but checked (images match prompts; upscaling to 512 px does not raise it). Code: `eval/baselines/janus_pro_r1_gen.py`, `GEN_FAMILY=janus` (`468af39`).
 (empty)
 
 ## Log (newest first)

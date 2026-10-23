@@ -4,14 +4,11 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
 ## Now (2026-10-23 EDT)
-- **Running: Janus baselines** (external models, run only to compare with ours), 18 jobs on `long` (requeue), ids
-  `$SCRATCH/tar_reason/janus_jobs.txt`: Janus-Pro-R1 (`midbee/Janus-Pro-R1-7B`, its authors' loop: generate → Yes/No self-check →
-  regenerate once on No) and Janus-Pro-7B single pass, × GenEval2 / GenAI-1600 / TIIF × 3 seeds. Generator
-  `eval/baselines/janus_pro_r1_gen.py`, launcher hook `GEN_FAMILY=janus` (`468af39`); iteration 1 = first image, 2 = final image;
-  384 px (Janus native) vs our 512 px. Results `results_jeet/<set>/janus_{r1_loop,single}_n2_<name>_384px_repeat1/`.
-  GPU smoke passed (32 prompts: 19 accepted first image, 13 regenerated; ~3 s/prompt on 2 A100, eager attention).
+- **Nothing running.** Janus baselines done (`runs.md` last block): Janus-Pro-7B GenEval2 55.4 / GenAI 29.7 / TIIF 68.3 / 70.1;
+  Janus-Pro-R1 63.6 → 65.2 / 30.0 → 30.7 / 64.2 / 61.5 → 62.0. GenAI ~30 checked (prompts match, not a resolution effect). Told Fir.
+- `sacct` (job history) returned nothing on 2026-10-23 evening; use `tools/watch/watch_jobs_squeue.sh` when it is down.
 - **B-450**: waiting for the user's copy to `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450`.
-- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: background in this session.
+- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: none.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -45,7 +42,6 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-23 from Fir (user + jeet, paper baseline): **evaluate Janus-Pro-R1 on our three official sets with jeet's pipeline.** Model `midbee/Janus-Pro-R1-7B` (HF; base Janus-Pro-7B, 384 px, CFG 5.0), code https://github.com/wendell0218/Janus-Pro-R1 (`inference/inference.py`: generate → the model judges its own image in text → regenerates only if it says the image is wrong, up to 3 images; paper: GenEval 0.80 Janus-Pro → 0.83 first image → 0.86 with the loop). Plan: (1) clone the repo + weights into `$SCRATCH/baselines/janus_pro_r1/`, its own uv env from `requirements-rl.txt`-style deps (inference only; check what `inference/inference.py` imports). (2) Write a generator `eval/baselines/janus_pro_r1_gen.py` (in our repo, branch darshan-rl-test) that, for a prompt file and seed, runs the R1 loop per prompt and saves **image 1 (first image) and the loop's final image** (plus the self-check text in a jsonl) into **exactly the per-iteration folder layout `bench_jeet_mila.sh` expects** for each bench (GenEval2 `seed_<S>/{1,2}/…` with `results_geneval2.jsonl`; GenAI `seed_<S>/{1,2}/<idx>.jpeg`; TIIF `seed_<S>/images` — see the header of `bench_jeet_mila.sh` and jeet's generators for the exact names), so the scorers and `eval/stats/*` run unchanged; MODEL_NAME labels `janus_pro_r1_first` / `janus_pro_r1_loop` (iteration 1 = first image, 2 = final image; where the loop stopped at image 1, image 2 = image 1). Also Janus-Pro-7B single pass (`deepseek-ai/Janus-Pro-7B`, same script, loop off) as a third row if cheap. (3) 3 seeds (jeet's), all 3 benches, GenAI 1,600. Report draft → final per bench (mean ± se) to `runs.md` (new rows) + Fir's Inbox. Note resolution 384 px vs our 512 px in the row. If the repo's inference needs changes to run per-prompt in a loop, keep them minimal and note them.
 - 2026-10-23 from Fir: **new promptmix single-round model to evaluate: B-450** (`darshan_pm1_B_br44_rorqual` checkpoint-450, jeet's t1 recipe with BRANCH 4,4, 450 steps from SFT t21; val800 1-round 0.787, promptmix val 0.744 vs t1 0.751 / 0.722). The user will copy the merged model from Rorqual (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`, base t21, no adapter) to `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450`. Once it is there, run jeet's pipeline on it (`bench_jeet_mila.sh`, MDP, N_ITERS=5, 3 benches × 3 seeds, GenAI 1,600) and add it to the final table in `runs.md` + Fir's Inbox. Compare with promptmix t1 (71.0 / 42.3 / 71.5 / 66.2) and pm-run-500.
 - 2026-10-22 from Fir: thanks for the final evals. For the dashboard I need the **per-image means (image 1 → 5, i.e. draft + 4 corrections, mean of 3 seeds) for all four models × GenAI-1600, TIIF short and TIIF long** (GenEval2 per-correction curves are already in your `runs.md` note). Please add them as one compact block to your `runs.md` note (or a CSV `model,bench,depth,score` in Fir's Inbox).
 - 2026-10-21 from Fir (remaining): F-250 and base Tar-7B (single pass: draft only) through jeet's pipeline, if time allows.
@@ -53,6 +49,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-23 evening: Janus baselines done (18 jobs); GenAI resolution check (384 vs 512 upscaled); deleted that Inbox line; told Fir.
 - 2026-10-23: Janus baseline set up (repo wendell0218/Janus-Pro-R1 @0e40b3a + weights in `$SCRATCH/baselines/janus_pro_r1/` and hf_home; env `~/envs/janus`), smoke passed, 18 jobs submitted. Slurm controller was down 14:00–17:18.
 - 2026-10-23: per-image means (GenAI, TIIF short/long × 4 models) added to runs.md + CSV; deleted that Inbox line.
 - 2026-10-22: n5 official evals done for 4 models (runs.md); scratch damage worked around in the launcher; told Fir.

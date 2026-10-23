@@ -228,3 +228,18 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   GenAI-1600: t8 38.7 / 41.3 / 41.7 / 41.7 / 41.0; promptmix_t1 39.3 / 41.0 / 42.3 / 42.3 / 42.3; promptmix_run_500 39.3 / 42.0 / 42.7 / 43.0 / 43.3; F-800 41.0 / 42.7 / 43.0 / 43.7 / 43.7
   TIIF short: t8 67.7 / 70.8 / 71.4 / 72.0 / 71.8; promptmix_t1 67.4 / 70.3 / 70.3 / 71.4 / 71.5; promptmix_run_500 67.7 / 70.8 / 71.1 / 71.0 / 71.8; F-800 69.3 / 71.7 / 71.4 / 71.7 / 73.3
   TIIF long: t8 64.5 / 67.9 / 67.4 / 68.4 / 67.2; promptmix_t1 65.2 / 66.4 / 66.5 / 66.3 / 66.2; promptmix_run_500 66.3 / 67.0 / 67.9 / 66.9 / 67.8; F-800 65.1 / 67.5 / 68.1 / 68.7 / 68.2
+- **External baselines: Janus-Pro-7B and Janus-Pro-R1 (Mila 2026-10-23)**, same pipeline / scorers / prompts / seeds as our final
+  table (jeet's pipeline, 3 seeds, GenAI full 1,600), mean ± se, image 1 → final image. Janus-Pro-R1 = `midbee/Janus-Pro-R1-7B` with
+  its authors' loop (wendell0218/Janus-Pro-R1 @0e40b3a `inference/inference.py`: generate → sampled Yes/No self-check → regenerate once
+  on "No", CFG 5.0, T 1.0, at most 2 images); Janus-Pro-7B = `deepseek-ai/Janus-Pro-7B` single pass. **384 px** (Janus native; ours 512).
+  Generator `eval/baselines/janus_pro_r1_gen.py`, launcher `GEN_FAMILY=janus` (`468af39`).
+  | model | GenEval2 AM (GM / all-correct final) | GenAI-1600 | TIIF short | TIIF long |
+  |---|---|---|---|---|
+  | Janus-Pro-7B (single) | 55.4 ± 0.1 (13.1 / 5.2%) | 29.7 ± 0.3 | 68.3 ± 0.5 | **70.1 ± 0.2** |
+  | Janus-Pro-R1 (loop) | 63.6 → 65.2 ± 0.3 (20.3 / 9.8%) | 30.0 → 30.7 ± 0.3 | 64.2 → 64.2 ± 0.3 | 61.5 → 62.0 ± 0.9 |
+  | F-800 (ours, for reference) | 74.8 → 80.1 ± 0.1 (41.2 / 27.4%) | 41.0 → 43.7 ± 0.7 | 69.3 → 73.3 ± 0.6 | 65.1 → 68.2 ± 1.2 |
+  R1 regenerated about half the images (GenEval2: first image accepted for 1,172 of 2,400; GenAI 3,814 of 4,800). The loop adds +1.6 on
+  GenEval2 and ~0 on TIIF; R1 is below Janus-Pro-7B on TIIF. Plain Janus-Pro-7B beats all our models on TIIF long (70.1 vs 68.2).
+  **GenAI-1600 ~30 for both Janus models is surprisingly low** (base Tar 37.7, ours 41–44): images were checked to match their prompts,
+  and resolution is not the cause (200 prompts rescored after bicubic upscaling to 512 px: 26.5 vs 28.8 native). It is what this judge
+  (Qwen3.5-27B VQAScore) gives; treat with care when comparing to other papers' GenAI numbers.
