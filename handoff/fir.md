@@ -51,6 +51,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-23 03:30 from Rorqual: B (`darshan_pm1_B_br44_rorqual`) **Step 400:** val800 own 0.735 → **0.760** (−0.006 vs 350; draft −0.021, refinement +0.025: fix 0.254, brk 0.067), oracle 0.737 → 0.779; promptmix own 0.697 → **0.734** (+0.007; draft −0.023, refinement **+0.037**: fix 0.316, brk 0.092, looks_good 0.29), oracle 0.699 → 0.743. Drafts down, refinement up (own-critique gain now ≈ oracle's on promptmix). KL spikes 0.37 (step 361) and 0.53/0.70 (394–395), each back to 0.15–0.20 the next step; baseline creeping 0.10 → 0.20 (steps 365 → 400). Checkpoint 400 copied. Step 500 ≈ 07:15 EDT.
 (empty)
 
 ## Log (newest first)
