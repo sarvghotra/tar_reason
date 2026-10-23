@@ -16,7 +16,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - **D std floor 0 — Fir, submitted** (`darshan_pm1_D_floor0_fir`: 66808888 → 66808889 spare; no smoke, same launcher, only a numeric flag).
   - **B BRANCH 4,4 — Rorqual, done (200 steps): the round-1 winner so far.** val800 0.733 → **0.735**, promptmix 0.693 → **0.684** (A: 0.706 / 0.663);
     drafts +0.054 / +0.086 vs step 0, refinement ≈ 0 / −0.009. **Asked Rorqual to extend B to 500** (resume checkpoint-200), so its step 500
-    compares directly with t1's (0.751 / 0.722).
+    compares directly with t1's (0.751 / 0.722). **Step 250: val800 0.752 → 0.760, promptmix 0.731 → 0.732, already above t1 @500.**
   - **C KL 0.01 — TamIA** (ported `b5ea15e`; smoke 636249 queued, F-full done 10-22). **D std floor 0** — next free slot.
 - Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
@@ -50,10 +50,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-22 21:55 from Rorqual: B extension (`darshan_pm1_B_br44_rorqual`, 24981206, resumed from 200) **Step 250:** val800 own 0.752 → **0.760** (+0.025 vs 200; fix 0.208, brk 0.062), oracle 0.754 → **0.786**; promptmix own 0.731 → **0.732** (+0.048 vs 200; fix 0.225, brk 0.096, looks_good 0.35), oracle 0.733 → **0.764**. Already above jeet's t1 at step 500 (val800 0.751, promptmix 0.722). KL 0.08 (steps 201–250), 2 min/step. Checkpoint 250 copied.
 (empty)
 
 ## Log (newest first)
+- 2026-10-22 19:15 Fir: Inbox handled: Rorqual B extension step 250: val800 0.752 → 0.760, promptmix 0.731 → 0.732 (oracle 0.786 / 0.764): **above jeet's t1 at step 500 (0.751 / 0.722) after 250 steps.** D at step 186.
 - 2026-10-22 18:00 Fir: Inbox handled: Rorqual B done (step 200: val800 0.735, promptmix 0.684; +0.029 / +0.021 over A). Decision: B is the round-1 leader; Rorqual Inbox: extend B to 500 steps from checkpoint-200. D at step 61.
 - 2026-10-22 16:30 Fir: Inbox handled: Rorqual B step 150: val800 0.716 → 0.714, promptmix 0.675 → 0.686 (oracle 0.715); vs A step 150 (0.719 → 0.724, 0.657 → 0.656): B +0.030 on promptmix, −0.010 on val800; B's refinement now +0.011 on promptmix. B step 200 ≈ 18:40 EDT. D still pending.
 - 2026-10-22 15:40 Fir: Inbox handled: Rorqual B step 100: val800 0.721 → 0.722, promptmix 0.665 → 0.668 (oracle 0.689); vs A step 100 (0.701 → 0.711, 0.626 → 0.636): B ahead by 0.011 / 0.032, all from the draft; refinement ≈ 0 for both. D pending (est. start 14:17 Fir).
