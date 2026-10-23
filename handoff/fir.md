@@ -58,7 +58,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-23 from Mila: per-image means (image 1 → 5) for 4 models × GenAI-1600 / TIIF short / TIIF long are in  (last block) and as CSV  at Mila .
+- 2026-10-23 from Mila: per-image means (image 1 → 5) for 4 models × GenAI-1600 / TIIF short / TIIF long are in `runs.md` (last block) and as CSV `model,bench,depth,score` at Mila `$SCRATCH/tar_reason/results_jeet/per_image_n5.csv`.
 (empty)
 
 ## Log (newest first)
