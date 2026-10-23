@@ -4,13 +4,14 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
 ## Now (2026-10-23 EDT)
-- **Nothing running.** Mila's Slurm controller unreachable at 14:00 ("Unable to contact slurm controller"); jobs wait for it.
-- **Janus-Pro-R1 baseline (Inbox)**: a different model (other authors, on DeepSeek's Janus-Pro-7B), run only to compare with ours: setup in progress (its authors' public repo wendell0218/Janus-Pro-R1 + weights in `$SCRATCH/baselines/janus_pro_r1/`, env `~/envs/janus`,
-  generator `eval/baselines/janus_pro_r1_gen.py` writing jeet's layouts with iteration 1 = first image, 2 = loop's final image,
-  launcher hook `GEN_FAMILY=janus`). Then 3 seeds × 3 benches for R1 loop and Janus-Pro-7B single.
-- **B-450 (Inbox)**: waiting for the user's copy to `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450`; then 9 jobs (n5, GenAI 1,600).
-- Done 2026-10-23: per-image means for the dashboard (`runs.md` + `results_jeet/per_image_n5.csv`).
-- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: none.
+- **Running: Janus baselines** (external models, run only to compare with ours), 18 jobs on `long` (requeue), ids
+  `$SCRATCH/tar_reason/janus_jobs.txt`: Janus-Pro-R1 (`midbee/Janus-Pro-R1-7B`, its authors' loop: generate → Yes/No self-check →
+  regenerate once on No) and Janus-Pro-7B single pass, × GenEval2 / GenAI-1600 / TIIF × 3 seeds. Generator
+  `eval/baselines/janus_pro_r1_gen.py`, launcher hook `GEN_FAMILY=janus` (`468af39`); iteration 1 = first image, 2 = final image;
+  384 px (Janus native) vs our 512 px. Results `results_jeet/<set>/janus_{r1_loop,single}_n2_<name>_384px_repeat1/`.
+  GPU smoke passed (32 prompts: 19 accepted first image, 13 regenerated; ~3 s/prompt on 2 A100, eager attention).
+- **B-450**: waiting for the user's copy to `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450`.
+- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: background in this session.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -52,6 +53,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-23: Janus baseline set up (repo wendell0218/Janus-Pro-R1 @0e40b3a + weights in `$SCRATCH/baselines/janus_pro_r1/` and hf_home; env `~/envs/janus`), smoke passed, 18 jobs submitted. Slurm controller was down 14:00–17:18.
 - 2026-10-23: per-image means (GenAI, TIIF short/long × 4 models) added to runs.md + CSV; deleted that Inbox line.
 - 2026-10-22: n5 official evals done for 4 models (runs.md); scratch damage worked around in the launcher; told Fir.
 - 2026-10-21: shared two merged models read-only with jeet (`sarvjeet-singh.ghotra`) by ACL (user request): `/network/scratch/s/singhsd/models/tar/sft/darshan_mr_fir_merged800` (F-800 on t8) and `/network/scratch/s/singhsd/models/tar/sft/darshan_mr_pm_fir_merged500` (promptmix-run-500 on promptmix t1): `u:jeet:rX` recursive on the two folders, `u:jeet:--x` on `$SCRATCH`, `models/`, `models/tar/`, `models/tar/sft/`. To keep everything else private, removed 'other' permissions (o-rwx) on every sibling along that path (benchmarks, data, git, hf_home, tar_reason, .uv_cache, slurm-*.out, models/vlm, models/tar/{Tar-7B, siglip2…, *.pth, .cache}, the other sft/* models) and on the path folders; nobody else could reach them anyway (`$SCRATCH` was already 750). Verified with getfacl. Revoke: `setfacl -R -x u:sarvjeet-singh.ghotra <dir>`.
