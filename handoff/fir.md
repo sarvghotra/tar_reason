@@ -23,6 +23,12 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
   Mila shared F-800 / pm-run-500 merged with jeet (ACL) and runs N_ITERS=5 evals.
+- **Paper baselines (user + jeet, 2026-10-23):** (1) **Janus-Pro-R1** on GenEval2 / TIIF / GenAI with jeet's pipeline → Mila (Inbox).
+  (2) **AlphaGRPO on base Tar-7B** (arXiv 2605.12495: GRPO, G=14, no KL, LoRA r32, DVReward = sqrt(semantic mean × quality mean)
+  from their 19.5K-prompt set with LLM-decomposed questions): code done here (`--prompt_style plain`, rows with `quality_list`,
+  `--reward_combine geomean`, `util_scripts/convert_alphagrpo.py`, `bash_fir_alphagrpo.sh`, commit `d07e3a0`; CPU tests pass), data at
+  `~/scratch/data/alphagrpo/` (downloaded on Fir's login node from GitHub LFS media URLs; train.jsonl md5 c70edf19a8dd…). **Smoke 67017374**
+  (1 node) queued; the full 380-step run goes to **Rorqual** (idle; Inbox) once the smoke passes.
 - Code: main checkout at origin; worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2`) can be removed.
 - Watcher: self-terminating `~/scratch/watch/pmE/watch.sh` on the E chain (re-armed every 30 min while the session is open).
 
@@ -56,6 +62,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-23 11:40: paper baselines: Mila Inbox (Janus-Pro-R1 evals); AlphaGRPO-on-Tar code + data + launcher (d07e3a0), smoke 67017374 submitted; full run planned on Rorqual. E extension resumed from 220 (67008189).
 - 2026-10-23 10:00 Fir: E extension job 66985146 hung after step 220 (same signature as the step-3 hang on 10-22: log silent, judges idle, nodes fc10112/10116/10207/10212; fc10212 was in both). Replaced the spare with 67008189 → 67008190 excluding fc10212; they resume from checkpoint-220 once the NCCL watchdog kills the job.
 - 2026-10-23 08:20 Fir: E done at 200 (val800 0.767, promptmix 0.724 ≈ B @350–400); wandb synced; extended to 500 (66985146/66985147). Rorqual Inbox: R = BRANCH 4,8 screen (my call: draft axis won, test the refine axis).
 - 2026-10-23 06:40 Fir: Inbox handled: Rorqual depth-4 mdp eval of B-450: own critiques add nothing past round 1 (val800 0.781 → 0.783, promptmix 0.751 → 0.750), oracle +0.011 / +0.024: critic-limited. Rorqual idle. E at step 180.
