@@ -5,7 +5,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 
 ## Now (2026-10-23 EDT)
 - **Nothing running.** Mila's Slurm controller unreachable at 14:00 ("Unable to contact slurm controller"); jobs wait for it.
-- **Janus-Pro-R1 baseline (Inbox)**: setup in progress (repo + weights in `$SCRATCH/baselines/janus_pro_r1/`, env `~/envs/janus`,
+- **Janus-Pro-R1 baseline (Inbox)**: a different model (other authors, on DeepSeek's Janus-Pro-7B), run only to compare with ours: setup in progress (its authors' public repo wendell0218/Janus-Pro-R1 + weights in `$SCRATCH/baselines/janus_pro_r1/`, env `~/envs/janus`,
   generator `eval/baselines/janus_pro_r1_gen.py` writing jeet's layouts with iteration 1 = first image, 2 = loop's final image,
   launcher hook `GEN_FAMILY=janus`). Then 3 seeds × 3 benches for R1 loop and Janus-Pro-7B single.
 - **B-450 (Inbox)**: waiting for the user's copy to `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450`; then 9 jobs (n5, GenAI 1,600).
