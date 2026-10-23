@@ -207,7 +207,7 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   (draft + 4 corrections). Results: `$SCRATCH/tar_reason/results_jeet/{GenEval2,genai-bench-1600,tiif-bench-testmini_eval}/`, figures in `figures/`.
 - **Official evals, final setting (Mila 2026-10-22): jeet's pipeline, MDP, draft + 4 corrections (N_ITERS=5), own greedy critique,
   3 seeds, mean ± se, draft → after 4 corrections.** GenAI-Bench = full 1,600 prompts (Qwen3.5-27B VQAScore; jeet's log rounds to 0.01).
-  Supersedes the n4 tables above. Figures (4 models overlaid): `results_jeet/<set>/figures_n5/`. Results `$SCRATCH/tar_reason/results_jeet/{GenEval2,genai-bench-1600,tiif-bench-testmini_eval}/iter_adhoc_MDP_n5_<model>_512px_repeat1/`
+  Supersedes the n4 tables above. Figures: `results_jeet/<set>/figures_n5/` (F-800, t8, promptmix-run-500) and `figures_n5_promptmix/` (promptmix t1, run-500, F-800); his plot scripts take at most 3 runs. Results `$SCRATCH/tar_reason/results_jeet/{GenEval2,genai-bench-1600,tiif-bench-testmini_eval}/iter_adhoc_MDP_n5_<model>_512px_repeat1/`
   (F-800 GenEval2: `…_repeat1_v2`, see below).
   | model | GenEval2 AM | GenEval2 GM / all-correct (final) | GenAI-1600 | TIIF short | TIIF long |
   |---|---|---|---|---|---|

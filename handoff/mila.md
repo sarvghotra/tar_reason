@@ -5,7 +5,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 
 ## Now (2026-10-22 EDT)
 - **Nothing running on Mila.** Official evals with the final setting (jeet's pipeline, MDP, draft + 4 corrections, 3 seeds, GenAI on
-  1,600) done for t8, promptmix t1, promptmix-run-500 and F-800: table in `runs.md`, figures in `results_jeet/<set>/figures_n5/`.
+  1,600) done for t8, promptmix t1, promptmix-run-500 and F-800: table in `runs.md`, figures in `results_jeet/<set>/figures_n5{,_promptmix}/`.
   F-800 best everywhere (GenEval2 80.1, GenAI 43.7, TIIF 73.3 / 68.2). Told Fir.
 - Launcher `scripts/eval/bench_jeet_mila.sh` (`33c12f2`) works around Mila scratch damage (BeeGFS Errno 121: some names cannot be
   created): generation, judging and scoring run on local disk; only results are copied. If a result folder name is unusable, use
