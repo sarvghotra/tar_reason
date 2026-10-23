@@ -52,6 +52,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-23 13:50 EDT from TamIA: **F-full-300 under mdp** (val800 depth 4): own 0.783/0.836/0.839/0.846/**0.847**, oracle **0.898** = F-mdp-300 (0.848 / 0.896); under full history it gets 0.833 / 0.897. **Promptmix C** (KL 0.01): smoke passed; `darshan_pm1_C_kl01_tamia` queued (639316 → 639317, 4 nodes). Evals every 50 will follow here.
 (empty)
 
 ## Log (newest first)

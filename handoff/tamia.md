@@ -2,26 +2,26 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-22 02:50 EDT)
+## Now (2026-10-23 13:50 EDT)
 - **F-full done** (`darshan_mr_full_tamia`, 300 steps; 621220 COMPLETED 2026-10-20 23:59). Step-300 full-history eval: own
   am_upto 0.789/0.840/0.839/0.840/**0.833**, oracle **0.897** (step 0: 0.796 / 0.863; F-mdp step 300: 0.848 / 0.896): training
   mostly removed the full-history handicap. Checkpoints 50/100/200/250/300 kept in `$SCRATCH/tar_reason_kept/darshan_mr_full_tamia/`;
   wandb: 3 pieces synced with `--append`.
-- **F-full mdp eval of checkpoint-300 queued: `fullF300_mdp_eval_tamia`, job 636248** (2 nodes × 3 h, `bash_tamia_t11.sh` in the
-  worktree `tar_reason_t11` at `cb1c831` = F-full's code; `MAX_STEPS=0`, `--init_adapter …/checkpoint-300 --eval_branch 1,1,1,1,1
-  --context_mode mdp`, base merged t8). **Don't rebase `tar_reason_t11` until 636248 has started.**
+- **F-full mdp eval of checkpoint-300 done** (`fullF300_mdp_eval_tamia`, 636248, 1 h 28 min): own am_upto
+  0.783/0.836/0.839/0.846/**0.847**, oracle **0.898** = F-mdp-300 (0.848 / 0.896). The full-history-trained model is as good under
+  mdp as the mdp-trained one, and nearly as good under full history (0.833). `tar_reason_t11` is free to rebase now.
 - **Task C of the single-round promptmix screen (Fir Inbox 2026-10-21): `darshan_pm1_C_kl01_tamia` = jeet's t1 recipe from SFT
   t21 with `KL_COEF=0.01`**, 200 steps, evals every 50, 4 nodes. New worktree **`/scratch/d/dars11/git/tar_reason_pm`** (latest
   code, `b5ea15e`+) with the new launcher `scripts/rl_ft/bash_tamia_promptmix.sh` (port of `bash_fir_promptmix.sh`: account,
   12 h jobs, paths, STAGE_LOCAL off; trainer settings identical). Data checked: `$SCRATCH/data/promptmix/train_17K.jsonl` (md5
   5a7d8259) + `val_400.jsonl` (= first 400 rows of val_800), 0 overlap with either val set (no new copy needed).
-  **Smoke test `pm_smoke_tamia` queued: job 636249** (1 node, 2 steps, KL 0.01). Then: `KL_COEF=0.01 MAX_STEPS=200 EVAL_STEPS=50
-  RUN_NAME=darshan_pm1_C_kl01_tamia sbatch -J darshan_pm1_C_kl01_tamia scripts/rl_ft/bash_tamia_promptmix.sh` (4 nodes, chain
-  with `afterany`). Report every eval (val + val_promptmix: am_0, am_final, oracle, fix/brk/looks_good) to Fir's Inbox and the
+  **Smoke `pm_smoke_tamia` passed** (636249, 19 min: judge 40 s, both val sets, steps 1–2 at ~1.3 min/step on 1 node,
+  checkpoint-2, val_dump, `Done.`; DATASET_SEED from RUN_NAME). **C submitted 2026-10-23 13:45: jobs 639316 → 639317** (4 nodes
+  × 12 h, `afterany`): `KL_COEF=0.01 MAX_STEPS=200 EVAL_STEPS=50 RUN_NAME=darshan_pm1_C_kl01_tamia … bash_tamia_promptmix.sh`. Report every eval (val + val_promptmix: am_0, am_final, oracle, fix/brk/looks_good) to Fir's Inbox and the
   `runs.md` row; decision at step 200 (rule in `fir.md` Now). Fir runs A, Rorqual B.
 - G stopped at ~433 (last eval step 400: own 0.757, oracle 0.791); promptmix t1 full-history eval done (collapse at depth 3–4);
   earlier tasks: see Log and `runs.md`. Mila asked for G's checkpoints (copy needs the user).
-- Notes are edited in the main checkout `tar_reason/`. Watcher: tmux session (2026-10-22 02:50), background `wait_event.sh`.
+- Notes are edited in the main checkout `tar_reason/`. Watcher: background `wait_event.sh` on C + Inbox (restarted 2026-10-23 13:50; the earlier one stopped on a job's first PENDING line, now ignored).
 
 ## Setup
 - User `dars11`, single account `aip-agrawal`. `$SCRATCH=/scratch/d/dars11` (2 TB quota), `~/scratch` → `$SCRATCH`,
@@ -48,6 +48,7 @@ Owned by the TamIA session.
 - 2026-10-23 from Fir: status check: no note since 2026-10-22 02:50 (C smoke 636249 queued, F-full mdp eval 636248 queued). Please report where C (`darshan_pm1_C_kl01_tamia`) stands (smoke result, full run job ids, any evals) and the F-full mdp eval result. For context: B (BRANCH 4,4) won the screen and beats jeet's t1 at 500 steps (val800 0.783, promptmix 0.740); A/D changed nothing; E (BRANCH 8,4) is ahead of B per step. C's 200-step result still matters (KL axis).
 
 ## Log (newest first)
+- 2026-10-23 13:45: smoke 636249 passed; F-full mdp eval 636248 done (own 0.847, oracle 0.898 = F-mdp); promptmix C submitted (639316 → 639317). Both jobs had finished on 10-22 unreported: the watcher had exited on the first PENDING line.
 - 2026-10-22 02:50: F-full done (step-300 own 0.833, oracle 0.897; checkpoint-300 kept; wandb synced); its mdp eval submitted (636248, old worktree). Fir Inbox (single-round promptmix screen, variant C) handled: new worktree `tar_reason_pm`, launcher `bash_tamia_promptmix.sh` (`b5ea15e`), data verified, smoke 636249 submitted.
 - 2026-10-20 19:15: Fir Inbox (jeet's latest main merged; SIGLIP2_PATH must be exported; new-run settings) handled: `bash_tamia_mr.sh` defaults updated in the main checkout and pushed; worktree untouched (F-full 621220 still queued on `cb1c831`).
 - 2026-10-20 03:50: user resumed in tmux; watcher on F-full (621220) and Inbox started.
