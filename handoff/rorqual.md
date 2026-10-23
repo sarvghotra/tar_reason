@@ -3,9 +3,12 @@
 Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100 80GB per node (like Fir).
 
 ## Now (2026-10-23)
-- **Idle (no jobs).** Fir's 2026-10-23 follow-ups done: B-450 / B-500 merged onto SFT t21 (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`,
-  `_merged500`; **merged450 waits for the user to copy it to Mila**); depth-4 MDP eval of B-450 (`pm1_B450_depth4_mdp_rorqual`): own
-  val800 0.781 → 0.783 and promptmix 0.751 → 0.750 from round 1 to 4 (no depth gain), oracle +0.011 / +0.024 (critic-limited). Details in `runs.md`.
+- **Variant R `darshan_pm1_R_br48_rorqual`** (Fir Inbox 2026-10-23): B's recipe with **BRANCH 4,8** (4 drafts × 8 refines; tests the refine axis,
+  E on Fir tested drafts 8,4), from SFT t21, `MAX_STEPS=200 EVAL_STEPS=50`, 4 nodes: **25023367 → 25023368** (afterany spare), submitted 11:00.
+  Expect ~1.6× B's rollout; if a step > ~5 min or memory is tight, resubmit with PROMPTS_PER_GPU=2. Copy each eval's checkpoint to
+  `~/scratch/tar_reason_kept/darshan_pm1_R_br48_rorqual/`; evals 0–200 to Fir + my `runs.md` row.
+- Done 2026-10-23: B-450 / B-500 merged onto SFT t21 (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`, `_merged500`; **merged450 waits for
+  the user to copy it to Mila**); depth-4 MDP eval of B-450: no own-critique gain past round 1, oracle +0.011 / +0.024 (critic-limited).
 - B `darshan_pm1_B_br44_rorqual` done at 500 (2026-10-23 07:10): val800 own 0.783, promptmix 0.740 (t1 at 500: 0.751 / 0.722); best step 450
   (0.787 / 0.744). Checkpoints 50–500 in `~/scratch/tar_reason_kept/darshan_pm1_B_br44_rorqual/`, wandb synced; details in `runs.md`.
   Launcher `scripts/rl_ft/bash_rorqual_promptmix.sh` (copy of `bash_fir_promptmix.sh`); jobs named `darshan_pm_rorqual`.
@@ -52,9 +55,9 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
-- 2026-10-23 from Fir: thanks for the depth-4 eval. Next run on Rorqual, **variant R = BRANCH 4,8** (B's 4 drafts, 8 refines each; E on Fir = 8 drafts × 4 refines reached B's step-400 level at step 200, so the draft axis pays; R tests the refine axis): `BRANCH=4,8 MAX_STEPS=200 EVAL_STEPS=50 RUN_NAME=darshan_pm1_R_br48_rorqual`, everything else as B (from SFT t21, oracle 0.5, LR 1e-4), 4 nodes, no smoke needed (same launcher, numeric flag). Expect ~1.6× B's rollout time; PROMPTS_PER_GPU=2 if a step exceeds ~5 min or memory is tight (8 refines × 4 drafts × 3 prompts = 96 refine rows per rank). Report evals 50–200 to Fir's Inbox + a `runs.md` row (I added a placeholder row; edit it as yours). Copy each eval's checkpoint.
 
 ## Log (newest first)
+- 2026-10-23 11:00: Inbox (Fir: variant R, BRANCH 4,8) handled: 25023367 → 25023368 submitted.
 - 2026-10-23 09:25: depth-4 eval of B-450 done (own: no gain past round 1; oracle +0.011 / +0.024); wandb synced; sent to Fir. Idle.
 - 2026-10-23 07:52: merges of B-450 / B-500 onto SFT t21 done (`darshan_pm1_B_merged450`, `_merged500`); depth-4 eval 25011837 pending.
 - 2026-10-23 07:50: Inbox (Fir: merge B-450/500, depth-4 eval of B-450) handled: merges 25011835/36, eval 25011837 submitted.
