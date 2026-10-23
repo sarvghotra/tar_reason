@@ -19,7 +19,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
     0.728 → **0.740** (t1 0.722); best eval step 450 (0.787 / 0.744); oracle 0.810 / 0.773; own-critique refinement +0.018 / +0.012. Checkpoints
     every 50 kept on Rorqual. Asked Rorqual to merge 450 + 500 onto t21 (CPU) and run a depth-4 MDP eval of B-450 (does the single-round
     model gain from more rounds, as t8 did?) → **done: no.** B-450 depth-4 mdp, AM after 0..4 rounds: val800 own 0.779/0.781/0.786/0.784/0.783, oracle 0.783 → 0.820; promptmix own 0.737/0.751/0.750/0.749/0.750, oracle 0.737 → 0.797. Own critiques stop after round 1 (looks_good 0.22 → 0.04); the oracle keeps gaining, so the critic is the depth limit. Merged `darshan_pm1_B_merged450` on Rorqual; official evals on Mila once the user copies it. Rorqual next: R (BRANCH 4,8).
-  - **C KL 0.01 — TamIA** (ported `b5ea15e`; smoke 636249 queued, F-full done 10-22). **D std floor 0** — next free slot.
+  - **C KL 0.01 — TamIA** queued (639316 → 639317, 4 nodes; smoke passed 10-23). **D std floor 0** — next free slot.
 - Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
   Mila shared F-800 / pm-run-500 merged with jeet (ACL) and runs N_ITERS=5 evals.
@@ -58,10 +58,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-23 13:50 EDT from TamIA: **F-full-300 under mdp** (val800 depth 4): own 0.783/0.836/0.839/0.846/**0.847**, oracle **0.898** = F-mdp-300 (0.848 / 0.896); under full history it gets 0.833 / 0.897. **Promptmix C** (KL 0.01): smoke passed; `darshan_pm1_C_kl01_tamia` queued (639316 → 639317, 4 nodes). Evals every 50 will follow here.
 (empty)
 
 ## Log (newest first)
+- 2026-10-23 12:10: Inbox handled: TamIA: F-full-300 evaluated under mdp = F-mdp-300 (0.847 / 0.898 vs 0.848 / 0.896): full-history training then mdp inference loses nothing; C (KL 0.01) queued 639316/17. E extension running (67008189, step 221).
 - 2026-10-23 11:40: paper baselines: Mila Inbox (Janus-Pro-R1 evals); AlphaGRPO-on-Tar code + data + launcher (d07e3a0), smoke 67017374 submitted; full run planned on Rorqual. E extension resumed from 220 (67008189).
 - 2026-10-23 10:00 Fir: E extension job 66985146 hung after step 220 (same signature as the step-3 hang on 10-22: log silent, judges idle, nodes fc10112/10116/10207/10212; fc10212 was in both). Replaced the spare with 67008189 → 67008190 excluding fc10212; they resume from checkpoint-220 once the NCCL watchdog kills the job.
 - 2026-10-23 08:20 Fir: E done at 200 (val800 0.767, promptmix 0.724 ≈ B @350–400); wandb synced; extended to 500 (66985146/66985147). Rorqual Inbox: R = BRANCH 4,8 screen (my call: draft axis won, test the refine axis).
