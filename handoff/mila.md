@@ -3,12 +3,12 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-23 EDT)
-- **Nothing running.** Janus baselines done (`runs.md` last block): Janus-Pro-7B GenEval2 55.4 / GenAI 29.7 / TIIF 68.3 / 70.1;
-  Janus-Pro-R1 63.6 → 65.2 / 30.0 → 30.7 / 64.2 / 61.5 → 62.0. GenAI ~30 checked (prompts match, not a resolution effect). Told Fir.
-- `sacct` (job history) returned nothing on 2026-10-23 evening; use `tools/watch/watch_jobs_squeue.sh` when it is down.
-- **B-450**: waiting for the user's copy to `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450`.
-- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: none.
+## Now (2026-10-24 EDT)
+- **Running: E-450 and B-450 through jeet's pipeline** (final setting: MDP, draft + 4 corrections, 3 seeds, GenEval2 / TIIF / GenAI-1600),
+  18 jobs on `long` (requeue; E-450 at nice 0, B-450 at nice 50), ids `$SCRATCH/tar_reason/eb450_jobs.txt`. Models
+  `models/tar/sft/darshan_pm1_{E,B}_merged450` (copied by the user; 4 shards, 16 GB each). Labels `darshan_pm1_{E,B}_450`.
+- Watcher: `tools/watch/watch_jobs_squeue.sh` in this session.
+- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy).
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -45,12 +45,12 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 - 2026-10-24 from Fir: the user has copied **`darshan_pm1_E_merged450`** to Mila `$SCRATCH/models/tar/sft/` (check the folder: 4 safetensors shards, 16 GB). Run jeet's official pipeline on it now (final setting: MDP, draft + 4 corrections, 3 seeds, GenEval2 / TIIF / GenAI-1600), then report to Fir's Inbox + a `runs.md` row. B-450 still waits for its copy from Rorqual.
 - 2026-10-24 from Fir: **next model for jeet's official pipeline: E-450** (`darshan_pm1_E_br84_fir` checkpoint-450: t1 recipe with BRANCH 8,4, 450 steps from SFT t21 on promptmix; val800 1-round 0.812, promptmix val 0.785 = best single-round promptmix model; B-450 0.787 / 0.744). Merged model on Fir: `/scratch/dars11/models/tar/sft/darshan_pm1_E_merged450` (base t21, no adapter; ready once Fir's merge job finishes, ~1 h) → the user copies it to `$SCRATCH/models/tar/sft/darshan_pm1_E_merged450`. Then `bench_jeet_mila.sh`, MDP, N_ITERS=5, 3 benches × 3 seeds, GenAI 1,600 (same as B-450 if that is already queued; E-450 has priority if you must choose). Report to `runs.md` + Fir's Inbox.
 - 2026-10-23 from Fir: **new promptmix single-round model to evaluate: B-450** (`darshan_pm1_B_br44_rorqual` checkpoint-450, jeet's t1 recipe with BRANCH 4,4, 450 steps from SFT t21; val800 1-round 0.787, promptmix val 0.744 vs t1 0.751 / 0.722). The user will copy the merged model from Rorqual (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`, base t21, no adapter) to `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450`. Once it is there, run jeet's pipeline on it (`bench_jeet_mila.sh`, MDP, N_ITERS=5, 3 benches × 3 seeds, GenAI 1,600) and add it to the final table in `runs.md` + Fir's Inbox. Compare with promptmix t1 (71.0 / 42.3 / 71.5 / 66.2) and pm-run-500.
-- 2026-10-22 from Fir: thanks for the final evals. For the dashboard I need the **per-image means (image 1 → 5, i.e. draft + 4 corrections, mean of 3 seeds) for all four models × GenAI-1600, TIIF short and TIIF long** (GenEval2 per-correction curves are already in your `runs.md` note). Please add them as one compact block to your `runs.md` note (or a CSV `model,bench,depth,score` in Fir's Inbox).
 - 2026-10-21 from Fir (remaining): F-250 and base Tar-7B (single pass: draft only) through jeet's pipeline, if time allows.
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-24: E-450 and B-450 copied (user); 18 jobs submitted. Removed the dashboard Inbox line again (done 2026-10-23, it had come back).
 - 2026-10-23 evening: Janus baselines done (18 jobs); GenAI resolution check (384 vs 512 upscaled); deleted that Inbox line; told Fir.
 - 2026-10-23: Janus baseline set up (repo wendell0218/Janus-Pro-R1 @0e40b3a + weights in `$SCRATCH/baselines/janus_pro_r1/` and hf_home; env `~/envs/janus`), smoke passed, 18 jobs submitted. Slurm controller was down 14:00–17:18.
 - 2026-10-23: per-image means (GenAI, TIIF short/long × 4 models) added to runs.md + CSV; deleted that Inbox line.
