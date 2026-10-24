@@ -14,7 +14,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
     promptmix 0.607 → 0.604 → **0.658 → 0.663**; the gain is in the draft, refinement adds ≤ 0.01; checkpoints 50–200 kept. Decision at
     step 200 waits for B (Rorqual, ETA 19:00 EDT) and jeet's t1 curve (the step-200 reference).
   - **D std floor 0 — Fir, done** (`darshan_pm1_D_floor0_fir`, 200 steps): val800 0.696 → **0.699**, promptmix 0.651 → **0.662** = A within noise; the floor does not matter.
-- Round 1 so far: B (BRANCH 4,4) ≫ A ≈ D; C (KL 0.01) pending on TamIA. **E BRANCH 8,4 — Fir, 200 steps done, extended to 500** (`darshan_pm1_E_br84_fir`: step 200 val800 0.752 → **0.767**, promptmix 0.713 → **0.724** = B at step 350–400; extension 66985146 (hung at step 221, 09:18 Fir: no log output, judges idle; NCCL 30-min timeout expected) → 67008189 → 67008190 (both `--exclude=fc10212`, the node common to both hangs), resume from checkpoint-220, ~3.3 min/step). **R BRANCH 4,8 — Rorqual** (Inbox): the refine-count axis.
+- Round 1 so far: B (BRANCH 4,4) ≫ A ≈ D; C (KL 0.01) pending on TamIA. **E BRANCH 8,4 — Fir, done to 500 (2026-10-24): the best single-round promptmix model.** Step 450: val800 0.800 → **0.812**, promptmix 0.752 →
+    **0.785**; step 500: 0.789 → 0.812, 0.756 → 0.774 (B best 0.787 / 0.744; t1 0.751 / 0.722). Merging 450 + 500 onto t21 (CPU jobs) →
+    `models/tar/sft/darshan_pm1_E_merged{450,500}`; depth-4 mdp eval of E-450 running on 1 node (140565). Next: official evals of E-450 on Mila
+    (the user copies the merged model). **R BRANCH 4,8 — Rorqual** (Inbox): the refine-count axis.
   - **B BRANCH 4,4 — Rorqual, done to 500 steps: beats jeet's t1 on one round.** Step 500: val800 0.765 → **0.783** (t1 0.751), promptmix
     0.728 → **0.740** (t1 0.722); best eval step 450 (0.787 / 0.744); oracle 0.810 / 0.773; own-critique refinement +0.018 / +0.012. Checkpoints
     every 50 kept on Rorqual. Asked Rorqual to merge 450 + 500 onto t21 (CPU) and run a depth-4 MDP eval of B-450 (does the single-round
@@ -29,7 +32,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   `--reward_combine geomean`, `util_scripts/convert_alphagrpo.py`, `bash_fir_alphagrpo.sh`, commit `d07e3a0`; CPU tests pass), data at
   `~/scratch/data/alphagrpo/` (downloaded on Fir's login node from GitHub LFS media URLs; train.jsonl md5 c70edf19a8dd…). **Smoke 67017374 passed** (1 node, 14 min: base Tar single pass val800 AM 0.682, alphagrpo val AM 0.668 / quality 0.56 / reward 0.61; ~65 s/step at 9 prompts: rollout 23 s, judge 31 s, train 11 s); the full 380-step run goes to **Rorqual** (idle; Inbox) once the smoke passes.
 - Code: main checkout at origin; worktree `~/scratch/git/tar_reason_v2` (branch `wt-v2`) can be removed.
-- Watcher: self-terminating `~/scratch/watch/pmE/watch.sh` on the E chain (re-armed every 30 min while the session is open).
+- Watcher: background waiter on the merge + E-450 depth-4 eval jobs (re-armed every 30 min while the session is open).
 
 ## Setup
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
@@ -60,6 +63,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-24 05:40: E extension done (500: 0.812 / 0.774; best 450: 0.812 / 0.785); spare cancelled; wandb synced (--append ×2); merges of 450/500 submitted (CPU); depth-4 mdp eval of E-450 submitted (140565).
 - 2026-10-23 18:30: Inbox handled: Mila Janus baselines done (R1 GenEval2 65.2, GenAI 30.7, TIIF 64.2 / 62.0; Janus-Pro-7B TIIF long 70.1). E extension steps 250–350 recorded (350: 0.790 / 0.754, ahead of B).
 - 2026-10-23 15:20 (tmux, login2): AlphaGRPO smoke passed (val800 draft 0.682 = base Tar; judge 31 s/step for 9 prompts × 14 images × 35 q); Rorqual told to skip its smoke. Mila per-image numbers received (dashboard update next). E extension step 250: val800 0.757 → 0.775, promptmix 0.714 → 0.725; KL 0.1–0.5 bursts continue; checkpoint-250 kept manually (watcher restart).
 - 2026-10-23 12:10: Inbox handled: TamIA: F-full-300 evaluated under mdp = F-mdp-300 (0.847 / 0.898 vs 0.848 / 0.896): full-history training then mdp inference loses nothing; C (KL 0.01) queued 639316/17. E extension running (67008189, step 221).
