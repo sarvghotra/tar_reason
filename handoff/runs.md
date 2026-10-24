@@ -243,3 +243,10 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   **GenAI-1600 ~30 for both Janus models is surprisingly low** (base Tar 37.7, ours 41–44): images were checked to match their prompts,
   and resolution is not the cause (200 prompts rescored after bicubic upscaling to 512 px: 26.5 vs 28.8 native). It is what this judge
   (Qwen3.5-27B VQAScore) gives; treat with care when comparing to other papers' GenAI numbers.
+- **E-450 (Mila 2026-10-24), final setting** (jeet's pipeline, MDP, draft + 4 corrections, 3 seeds, GenAI full 1,600; model
+  `darshan_pm1_E_br84_fir` checkpoint-450 merged on SFT t21, label `darshan_pm1_E_450`). Per image 1 → 5, mean ± se at 5:
+  GenEval2 AM 73.5 / 75.8 / 76.4 / 76.4 / **76.7 ± 0.2** (GM 28.6 → 32.9, all-correct 18.0 → 21.7%);
+  GenAI-1600 43.0 / 45.0 / 45.7 / 45.3 / **46.0 ± 0.0**; TIIF short 71.1 / **75.6** / 74.8 / 74.9 / 74.2 ± 0.3; TIIF long 67.8 / 68.4 / 69.1 / 68.6 / **69.1 ± 0.6**.
+  **Best promptmix model by far** (promptmix t1 71.0 / 42.3 / 71.5 / 66.2; promptmix-run-500 72.5 / 43.3 / 71.8 / 67.8) and **best of all
+  our models on GenAI and TIIF** (F-800 80.1 / 43.7 / 73.3 / 68.2), but below F-800 / t8 on GenEval2. Most of its gain over t1 is the
+  draft (GenEval2 +6.6, GenAI +3.7, TIIF short +3.7). TIIF short peaks after 1 correction. All TIIF judgments complete (554 × 5 × 3).
