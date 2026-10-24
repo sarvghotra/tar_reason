@@ -240,6 +240,9 @@ def train():
 
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    # The in-loop gen eval builds its own TA-Tok; default it to the model's SigLIP2 copy.
+    if training_args.gen_eval_siglip2_path is None:
+        training_args.gen_eval_siglip2_path = model_args.siglip2_path
 
     local_rank = training_args.local_rank
 
