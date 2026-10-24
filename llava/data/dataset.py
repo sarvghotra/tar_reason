@@ -147,7 +147,8 @@ def preprocess_qwen(sources, tokenizer: transformers.PreTrainedTokenizer, has_im
 class LazySupervisedDataset(Dataset):
     def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, data_args):
         super(LazySupervisedDataset, self).__init__()
-        self.tokenizer = copy.deepcopy(tokenizer)
+        # The shared tokenizer is assigned below; a deepcopy here was dead
+        # and cost ~20 s per dataset.
         self.list_data_dict = []
 
         # Handle multiple JSON files specified in the data_path
@@ -566,7 +567,10 @@ class LazyParquetDataset(IterableDataset):
         self.data_type = data_type
         self.add_prompt_prefix = add_prompt_prefix
         self.add_suffix_no_correction = add_suffix_no_correction
-        self.tokenizer = copy.deepcopy(tokenizer)
+        # No deepcopy of the tokenizer here: it was overwritten with the shared
+        # instance a few lines below anyway, and copying this 217K-token
+        # tokenizer costs ~20 s per dataset entry per rank (~17 min of startup
+        # for the 49 train+val entries on rg* nodes).
         if isinstance(data_paths, str):
             data_paths = [data_paths]
         self.urls_all = []
@@ -890,13 +894,20 @@ class LazyParquetDataset(IterableDataset):
         # Per-worker seed, so each worker walks its own stream instead of
         # replaying the state it inherited from the forked parent.
         rng = self.make_worker_rng(worker_id)
-        urls = self._readable_urls(self.urls_all)
-        if not urls:
-            raise RuntimeError(f"No readable parquet files among {len(self.urls_all)} for {self.data_type}")
+        urls = list(self.urls_all)
         if len(urls) < num_shards:
             urls.extend(urls[i % len(urls)] for i in range(num_shards - len(urls)))
 
-        files_iter = urls[shard_id::num_shards]
+        # Footer-check only this slot's files: checking the whole list in
+        # every worker is thousands of Lustre opens per worker (4K-file sets x
+        # 16 workers per node) and dominated start-up when Lustre was slow.
+        # If the slot had nothing but corrupt shards, fall back to this
+        # sub-dataset's full readable list rather than yielding nothing.
+        files_iter = self._readable_urls(urls[shard_id::num_shards])
+        if not files_iter:
+            files_iter = self._readable_urls(self.urls_all)
+            if not files_iter:
+                raise RuntimeError(f"No readable parquet files among {len(self.urls_all)} for {self.data_type}")
 
         while True:
             rng.shuffle(files_iter)
