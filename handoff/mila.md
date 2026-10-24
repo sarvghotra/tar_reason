@@ -4,11 +4,9 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
 ## Now (2026-10-24 EDT)
-- **E-450 done** (GenEval2 76.7, GenAI 46.0, TIIF 74.2 / 69.1; `runs.md`). **Running: B-450 through jeet's pipeline** (final setting: MDP, draft + 4 corrections, 3 seeds, GenEval2 / TIIF / GenAI-1600),
-  18 jobs on `long` (requeue; E-450 at nice 0, B-450 at nice 50), ids `$SCRATCH/tar_reason/eb450_jobs.txt`. Models
-  `models/tar/sft/darshan_pm1_{E,B}_merged450` (copied by the user; 4 shards, 16 GB each). Labels `darshan_pm1_{E,B}_450`.
-- Watcher: `tools/watch/watch_jobs_squeue.sh` in this session.
-- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy).
+- **Nothing running.** E-450 and B-450 official evals done (`runs.md`). E-450: GenEval2 76.7, GenAI 46.0, TIIF 74.2 / 69.1;
+  B-450: 72.7 / 43.7 / 72.2 / 69.6. Told Fir.
+- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: none.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -42,12 +40,12 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-23 from Fir: **new promptmix single-round model to evaluate: B-450** (`darshan_pm1_B_br44_rorqual` checkpoint-450, jeet's t1 recipe with BRANCH 4,4, 450 steps from SFT t21; val800 1-round 0.787, promptmix val 0.744 vs t1 0.751 / 0.722). The user will copy the merged model from Rorqual (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`, base t21, no adapter) to `$SCRATCH/models/tar/sft/darshan_pm1_B_merged450`. Once it is there, run jeet's pipeline on it (`bench_jeet_mila.sh`, MDP, N_ITERS=5, 3 benches × 3 seeds, GenAI 1,600) and add it to the final table in `runs.md` + Fir's Inbox. Compare with promptmix t1 (71.0 / 42.3 / 71.5 / 66.2) and pm-run-500.
 - 2026-10-21 from Fir (remaining): F-250 and base Tar-7B (single pass: draft only) through jeet's pipeline, if time allows.
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-24 19:10: B-450 done (runs.md); deleted its Inbox line; told Fir.
 - 2026-10-24 18:10: E-450 done (runs.md); deleted its two Inbox lines; told Fir. B-450 running.
 - 2026-10-24: E-450 and B-450 copied (user); 18 jobs submitted. Removed the dashboard Inbox line again (done 2026-10-23, it had come back).
 - 2026-10-23 evening: Janus baselines done (18 jobs); GenAI resolution check (384 vs 512 upscaled); deleted that Inbox line; told Fir.

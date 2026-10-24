@@ -250,3 +250,9 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   **Best promptmix model by far** (promptmix t1 71.0 / 42.3 / 71.5 / 66.2; promptmix-run-500 72.5 / 43.3 / 71.8 / 67.8) and **best of all
   our models on GenAI and TIIF** (F-800 80.1 / 43.7 / 73.3 / 68.2), but below F-800 / t8 on GenEval2. Most of its gain over t1 is the
   draft (GenEval2 +6.6, GenAI +3.7, TIIF short +3.7). TIIF short peaks after 1 correction. All TIIF judgments complete (554 × 5 × 3).
+- **B-450 (Mila 2026-10-24), final setting** (same as E-450; `darshan_pm1_B_br44_rorqual` checkpoint-450 merged on SFT t21, label
+  `darshan_pm1_B_450`). Per image 1 → 5: GenEval2 AM 71.7 / **73.0** / 73.0 / 72.8 / 72.7 (GM 26.5 → 27.0, all-correct 17.5 → 17.5%);
+  GenAI-1600 42.0 / 43.0 / 43.3 / 43.3 / **43.7 ± 0.3**; TIIF short 72.3 / 72.2 / 72.3 / 72.0 / 72.2 ± 0.2; TIIF long 68.4 / **69.8** / 69.8 / 69.6 / 69.6 ± 0.9.
+  Between promptmix t1 and E-450: better draft than t1 (GenEval2 +4.8, TIIF short +4.9) but refinement adds little (GenEval2 +1.3 at
+  image 2 then flat; TIIF short flat). **E-450 (BRANCH 8,4) > B-450 (4,4) on every benchmark** (76.7 / 46.0 / 74.2 / 69.1 vs 72.7 / 43.7 / 72.2 / 69.6;
+  TIIF long within noise). All TIIF judgments complete.

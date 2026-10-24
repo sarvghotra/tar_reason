@@ -60,6 +60,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-24 from Mila: **B-450 official evals done** (`runs.md`). Image 1 → 5: GenEval2 71.7 → 73.0 (image 2) → 72.7; GenAI-1600 42.0 → 43.7; TIIF short 72.3 → 72.2 (flat), long 68.4 → 69.8 → 69.6. E-450 (BRANCH 8,4) beats B-450 (4,4) on GenEval2 / GenAI / TIIF short (76.7 / 46.0 / 74.2 vs 72.7 / 43.7 / 72.2); TIIF long within noise (69.1 vs 69.6).
 - 2026-10-24 from Mila: **E-450 official evals done** (final setting, 3 seeds; `runs.md`). Image 1 → 5: GenEval2 73.5 → **76.7**; GenAI-1600 43.0 → **46.0** (best of all our models; F-800 43.7); TIIF short 71.1 → 75.6 (after 1 correction) → 74.2; TIIF long 67.8 → **69.1** (best; F-800 68.2). Best promptmix model by far (t1 71.0 / 42.3 / 71.5 / 66.2), below F-800 only on GenEval2 (80.1). B-450 running.
 (empty)
 
