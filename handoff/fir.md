@@ -23,7 +23,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - Done earlier: `darshan_mr_pm_fir` (multi-round from promptmix t1; step 500 val800 0.784, promptmix 0.744; checkpoints 100–500 kept);
   E2 (t1 recipe from t8) submitted and cancelled unrun (user: start from SFT). F-800 merged (`models/tar/sft/darshan_mr_fir_merged800`).
   Mila shared F-800 / pm-run-500 merged with jeet (ACL) and runs N_ITERS=5 evals.
-- **Paper baselines (user + jeet, 2026-10-23):** (1) **Janus-Pro-R1** on GenEval2 / TIIF / GenAI with jeet's pipeline → Mila (Inbox).
+- **Paper baselines (user + jeet, 2026-10-23):** (1) **Janus-Pro-R1 done (Mila)**: image 1 → final GenEval2 63.6 → 65.2, GenAI 30.0 → 30.7, TIIF 64.2 / 62.0; Janus-Pro-7B single pass 55.4 / 29.7 / 68.3 / **70.1** (TIIF long beats F-800's 68.2). Rows in `runs.md`.
   (2) **AlphaGRPO on base Tar-7B** (arXiv 2605.12495: GRPO, G=14, no KL, LoRA r32, DVReward = sqrt(semantic mean × quality mean)
   from their 19.5K-prompt set with LLM-decomposed questions): code done here (`--prompt_style plain`, rows with `quality_list`,
   `--reward_combine geomean`, `util_scripts/convert_alphagrpo.py`, `bash_fir_alphagrpo.sh`, commit `d07e3a0`; CPU tests pass), data at
@@ -57,10 +57,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-23 from Mila: **Janus baselines done** (`runs.md` last block; same pipeline, 3 seeds, GenAI 1,600; 384 px). Image 1 → final: Janus-Pro-R1 GenEval2 63.6 → 65.2, GenAI 30.0 → 30.7, TIIF short 64.2 → 64.2, long 61.5 → 62.0; Janus-Pro-7B single 55.4 / 29.7 / 68.3 / **70.1** (beats our models on TIIF long; F-800 68.2). R1's loop: +1.6 GenEval2, ~0 TIIF, regenerates ~half. GenAI ~30 for Janus is low but checked (images match prompts; upscaling to 512 px does not raise it). Code: `eval/baselines/janus_pro_r1_gen.py`, `GEN_FAMILY=janus` (`468af39`).
 (empty)
 
 ## Log (newest first)
+- 2026-10-23 18:30: Inbox handled: Mila Janus baselines done (R1 GenEval2 65.2, GenAI 30.7, TIIF 64.2 / 62.0; Janus-Pro-7B TIIF long 70.1). E extension steps 250–350 recorded (350: 0.790 / 0.754, ahead of B).
 - 2026-10-23 15:20 (tmux, login2): AlphaGRPO smoke passed (val800 draft 0.682 = base Tar; judge 31 s/step for 9 prompts × 14 images × 35 q); Rorqual told to skip its smoke. Mila per-image numbers received (dashboard update next). E extension step 250: val800 0.757 → 0.775, promptmix 0.714 → 0.725; KL 0.1–0.5 bursts continue; checkpoint-250 kept manually (watcher restart).
 - 2026-10-23 12:10: Inbox handled: TamIA: F-full-300 evaluated under mdp = F-mdp-300 (0.847 / 0.898 vs 0.848 / 0.896): full-history training then mdp inference loses nothing; C (KL 0.01) queued 639316/17. E extension running (67008189, step 221).
 - 2026-10-23 11:40: paper baselines: Mila Inbox (Janus-Pro-R1 evals); AlphaGRPO-on-Tar code + data + launcher (d07e3a0), smoke 67017374 submitted; full run planned on Rorqual. E extension resumed from 220 (67008189).
