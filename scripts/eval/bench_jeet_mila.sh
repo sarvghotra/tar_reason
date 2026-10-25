@@ -50,6 +50,12 @@
 #   JANUS_MAX_IMAGES  images in the R1 loop incl. the first (default 2, as Janus-Pro-R1's inference.py)
 #   JANUS_ARGS   extra generator flags (e.g. "--janus_batch_size 8")
 #   GEN_FAMILY=janus folders: GEN_PREFIX = janus_<JANUS_MODE>_n2, resolution tag 384px (Janus' native size).
+#   Diffusion baselines (eval/baselines/diffusers_gen.py, env ~/envs/diffusers; single pass, every iteration the same image):
+#   MODEL_NAME=flux1_dev   GEN_FAMILY=diffusers DIFF_MODEL=flux1-dev  BENCH=geneval2 SEEDS=713 sbatch scripts/eval/bench_jeet_mila.sh
+#   MODEL_NAME=sd35_large  GEN_FAMILY=diffusers DIFF_MODEL=sd35-large ...     MODEL_NAME=qwen_image GEN_FAMILY=diffusers DIFF_MODEL=qwen-image ...
+#   DIFF_RES (1024; qwen-image 1328), DIFF_ARGS (e.g. "--steps 28 --diff_batch_size 2 --cpu_offload"), DIFF_MODEL_PATH, DIFF_ENV.
+#   FLUX.1-dev and SD3.5-Large are gated on HF: accept their licences and export HF_TOKEN before sbatch.
+#   Folders: GEN_PREFIX = diffusers_n<N_ITERS>, resolution tag <DIFF_RES>px.
 #
 # Output layout (identical to his, OUTPUT_DIR = OUT_ROOT/<eval set name>):
 #   geneval2: $OUT_ROOT/GenEval2/<GEN_MODEL>/seed_<S>/{1..N}/{geneval2_results.json,results_geneval2.jsonl,eval_log.txt}, log.txt
@@ -103,7 +109,12 @@ case $GEN_FAMILY in
     esac
     JANUS_MAX_IMAGES=${JANUS_MAX_IMAGES:-2}
     N_ITERS=2 ;;
-  *) echo "GEN_FAMILY must be tar or janus (got '$GEN_FAMILY')"; exit 1 ;;
+  diffusers)   # single-pass diffusion baselines (eval/baselines/diffusers_gen.py): FLUX.1-dev, SD3.5-Large, Qwen-Image
+    DIFF_MODEL=${DIFF_MODEL:?set DIFF_MODEL=flux1-dev | sd35-large | qwen-image}
+    case $DIFF_MODEL in flux1-dev|sd35-large) DIFF_RES=${DIFF_RES:-1024} ;; qwen-image) DIFF_RES=${DIFF_RES:-1328} ;;
+      *) echo "DIFF_MODEL must be flux1-dev, sd35-large or qwen-image (got '$DIFF_MODEL')"; exit 1 ;; esac
+    N_ITERS=${N_ITERS:-2} ;;   # every iteration = the same single-pass image (2: known to work with all scorers)
+  *) echo "GEN_FAMILY must be tar, janus or diffusers (got '$GEN_FAMILY')"; exit 1 ;;
 esac
 case $BENCH in
   geneval2) DEFAULT_SEEDS="2213 713 13" ;;
@@ -127,7 +138,7 @@ GENAI_PY=/home/mila/s/singhsd/envs/genai_judge/bin/python   # t2v_metrics (Qwen3
 export HF_HOME=/network/scratch/s/singhsd/hf_home            # all judge weights are in $HF_HOME/hub
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
 TMP_DIR=${SLURM_TMPDIR:-/tmp}
-[ "$GEN_FAMILY" = janus ] || [ -f ${TMP_DIR}/ta_tok.pth ] || cp ${MODELS}/ta_tok.pth ${TMP_DIR}/   # Tar only
+[ "$GEN_FAMILY" != tar ] || [ -f ${TMP_DIR}/ta_tok.pth ] || cp ${MODELS}/ta_tok.pth ${TMP_DIR}/   # Tar only
 AR_MODEL=${MODELS}/ar_dtok_lp_${AR_RES}px.pth
 cd "$REPO"
 
@@ -170,6 +181,11 @@ if [ "$GEN_FAMILY" = janus ]; then
   GEN_PREFIX=janus_${JANUS_MODE}_n${N_ITERS}
   RES_TAG=384px
 fi
+if [ "$GEN_FAMILY" = diffusers ]; then
+  GEN_SCRIPT=eval/baselines/diffusers_gen.py
+  GEN_PREFIX=diffusers_n${N_ITERS}
+  RES_TAG=${DIFF_RES}px
+fi
 OUTPUT_DIR=${OUT_ROOT}/${EVAL_SET_NAME}
 RUN_DIR=${OUTPUT_DIR}/${GEN_PREFIX}_${MODEL_NAME}_${RES_TAG}_repeat${REPEAT}${RL_FT}
 
@@ -193,6 +209,14 @@ if [ "$GEN_FAMILY" = janus ]; then
   read -r -a JANUS_EXTRA <<< "${JANUS_ARGS:-}"
   GEN_COMMON+=(--model_path "$JANUS_MODEL" --mode "$JANUS_MODE" --max_images "$JANUS_MAX_IMAGES" "${JANUS_EXTRA[@]}")
   echo "GEN_FAMILY=janus JANUS_MODE=${JANUS_MODE} JANUS_MODEL=${JANUS_MODEL} JANUS_MAX_IMAGES=${JANUS_MAX_IMAGES} (N_ITERS forced to 2; MODEL_PATH unused)"
+fi
+if [ "$GEN_FAMILY" = diffusers ]; then
+  GEN_ENV=${DIFF_ENV:-/home/mila/s/singhsd/envs/diffusers}   # torch 2.6+cu124 wheel bundles its CUDA libs: no module
+  GEN_CUDA_MODULE=""
+  read -r -a DIFF_EXTRA <<< "${DIFF_ARGS:-}"
+  GEN_COMMON+=(--diff_model "$DIFF_MODEL" --height "$DIFF_RES" --width "$DIFF_RES" "${DIFF_EXTRA[@]}")
+  [ -n "${DIFF_MODEL_PATH:-}" ] && GEN_COMMON+=(--diff_model_path "$DIFF_MODEL_PATH")
+  echo "GEN_FAMILY=diffusers DIFF_MODEL=${DIFF_MODEL} DIFF_RES=${DIFF_RES} DIFF_ARGS=${DIFF_ARGS:-} (single pass, N_ITERS=${N_ITERS} copies; MODEL_PATH unused)"
 fi
 
 echo "BENCH=${BENCH} MDP=${MDP} N_ITERS=${N_ITERS} SEEDS=${SEEDS[*]} N_GPUS=${N_GPUS} MODEL_NAME=${MODEL_NAME} MODEL_PATH=${MODEL_PATH}" \

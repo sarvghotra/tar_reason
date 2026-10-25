@@ -62,6 +62,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-24 21:40: paper baselines FLUX.1-dev / SD3.5-Large / Qwen-Image: `eval/baselines/diffusers_gen.py` + `GEN_FAMILY=diffusers` in jeet's launcher (dry run OK); Mila Inbox has the run plan (needs HF licences + token from the user). Dashboard updated (E-450 / B-450 official curves, E to 500).
 - 2026-10-24 20:15: Inbox handled: Mila official evals of E-450 (76.7 / 46.0 / 74.2 / 69.1) and B-450 (72.7 / 43.7 / 72.2 / 69.6) recorded in Now. 210328/210329 still pending.
 - 2026-10-24 12:15: jeet asked for promptmix val_800 (his folder = our copy); 140565 (val_400) cancelled after 6 h pending; 210328 (E-450) + 210329 (jeet's t1-500 adapter) submitted: depth-4 mdp on val800 + promptmix val_800, 1 node each. Merges of E-450/500 done (06:00).
 - 2026-10-24 05:40: E extension done (500: 0.812 / 0.774; best 450: 0.812 / 0.785); spare cancelled; wandb synced (--append ×2); merges of 450/500 submitted (CPU); depth-4 mdp eval of E-450 submitted (140565).
