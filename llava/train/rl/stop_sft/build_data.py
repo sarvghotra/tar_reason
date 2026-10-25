@@ -15,6 +15,10 @@ on it. Each line becomes one candidate example (image -> critique):
 Pass and fail examples are then balanced (the larger side is subsampled). Images after the
 last round have no critique in the dump and are not used.
 
+``--targets oracle`` (critique distillation from the judge, jeet's run 2, 2026-10-24): the policy's
+own critique is ignored; every passing image gets ``NO_ISSUE_CRITIQUE`` and every failing image the
+oracle critique naming its failed questions. ``--ratio 0`` keeps the rollout's natural pass/fail ratio.
+
     python -m llava.train.rl.stop_sft.build_data --dumps <dir> [<dir> ...] --out data.jsonl
 """
 
@@ -29,7 +33,7 @@ from llava.train.rl.oracle_critique import NO_ISSUE_CRITIQUE, oracle_critique
 from llava.train.rl.rollout import LOOKS_GOOD_RE
 
 
-def label(line, threshold=0.5):
+def label(line, threshold=0.5, targets="mixed"):
     """One dump line -> example dict (or None if the line has no image codes)."""
     codes, pq = line.get("parent_codes"), line.get("parent_per_question")
     if codes is None or pq is None:
@@ -38,7 +42,10 @@ def label(line, threshold=0.5):
     passed = all(p >= threshold for p in pq)
     own = line["critique"]
     own_lg = LOOKS_GOOD_RE.search(own) is not None
-    if passed:
+    if targets == "oracle":
+        target, source = ((NO_ISSUE_CRITIQUE, "template") if passed else
+                          (oracle_critique(vqa_list, line["skills"], pq, threshold), "oracle"))
+    elif passed:
         target, source = (own, "own") if own_lg else (NO_ISSUE_CRITIQUE, "template")
     else:
         target, source = ((own, "own") if not own_lg else
@@ -59,6 +66,10 @@ def read_dumps(dirs, prefix="val"):
 def balance(examples, seed=0, ratio=1.0):
     """Keep every example of the smaller class and ``ratio`` x as many of the larger."""
     rng = random.Random(seed)
+    if ratio <= 0:                      # natural ratio: keep everything
+        out = list(examples)
+        rng.shuffle(out)
+        return out
     pos = [e for e in examples if e["passed"]]
     neg = [e for e in examples if not e["passed"]]
     small, large = (pos, neg) if len(pos) <= len(neg) else (neg, pos)
@@ -83,13 +94,15 @@ def main():
     p.add_argument("--dumps", nargs="+", required=True, help="val_dump dirs")
     p.add_argument("--out", required=True)
     p.add_argument("--threshold", type=float, default=0.5)
-    p.add_argument("--ratio", type=float, default=1.0, help="larger class / smaller class after balancing")
+    p.add_argument("--ratio", type=float, default=1.0, help="larger class / smaller class after balancing (0 = no balancing)")
+    p.add_argument("--targets", choices=["mixed", "oracle"], default="mixed",
+                   help="mixed: the policy's own critique where right (task 3a); oracle: judge-derived critique for every image")
     p.add_argument("--seed", type=int, default=0)
     args = p.parse_args()
 
     seen, examples = set(), []
     for line in read_dumps(args.dumps):
-        ex = label(line, args.threshold)
+        ex = label(line, args.threshold, args.targets)
         if ex is None:
             continue
         key = (ex["prompt"], ex["round"])   # a re-run shard must not add a chain twice
