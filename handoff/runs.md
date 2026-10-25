@@ -257,3 +257,17 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   Between promptmix t1 and E-450: better draft than t1 (GenEval2 +4.8, TIIF short +4.9) but refinement adds little (GenEval2 +1.3 at
   image 2 then flat; TIIF short flat). **E-450 (BRANCH 8,4) > B-450 (4,4) on every benchmark** (76.7 / 46.0 / 74.2 / 69.1 vs 72.7 / 43.7 / 72.2 / 69.6;
   TIIF long within noise). All TIIF judgments complete.
+- **External baselines: FLUX.1-dev, SD3.5-Large, Qwen-Image (Mila 2026-10-25)**, single pass (no critique), same pipeline / scorers /
+  prompts / seeds as our final table; `eval/baselines/diffusers_gen.py`, `GEN_FAMILY=diffusers` (N_ITERS forced to 2, `0a256f1`); each
+  model card's defaults (FLUX 50 steps, guidance 3.5; SD3.5-L 28 steps, CFG 3.5; Qwen-Image 50 steps, true CFG 4), prompts verbatim,
+  all at **1024 px**. Mean ± se over seeds.
+  | model | seeds | GenEval2 AM (GM / all-correct) | GenAI-1600 | TIIF short | TIIF long |
+  |---|---|---|---|---|---|
+  | FLUX.1-dev | 3 | 68.6 ± 0.2 (22.6 / 14.8%) | 47.7 ± 0.3 | 68.2 ± 0.6 | 71.5 ± 0.5 |
+  | SD3.5-Large | 3 | 68.9 ± 0.1 (22.3 / 13.8%) | 49.7 ± 0.3 | 72.5 ± 0.5 | 67.8 ± 0.7 |
+  | **Qwen-Image** | **1** (GenEval2 2213, GenAI 13, TIIF 17) | **82.1** (38.6 / 27.6%) | **63.0** | **85.0** | **86.5** |
+  For reference, ours after 4 corrections: F-800 80.1 / 43.7 / 73.3 / 68.2; E-450 76.7 / 46.0 / 74.2 / 69.1.
+  **Qwen-Image (20B) beats every model on every benchmark**, by a wide margin on GenAI and TIIF. FLUX.1-dev and SD3.5-Large are ~8–11 pts
+  below our models on GenEval2 but above them on GenAI-1600 (47.7 / 49.7 vs 46.0) and comparable on TIIF (FLUX best on TIIF long among
+  these three: 71.5). Qwen-Image ran 1 seed at 1024 px instead of its native 1328 px: ~87 s/image at 1328 on one A100 would make its
+  GenAI job ~20 h on 2 GPUs, too long for preemptible `long`. Speed (1 A100): FLUX ~24 s, SD3.5-L ~13.5 s, Qwen-Image ~45 s/image at 1024.

@@ -4,14 +4,10 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
 ## Now (2026-10-25 EDT)
-- **Running: diffusion baselines** (Inbox 2026-10-24), single pass through jeet's pipeline (`GEN_FAMILY=diffusers`, N_ITERS forced to 2
-  in `0a256f1`), 21 jobs, ids `$SCRATCH/tar_reason/diff_jobs.txt`: FLUX.1-dev and SD3.5-Large × 3 benches × 3 seeds at 1024 px (`long`,
-  requeue); **Qwen-Image 1 seed per bench at 1024 px** (not its native 1328: 87 s/image at 1328 on one A100 would make the GenAI job
-  ~20 h on 2 GPUs, too long for preemptible `long`; GenAI job on `main`). Smokes passed (8 GenEval2 prompts): FLUX ~24 s/img,
-  SD3.5-L ~13.5 s/img, Qwen-Image ~87 s/img at 1328 (1 A100); images checked.
-- Env `~/envs/diffusers` (torch 2.6.0+cu124, diffusers 0.42, transformers 5.20; freeze `~/envs/diffusers.freeze.txt`); weights in
-  `$SCRATCH/hf_home` (FLUX 32 GB, SD3.5-L 36 GB, Qwen-Image 54 GB; HF token for the gated ones at `$HF_HOME/token`).
-- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: `watch_jobs_squeue.sh` in this session.
+- **Nothing running.** Diffusion baselines done (`runs.md` last block): FLUX.1-dev 68.6 / 47.7 / 68.2 / 71.5, SD3.5-Large 68.9 / 49.7 / 72.5 / 67.8
+  (3 seeds); Qwen-Image 82.1 / 63.0 / 85.0 / 86.5 (1 seed, 1024 px). Told Fir.
+- Two FLUX GenAI jobs were preempted on `long` at ~70% and restarted from scratch (requeue); finished anyway.
+- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: none.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -45,12 +41,12 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-24 from Fir (user, paper baselines): **evaluate FLUX.1-dev, SD3.5-Large and Qwen-Image** (single pass) through jeet's pipeline, same 3 benchmarks / seeds / judges as Janus. Code is pushed: `eval/baselines/diffusers_gen.py` (drop-in generator like the Janus one; CPU `--dry_run` passes on all three layouts) and `GEN_FAMILY=diffusers` in `bench_jeet_mila.sh` (N_ITERS=2, every iteration the same image, like Janus single). Steps: (1) `git pull`. (2) Env `~/envs/diffusers` with uv: Python 3.11, `torch==2.6.0` (cu124 wheel), `diffusers>=0.35` (Qwen-Image needs it), `transformers>=4.57`, `accelerate`, `sentencepiece`, `protobuf`, `ftfy`, `pillow`; no CUDA module (the launcher sets `GEN_CUDA_MODULE=""`). (3) **FLUX.1-dev and SD3.5-Large are gated**: the user has accepted both licences (2026-10-24) and logs in on a Mila login node with `hf auth login`; the token must be at `$HF_HOME/token` = `/network/scratch/s/singhsd/hf_home/token` (the launcher's HF_HOME), so check that file exists before submitting and ask the user if not ( weights download into `$HF_HOME` on the compute node: FLUX ~33 GB, SD3.5-L ~20 GB, Qwen-Image ~57 GB). Qwen-Image is Apache, not gated. (4) Smoke each model on 1 GPU first: `MODEL_NAME=flux1_dev GEN_FAMILY=diffusers DIFF_MODEL=flux1-dev BENCH=geneval2 SEEDS=713 DIFF_ARGS="--limit_prompts 8"` and look at the images + time per image; same for `sd35_large` / `sd35-large` and `qwen_image` / `qwen-image` (Qwen-Image 20B bf16 + its 7B text encoder ≈ 56 GB: A100-80/H100 only; `DIFF_ARGS="--cpu_offload"` if it OOMs; `DIFF_RES=1024` halves its time vs the native 1328). (5) Full runs: 3 seeds if the throughput allows (rough A100 guesses: FLUX 50 steps ~25 s/image, SD3.5-L 28 steps ~10 s, Qwen-Image 50 steps at 1328 px ~90 s; ~3,500 images per seed over the 3 benchmarks) else 1 seed for Qwen-Image and say so in the row. Defaults = each model card (FLUX guidance 3.5 / 50 steps / T5 512 tokens; SD3.5 CFG 3.5 / 28 steps / T5 512; Qwen-Image true CFG 4 / 50 steps / negative " "), prompts verbatim (no "Ultra HD, 4K" suffix). Report draft-only rows (GenEval2 AM + GM + all-correct, GenAI-1600, TIIF short / long, mean ± se) to Fir's Inbox + `runs.md` rows next to the Janus block.
 - 2026-10-21 from Fir (remaining): F-250 and base Tar-7B (single pass: draft only) through jeet's pipeline, if time allows.
 - 2026-10-12 17:45 PDT from Fir, task D (remaining): t11 checkpoints 150/200/300 on the official benchmarks once Fir
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-25 11:30: diffusion baselines done (21 jobs); deleted that Inbox line; told Fir.
 - 2026-10-25: diffusion baselines: env + weights + 3 smokes; launcher N_ITERS fix `0a256f1`; 21 jobs submitted (Qwen-Image 1 seed, 1024 px).
 - 2026-10-24 19:10: B-450 done (runs.md); deleted its Inbox line; told Fir.
 - 2026-10-24 18:10: E-450 done (runs.md); deleted its two Inbox lines; told Fir. B-450 running.

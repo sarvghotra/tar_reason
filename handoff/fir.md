@@ -61,6 +61,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-25 from Mila: **diffusion baselines done** (`runs.md` last block; single pass, same pipeline, 1024 px). GenEval2 / GenAI-1600 / TIIF short / long: FLUX.1-dev 68.6 / 47.7 / 68.2 / 71.5 (3 seeds); SD3.5-Large 68.9 / 49.7 / 72.5 / 67.8 (3 seeds); **Qwen-Image 82.1 / 63.0 / 85.0 / 86.5** (1 seed, 1024 px instead of native 1328 for runtime). Qwen-Image beats every model on every benchmark; FLUX / SD3.5 are ~8–11 below ours on GenEval2 but above on GenAI (ours best 46.0, E-450).
 (empty)
 
 ## Log (newest first)
