@@ -3,10 +3,15 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-24 EDT)
-- **Nothing running.** E-450 and B-450 official evals done (`runs.md`). E-450: GenEval2 76.7, GenAI 46.0, TIIF 74.2 / 69.1;
-  B-450: 72.7 / 43.7 / 72.2 / 69.6. Told Fir.
-- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: none.
+## Now (2026-10-25 EDT)
+- **Running: diffusion baselines** (Inbox 2026-10-24), single pass through jeet's pipeline (`GEN_FAMILY=diffusers`, N_ITERS forced to 2
+  in `0a256f1`), 21 jobs, ids `$SCRATCH/tar_reason/diff_jobs.txt`: FLUX.1-dev and SD3.5-Large × 3 benches × 3 seeds at 1024 px (`long`,
+  requeue); **Qwen-Image 1 seed per bench at 1024 px** (not its native 1328: 87 s/image at 1328 on one A100 would make the GenAI job
+  ~20 h on 2 GPUs, too long for preemptible `long`; GenAI job on `main`). Smokes passed (8 GenEval2 prompts): FLUX ~24 s/img,
+  SD3.5-L ~13.5 s/img, Qwen-Image ~87 s/img at 1328 (1 A100); images checked.
+- Env `~/envs/diffusers` (torch 2.6.0+cu124, diffusers 0.42, transformers 5.20; freeze `~/envs/diffusers.freeze.txt`); weights in
+  `$SCRATCH/hf_home` (FLUX 32 GB, SD3.5-L 36 GB, Qwen-Image 54 GB; HF token for the gated ones at `$HF_HOME/token`).
+- Optional (Inbox): F-250, base Tar single pass. Waiting: t11 (copy). Watcher: `watch_jobs_squeue.sh` in this session.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -46,6 +51,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-25: diffusion baselines: env + weights + 3 smokes; launcher N_ITERS fix `0a256f1`; 21 jobs submitted (Qwen-Image 1 seed, 1024 px).
 - 2026-10-24 19:10: B-450 done (runs.md); deleted its Inbox line; told Fir.
 - 2026-10-24 18:10: E-450 done (runs.md); deleted its two Inbox lines; told Fir. B-450 running.
 - 2026-10-24: E-450 and B-450 copied (user); 18 jobs submitted. Removed the dashboard Inbox line again (done 2026-10-23, it had come back).
