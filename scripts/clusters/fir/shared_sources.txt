@@ -1,0 +1,14 @@
+# Inputs of $TAR_ROOT/shared on the hub (Fir); see scripts/clusters/shared_inputs.py.
+# <mode> <source> <relative destination>. /project sources belong to another
+# user and are copied; inputs already on this user's scratch are hard-linked.
+copy        /project/6004852/jeet/data/T2I_datasets/geneval2_50K                     data/T2I_datasets/geneval2_50K
+copy        /project/6004852/jeet/models/tar/ta_tok.pth                              models/tar/ta_tok.pth
+copy        /project/6004852/jeet/models/tar/ar_dtok_lp_512px.pth                    models/tar/ar_dtok_lp_512px.pth
+copy        /project/6004852/jeet/models/tar/vq_ds16_t2i.pt                          models/tar/vq_ds16_t2i.pt
+copy-model  /project/6004852/jeet/models/sft_ckpt/slf_ref_edit_t21/checkpoint-17000  models/sft/slf_ref_edit_t21/checkpoint-17000
+link-model  $SCRATCH/tar_reason_results/pretrained/Qwen3-VL-8B-Instruct              models/judges/Qwen3-VL-8B-Instruct
+link-model  $SCRATCH/tar_reason_results/pretrained/Qwen2.5-VL-7B-Instruct            models/judges/Qwen2.5-VL-7B-Instruct
+link-model  $SCRATCH/tar_reason_results/pretrained/Qwen3.5-27B                       models/judges/Qwen3.5-27B
+link        $SCRATCH/tar_reason_results/benchmarks/geneval2                          benchmarks/geneval2
+link        $SCRATCH/tar_reason_results/evaluations/instruction_benchmarks_20260916/inputs  benchmarks/instruction_20260916
+link        $SCRATCH/tar_reason_results/cache/huggingface/hub/models--google--siglip2-so400m-patch14-384  hf_hub/models--google--siglip2-so400m-patch14-384

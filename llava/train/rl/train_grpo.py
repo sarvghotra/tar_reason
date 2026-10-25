@@ -29,6 +29,13 @@ image the policy samples shadow reflections that are not continued; their
 verdict correctness against the judge's all_pass target is the reward (prompt
 groups, unbiased std).
 
+Opt-in ``--objective janus_multi_iteration``: the Janus episode with up to
+``--max_refinements`` reflect -> refine rounds and the policy's own reflections
+("looks good" stops). Every image is trained with the episode's final-image AM;
+every reflection (one per image, including the last) with verdict correctness
+against the judge's all_pass target of the image it critiques. Each reward is
+normalized per prompt group (unbiased std); the loss averages per-span token means.
+
 Only LoRA trains. Parameters are synchronized before optimizer creation and
 manual gradient all-reduce keeps ranks aligned. Launch: scripts/rl_ft/bash.sh.
 """
@@ -51,17 +58,23 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from llava.train.rl.dataset import GenEval2PromptDataset
-from llava.train.rl.grpo import (SEGMENT_NAMES, GRPOConfig, grpo_loss, masked_token_logprobs,
+from llava.train.rl.hf_compat import dtype_kwargs
+from llava.train.rl.staging import stage_inputs
+from llava.train.rl.grpo import (KIND_TXT, SEGMENT_NAMES, GRPOConfig, grpo_loss, masked_token_logprobs,
                                  normalize_groups)
 from llava.train.rl.pixel_reward import QwenPixelReward
 from llava.train.rl.rollout import (Trajectory, RolloutBatch, RolloutConfig, EpisodeRollout,
                                     parse_tree_branch, validate_tree_branch)
 from llava.train.rl.teacher import TEACHER_PROMPT_VERSION, teacher_instruction
 
-OBJECTIVES = ("final_episode", "janus_one_iteration", "teacher_tree")
-VERDICT_OBJECTIVES = ("janus_one_iteration", "teacher_tree")
+OBJECTIVES = ("final_episode", "janus_one_iteration", "teacher_tree", "janus_multi_iteration")
+VERDICT_OBJECTIVES = ("janus_one_iteration", "teacher_tree", "janus_multi_iteration")
+LOOKS_GOOD_VALIDATION = ("teacher_tree", "janus_multi_iteration")  # teacher-free looks_good protocol
 TEACHER_TREE_SEGMENTS = ((1, "draft"), (2, "shadow"), (3, "refined"))
-from llava.train.rl.training_lifecycle import checkpoint_directory, stop_requested
+JANUS_MULTI_SEGMENTS = ((1, "draft"), (2, "reflection"), (3, "refined"))
+from llava.train.rl.training_lifecycle import (RESUME_SUBDIR, StepClock, checkpoint_directory,
+                                                checkpoint_dirs, deadline_allows_step,
+                                                prune_resume_checkpoints, stop_requested)
 from llava.train.rl.geneval2_eval_io import atomic_json
 
 
@@ -98,7 +111,9 @@ def parse_args():
                         "janus_one_iteration: draft/verdict/final rewards on three segments "
                         "(requires --max_refinements 1). teacher_tree: teacher-written reflections "
                         "drive a tree of policy images; teacher tokens distilled, shadow reflections "
-                        "rewarded for verdict correctness.")
+                        "rewarded for verdict correctness. janus_multi_iteration: up to "
+                        "--max_refinements rounds of own reflections; final AM on images, "
+                        "verdict correctness on reflections.")
     p.add_argument("--verdict_rule", choices=["correction", "anywhere"], default="correction",
                    help="janus_one_iteration / teacher_tree shadows: 'looks good' inside the "
                         "Correction clause, or anywhere.")
@@ -113,6 +128,9 @@ def parse_args():
                    help="teacher_tree: weight of the mean shadow-reflection loss.")
     p.add_argument("--teacher_ce_coef", type=float, default=0.1,
                    help="teacher_tree: weight of the mean per-token NLL of teacher reflections.")
+    p.add_argument("--teacher_ce_filter", choices=["all", "agree"], default="all",
+                   help="teacher_tree: distill every teacher reflection (all), or only those whose "
+                        "verdict equals the judge's all_pass target of the image they critique (agree).")
     p.add_argument("--teacher_max_tokens", type=int, default=96,
                    help="teacher_tree: new-token cap of a teacher reply (judge tokenizer).")
     p.add_argument("--teacher_batch_size", type=int, default=16,
@@ -183,6 +201,15 @@ def parse_args():
                    help="Save and stop at a completed-update boundary after this UNIX time; 0 disables.")
     p.add_argument("--stop_file", default=None,
                    help="Save and stop at an update boundary when this file exists.")
+    p.add_argument("--job_end_unix", type=float, default=0,
+                   help="Slurm job end time; before each update, stop and save unless the update, "
+                        "its validation and the save are predicted to finish first. 0 disables.")
+    p.add_argument("--deadline_margin", type=float, default=1.25,
+                   help="Safety factor on the predicted update/validation/save durations.")
+    p.add_argument("--resume_save_steps", type=int, default=0,
+                   help="Also save a resume checkpoint every N updates (and at exit) under "
+                        "output_dir/resume, outside the save_total_limit rotation; 0 keeps the "
+                        "legacy single exit save among the milestones.")
     p.add_argument("--seed", type=int, default=42)
     # Exemplar logging is optional; visual de-tokenizer weights are required for reward.
     p.add_argument("--log_images", type=int, default=0)
@@ -208,6 +235,12 @@ def parse_args():
             raise ValueError("RL training requires --lora_dropout=0 so training matches sampling.")
         if not math.isfinite(args.stop_at_unix) or args.stop_at_unix < 0:
             raise ValueError("stop_at_unix must be finite and nonnegative.")
+        if not math.isfinite(args.job_end_unix) or args.job_end_unix < 0:
+            raise ValueError("job_end_unix must be finite and nonnegative.")
+        if not math.isfinite(args.deadline_margin) or args.deadline_margin < 1:
+            raise ValueError("deadline_margin must be finite and at least 1.")
+        if args.resume_save_steps < 0:
+            raise ValueError("resume_save_steps must be nonnegative.")
         args.tree_branch = parse_tree_branch(args.tree_branch)
         validate_tree_branch(args.tree_branch, args.max_refinements, args.num_rollouts,
                              args.max_tree_leaves_per_prompt)
@@ -225,6 +258,15 @@ def parse_args():
             if args.reflect_token_weight != 1.0 or args.length_normalization != "episode":
                 raise ValueError("janus_one_iteration has its own segment weights; keep "
                                  "--reflect_token_weight 1 and --length_normalization episode.")
+        if args.objective == "janus_multi_iteration":
+            if args.max_refinements < 1 or args.tree_branch:
+                raise ValueError("janus_multi_iteration needs --max_refinements >= 1 and no --tree_branch.")
+            if args.text_policy_gradient != "all" or args.reflect_token_weight != 1.0 \
+                    or args.length_normalization != "episode":
+                raise ValueError("janus_multi_iteration has its own segment weights; keep --text_policy_gradient "
+                                 "all, --reflect_token_weight 1 and --length_normalization episode.")
+            if args.verdict_target != "all_pass":
+                raise ValueError("janus_multi_iteration rewards verdicts against --verdict_target all_pass.")
         if args.objective == "teacher_tree":
             if any(r != 1 for r, _ in args.tree_branch):
                 raise ValueError("teacher_tree branches only over images: every --tree_branch entry needs R = 1.")
@@ -297,15 +339,20 @@ def find_all_linear_names(model, exclude=("embed_tokens", "lm_head")):
     return sorted(names)
 
 
-def load_policy(args, device, adapter_dir=None):
+def load_policy(args, device, adapter_dir=None, load_path=None):
+    """`load_path` is a node-local copy of args.model_name_or_path (see staging.py)."""
     from peft import LoraConfig, PeftModel, get_peft_model
 
     # torchrun processes start with independent RNG states. Initialize the
     # policy identically; the training loop separately seeds per-rank rollouts.
     torch.manual_seed(args.seed)
     base = Qwen2ForCausalLM.from_pretrained(
-        args.model_name_or_path, torch_dtype=torch.bfloat16,
+        load_path or args.model_name_or_path, **dtype_kwargs(torch.bfloat16),
         attn_implementation=args.attn_implementation)
+    if load_path and load_path != args.model_name_or_path:
+        # PEFT records this in adapter_config.json; it must name the canonical base.
+        base.config._name_or_path = args.model_name_or_path
+        base.name_or_path = args.model_name_or_path
     base.config.use_cache = False
     for p in base.parameters():
         p.requires_grad_(False)
@@ -337,49 +384,80 @@ def load_policy(args, device, adapter_dir=None):
 # ---------------------------------------------------------------------------
 
 def latest_checkpoint(output_dir):
-    if not os.path.isdir(output_dir):
-        return None
-    cks = []
-    for name in os.listdir(output_dir):
-        if name.startswith("checkpoint-") and os.path.isfile(os.path.join(output_dir, name, "state.json")):
+    found = checkpoint_dirs(output_dir)
+    return found[-1][1] if found else None
+
+
+def base_model_record(args):
+    """Where this run's base model lives relative to the synced inputs, and its identity.
+
+    Lets evaluation on another cluster find (and verify) the same SFT base
+    after the absolute path in adapter_config.json stops existing there.
+    """
+    if not hasattr(args, "_base_model_record"):
+        from llava.train.rl.evaluation_policy import base_identity
+        record = {"base_model_identity": base_identity(args.model_name_or_path)}
+        shared = os.environ.get("TAR_SHARED")
+        if shared:
             try:
-                cks.append((int(name.split("-")[1]), name))
+                record["base_model_shared_rel"] = os.path.relpath(
+                    os.path.realpath(args.model_name_or_path), os.path.realpath(shared))
             except ValueError:
                 pass
-    if not cks:
-        return None
-    return os.path.join(output_dir, max(cks)[1])
+            if record.get("base_model_shared_rel", "..").startswith(".."):
+                record.pop("base_model_shared_rel", None)
+        args._base_model_record = record
+    return args._base_model_record
 
 
-def save_checkpoint(model, optimizer, scheduler, step, args, device):
-    ck = os.path.join(args.output_dir, f"checkpoint-{step}")
+def save_checkpoint(model, optimizer, scheduler, step, args, device, resume=False, clock=None):
+    """Publish checkpoint-<step>; `resume` ones go to output_dir/resume, outside the rotation."""
+    root = os.path.join(args.output_dir, RESUME_SUBDIR) if resume else args.output_dir
+    ck = os.path.join(root, f"checkpoint-{step}")
     if is_main():
         started = time.monotonic()
-        with checkpoint_directory(args.output_dir, step) as temporary:
+        with checkpoint_directory(root, step) as temporary:
             model.save_pretrained(temporary)
             torch.save(optimizer.state_dict(), os.path.join(temporary, "optimizer.pt"))
             torch.save(scheduler.state_dict(), os.path.join(temporary, "scheduler.pt"))
             atomic_json(os.path.join(temporary, "state.json"),
-                        {"step": step, "objective": RL_OBJECTIVE,
+                        {"step": step, "objective": RL_OBJECTIVE, **base_model_record(args),
                          "rl_method": rl_method_settings(args),
                          # Throughput settings (not resume-guarded): sampling noise only.
                          "reward_batching": dict(
                              render_batch_size=getattr(args, "render_batch_size", 1),
-                             reward_question_batch_size=getattr(args, "reward_question_batch_size", 1))})
+                             reward_question_batch_size=getattr(args, "reward_question_batch_size", 1)),
+                         # Lifecycle only (not resume-guarded): deadline estimates after a resume.
+                         **({"timing": clock.to_dict()} if clock is not None else {})})
         # Prune.
-        cks = sorted(
-            (int(n.split("-")[1]), n) for n in os.listdir(args.output_dir)
-            if n.startswith("checkpoint-") and os.path.isfile(os.path.join(args.output_dir, n, "state.json")))
-        for _, name in cks[:-args.save_total_limit] if args.save_total_limit else []:
-            shutil.rmtree(os.path.join(args.output_dir, name), ignore_errors=True)
-        rank0_print(f"Saved {ck} in {time.monotonic() - started:.3f} seconds")
+        if resume:
+            prune_resume_checkpoints(args.output_dir, step)
+        else:
+            cks = sorted(
+                (int(n.split("-")[1]), n) for n in os.listdir(args.output_dir)
+                if n.startswith("checkpoint-") and os.path.isfile(os.path.join(args.output_dir, n, "state.json")))
+            for _, name in cks[:-args.save_total_limit] if args.save_total_limit else []:
+                shutil.rmtree(os.path.join(args.output_dir, name), ignore_errors=True)
+        elapsed = time.monotonic() - started
+        if clock is not None:
+            clock.save = elapsed
+        rank0_print(f"Saved {ck} in {elapsed:.3f} seconds")
     if dist.is_initialized():
         dist.barrier()
+    return ck
 
 
-def coordinated_stop(args, device):
-    """All workers stop at the same optimizer boundary, based on rank zero."""
-    requested = stop_requested(args.stop_at_unix, args.stop_file) if is_main() else False
+def coordinated_stop(args, device, clock=None, validation_due=False):
+    """All workers stop at the same optimizer boundary, based on rank zero.
+
+    With a `clock`, also stop when the next update (plus its validation and the
+    exit save) is not predicted to finish before --job_end_unix.
+    """
+    requested = False
+    if is_main():
+        requested = stop_requested(args.stop_at_unix, args.stop_file) or (
+            clock is not None and not deadline_allows_step(
+                time.time(), args.job_end_unix, clock, validation_due, args.deadline_margin))
     flag = torch.tensor(int(requested), device=device)
     if dist.is_initialized():
         dist.broadcast(flag, src=0)
@@ -650,10 +728,13 @@ class TeacherReflector:
 
 
 @torch.no_grad()
-def score_teacher_tree(batch: RolloutBatch, reward, threshold: float = 0.5):
+def score_teacher_tree(batch: RolloutBatch, reward, threshold: float = 0.5, ce_filter: str = "all"):
     """Judge every image node once, on the exact pixels the teacher saw. A leaf's
     reward is its final image's AM; a shadow reflection's reward is 1 when its
-    verdict equals the all_pass target of the image it follows."""
+    verdict equals the all_pass target of the image it follows. ``ce_filter=agree``
+    distills only teacher reflections whose verdict equals that target."""
+    if ce_filter not in ("all", "agree"):
+        raise ValueError("teacher_ce_filter must be all or agree")
     image_nodes = [n for n in batch.nodes if n.kind == "image"]
     if not image_nodes or any(n.image is None for n in image_nodes):
         raise ValueError("Every teacher_tree image node must keep its rendered image.")
@@ -666,6 +747,9 @@ def score_teacher_tree(batch: RolloutBatch, reward, threshold: float = 0.5):
         passed = verdict_target(node.question_scores, threshold)
         for shadow in node.shadows:
             shadow.reward = float(shadow.verdict == passed)
+        for child in node.children:  # the teacher reflection on this image
+            if child.teacher:
+                child.distill = ce_filter == "all" or node.teacher_verdict == passed
     for t in batch.trajectories:
         path = [n for n in t.nodes if n.kind == "image"]
         t.vqa_list = batch.prompts[t.prompt_idx]["vqa_list"]
@@ -692,6 +776,7 @@ TEACHER_TREE_KEYS = (
     "refined_images", "delta_am_refined", "improved", "degraded",
     "teacher_asked", "teacher_parsed", "teacher_looks_good", "teacher_correct", "teacher_pass",
     "teacher_looks_good_on_pass", "teacher_looks_good_on_fail", "teacher_tokens",
+    "teacher_reflections", "teacher_distilled", "teacher_distilled_looks_good",
     "shadows", "shadow_correct", "shadow_looks_good", "shadow_pass", "shadow_looks_good_on_pass",
     "shadow_looks_good_on_fail", "shadow_mismatch", "shadow_capped", "shadow_tokens",
 ) + tuple(f"stop_{reason}" for reason in TEACHER_STOPS)
@@ -710,6 +795,9 @@ def teacher_tree_stats(batch: RolloutBatch, prefix: str, threshold: float = 0.5)
     for node in batch.nodes:
         if node.kind == "reflection":
             s["teacher_tokens"] += len(node.actions)
+            s["teacher_reflections"] += 1
+            s["teacher_distilled"] += node.distill
+            s["teacher_distilled_looks_good"] += node.distill and bool(node.parent.teacher_verdict)
             continue
         passed = verdict_target(node.question_scores, threshold)
         if node.parent is None:
@@ -759,6 +847,8 @@ def finalize_teacher_tree_stats(s: Dict[str, float], prefix: str) -> Dict[str, f
                teacher_verdict_recall=div("teacher_looks_good_on_pass", "teacher_pass"),
                teacher_looks_good_on_fail=g("teacher_looks_good_on_fail") / max(g("teacher_parsed") - g("teacher_pass"), 1.0),
                teacher_tokens=div("teacher_tokens", "teacher_parsed"),
+               teacher_distill_rate=div("teacher_distilled", "teacher_reflections"),
+               teacher_distilled_looks_good_share=div("teacher_distilled_looks_good", "teacher_distilled"),
                shadow_verdict_accuracy=div("shadow_correct", "shadows"),
                shadow_looks_good_rate=div("shadow_looks_good", "shadows"),
                shadow_verdict_precision=div("shadow_looks_good_on_pass", "shadow_looks_good"),
@@ -769,6 +859,67 @@ def finalize_teacher_tree_stats(s: Dict[str, float], prefix: str) -> Dict[str, f
                shadow_capped_rate=div("shadow_capped", "shadows"),
                shadow_tokens=div("shadow_tokens", "shadows"),
                images_per_draft=(g("drafts") + g("refined_images")) / max(g("drafts"), 1.0))
+    return {prefix + k: v for k, v in out.items()}
+
+
+def score_janus_multi(batch: RolloutBatch, reward, decoder, render_batch_size: int = 1, threshold: float = 0.5):
+    """Render and judge every image once; reward = final image AM; each reflection's
+    reward is 1 when its verdict equals the all_pass target of the image it critiques."""
+    score_all_images(batch, reward, decoder, render_batch_size)
+    for t in batch.trajectories:
+        for span in t.janus_spans:
+            if span.kind == KIND_TXT:
+                span.reward = float(span.verdict == verdict_target(t.image_scores[span.index][2], threshold))
+
+
+def assign_janus_multi_advantages(batch: RolloutBatch, gcfg: GRPOConfig) -> Dict[str, int]:
+    """Final-image rewards per prompt group; verdict rewards pooled over the prompt's
+    reflections (all rounds); both with the unbiased std, as Janus."""
+    keys = [t.prompt_idx for t in batch.trajectories]
+    advantages, zero_final = normalize_groups([t.reward for t in batch.trajectories], keys, gcfg, unbiased=True)
+    for t, a in zip(batch.trajectories, advantages):
+        t.adv = a
+    spans = [(t.prompt_idx, s) for t in batch.trajectories for s in t.janus_spans if s.kind == KIND_TXT]
+    advantages, zero_verdict = normalize_groups([s.reward for _, s in spans], [p for p, _ in spans], gcfg,
+                                                unbiased=True)
+    for (_, span), a in zip(spans, advantages):
+        span.adv = a
+    return {"groups": len(set(keys)), "zero_var_final": zero_final, "zero_var_verdict": zero_verdict}
+
+
+JANUS_MULTI_EXTRA = ("reflections", "reflection_tokens", "reward_verdict", "mismatch_looks_good_im_start",
+                     "mismatch_correction_eos", "mismatch_cap", "refined", "delta_am_refined", "improved",
+                     "degraded")
+
+
+def janus_multi_extra_stats(batch: RolloutBatch, prefix: str) -> Dict[str, float]:
+    s = {k: 0.0 for k in JANUS_MULTI_EXTRA}
+    for t in batch.trajectories:
+        for span in t.janus_spans:
+            if span.kind != KIND_TXT:
+                continue
+            s["reflections"] += 1
+            s["reflection_tokens"] += len(span.actions)
+            s["reward_verdict"] += span.reward
+            if span.mismatch:
+                s[f"mismatch_{span.mismatch}"] += 1
+        for previous, current in zip(t.image_scores, t.image_scores[1:]):
+            delta = current[0] - previous[0]
+            s["refined"] += 1
+            s["delta_am_refined"] += delta
+            s["improved"] += delta > 0
+            s["degraded"] += delta < 0
+    return {prefix + k: float(v) for k, v in s.items()}
+
+
+def finalize_janus_multi_extra(s: Dict[str, float], prefix: str) -> Dict[str, float]:
+    g = lambda k: s[prefix + k]
+    reflections, refined = max(g("reflections"), 1.0), max(g("refined"), 1.0)
+    out = dict(reflection_tokens=g("reflection_tokens") / reflections, reward_verdict=g("reward_verdict") / reflections,
+               delta_am_refined=g("delta_am_refined") / refined, improved_rate=g("improved") / refined,
+               degraded_rate=g("degraded") / refined)
+    for m in ("looks_good_im_start", "correction_eos", "cap"):
+        out[f"mismatch_{m}_rate"] = g(f"mismatch_{m}") / reflections
     return {prefix + k: v for k, v in out.items()}
 
 
@@ -922,6 +1073,8 @@ def rl_method_settings(args):
             "shadow_reflections": int(args.shadow_reflections) if teacher else None,
             "shadow_coef": float(args.shadow_coef) if teacher else None,
             "teacher_ce_coef": float(args.teacher_ce_coef) if teacher else None,
+            # teacher_tree runs written before the filter distilled every reflection.
+            "teacher_ce_filter": getattr(args, "teacher_ce_filter", "all") if teacher else None,
             "teacher_max_tokens": int(args.teacher_max_tokens) if teacher else None,
             "teacher_prompt_version": TEACHER_PROMPT_VERSION if teacher else None,
             "teacher_model": (os.path.basename(os.path.normpath(args.reward_model_name_or_path))
@@ -951,6 +1104,8 @@ def validate_resume_checkpoint(path, args=None):
         for key in ("shadow_reflections", "shadow_coef", "teacher_ce_coef", "teacher_max_tokens",
                     "teacher_prompt_version", "teacher_model"):
             saved.setdefault(key, None)  # written before teacher_tree existed
+        # teacher_tree checkpoints written before the filter distilled every teacher reflection.
+        saved.setdefault("teacher_ce_filter", "all" if saved["objective"] == "teacher_tree" else None)
         requested = rl_method_settings(args)
         if saved != requested:
             raise ValueError(f"RL method settings differ from checkpoint: saved={saved}, "
@@ -970,7 +1125,12 @@ def train_on_rollouts(model, rollout: EpisodeRollout, batch: RolloutBatch, args,
     text_pg = getattr(args, "text_policy_gradient", "all")
     janus = getattr(args, "objective", "final_episode") == "janus_one_iteration"
     teacher_tree = getattr(args, "objective", "final_episode") == "teacher_tree"
-    if janus:
+    janus_multi = getattr(args, "objective", "final_episode") == "janus_multi_iteration"
+    if janus_multi:
+        # Mean over each episode's spans of per-span token means; weights already hold it.
+        rows = [rollout.build_janus_multi_rows(batch.trajectories)]
+        denom = max(len(batch.trajectories), 1)
+    elif janus:
         # Three segment losses per episode; weights already hold the per-segment means.
         rows = [rollout.build_janus_rows(batch.trajectories)]
         denom = max(len(batch.trajectories), 1)
@@ -993,7 +1153,7 @@ def train_on_rollouts(model, rollout: EpisodeRollout, batch: RolloutBatch, args,
                                             text_pg)
                 for m in micro]
         denom = max(len(trajectories), 1)  # average episodes after token normalization
-    if rollout.cfg.reset_context_per_turn or batch.nodes or janus:
+    if rollout.cfg.reset_context_per_turn or batch.nodes or janus or janus_multi:
         # Segment count varies independently of episode count. Bound GPU batch
         # size without changing the episode denominator or segment weights.
         split_rows = []
@@ -1043,9 +1203,12 @@ def train_on_rollouts(model, rollout: EpisodeRollout, batch: RolloutBatch, args,
             pg_mask = r["pg_mask"].to(device)[:, 1:][sel] if "pg_mask" in r else None
             segments = r["pos_segment"].to(device)[:, 1:][sel] if "pos_segment" in r else None
             ce_weight = r["ce_weight"].to(device)[:, 1:][sel] if "ce_weight" in r else None
+            teacher_mask = r["teacher_mask"].to(device)[:, 1:][sel] if "teacher_mask" in r else None
             loss, metrics = grpo_loss(logp, old_logps[i], ref_logps[i], adv, weight, kinds, denom, gcfg,
                                       pg_mask=pg_mask, segments=segments, ce_weight=ce_weight,
-                                      segment_names=TEACHER_TREE_SEGMENTS if teacher_tree else SEGMENT_NAMES)
+                                      segment_names=(TEACHER_TREE_SEGMENTS if teacher_tree else
+                                                     JANUS_MULTI_SEGMENTS if janus_multi else SEGMENT_NAMES),
+                                      teacher_mask=teacher_mask)
             loss.backward()
             w = float(weight.sum())
             for k, v in metrics.items():
@@ -1094,7 +1257,7 @@ def run_validation(model, rollout: EpisodeRollout, reward, val_rows, args, devic
     samples = []
     bs = max(args.gen_batch_size, 1)
     janus = getattr(args, "objective", "final_episode") == "janus_one_iteration"
-    teacher_tree = getattr(args, "objective", "final_episode") == "teacher_tree"
+    teacher_tree = getattr(args, "objective", "final_episode") in LOOKS_GOOD_VALIDATION
     threshold = getattr(args, "verdict_pass_threshold", 0.5)
     max_images = rollout.cfg.max_refinements + 1
     render_batch = getattr(args, "render_batch_size", 1)
@@ -1177,11 +1340,18 @@ class ImageDecoder:
     """Frozen second AR model and VQ decoder, used for reward and logging."""
 
     def __init__(self, args, device):
+        import contextlib
+        from easydict import EasyDict
         from tok.mm_autoencoder import MMAutoEncoder
-        self.tok = MMAutoEncoder(
-            ar_path=args.ar_path, encoder_path=args.encoder_path, decoder_path=args.decoder_path,
-            encoder_args={"input_type": "rec"}, decoder_args={},
-        ).eval().to(dtype=torch.bfloat16, device=device)
+        # The renderer checkpoints hold EasyDict configs; torch >= 2.6 loads with
+        # weights_only=True and must allowlist it (older torch has no allowlist).
+        loader = (torch.serialization.safe_globals([EasyDict])
+                  if hasattr(torch.serialization, "safe_globals") else contextlib.nullcontext())
+        with loader:
+            self.tok = MMAutoEncoder(
+                ar_path=args.ar_path, encoder_path=args.encoder_path, decoder_path=args.decoder_path,
+                encoder_args={"input_type": "rec"}, decoder_args={},
+            ).eval().to(dtype=torch.bfloat16, device=device)
         self.tok.ar_model.cls_token_num = args.gen_seq_len
         self.tok.encoder.pool_scale = args.scale + 1
         self.device = device
@@ -1220,7 +1390,15 @@ def main():
         device = torch.device("cuda:0")
         torch.cuda.set_device(device)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+    # The judge worker loads its model in a separate process; overlap that with
+    # the policy load and wait for it once the policy and renderer are ready.
+    startup = time.monotonic()
+    staged = stage_inputs([args.model_name_or_path, args.reward_model_name_or_path,
+                           args.ar_path, args.encoder_path, args.decoder_path], log=rank0_print)
+    reward = QwenPixelReward(args.reward_python, staged[args.reward_model_name_or_path],
+                             device, args.reward_timeout,
+                             question_batch_size=args.reward_question_batch_size, wait=False)
+    tokenizer = AutoTokenizer.from_pretrained(staged[args.model_name_or_path])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"
@@ -1230,7 +1408,7 @@ def main():
 
     resume_dir = latest_checkpoint(args.output_dir) if args.resume else None
     resume_state = validate_resume_checkpoint(resume_dir, args) if resume_dir else None
-    model = load_policy(args, device, adapter_dir=resume_dir)
+    model = load_policy(args, device, adapter_dir=resume_dir, load_path=staged[args.model_name_or_path])
 
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=args.learning_rate, weight_decay=args.weight_decay,
@@ -1257,10 +1435,12 @@ def main():
 
     if not (args.ar_path and args.encoder_path and args.decoder_path):
         raise ValueError("Pixel reward requires all three visual decoder checkpoint paths, even with log_images=0.")
-    decoder = ImageDecoder(args, device)
-    reward = QwenPixelReward(args.reward_python, args.reward_model_name_or_path,
-                             device, args.reward_timeout,
-                             question_batch_size=args.reward_question_batch_size)
+    decoder = ImageDecoder(argparse.Namespace(**{**vars(args), **{
+        name: staged[getattr(args, name)] for name in ("ar_path", "encoder_path", "decoder_path")}}), device)
+    policy_loaded = time.monotonic()
+    reward.wait_ready()
+    rank0_print(f"Startup: policy+renderer {policy_loaded - startup:.1f}s, "
+                f"judge ready after {time.monotonic() - startup:.1f}s")
     teacher = (TeacherReflector(reward, decoder, args.render_batch_size, args.teacher_max_tokens,
                                 args.teacher_batch_size) if args.objective == "teacher_tree" else None)
     gcfg = GRPOConfig(clip_eps=args.clip_eps, kl_coef=args.kl_coef, adv_norm=args.adv_norm,
@@ -1309,15 +1489,23 @@ def main():
     prompt_iter = train_ds.iterate(args.prompts_per_gpu, skip_batches=start_step)
     completed_step = start_step
     last_saved_step = start_step if resume_dir is not None else None
+    last_saved_path = resume_dir
+    clock = StepClock((resume_state or {}).get("timing"))
     for step in range(start_step + 1, args.max_steps + 1):
-        if coordinated_stop(args, device):
+        validation_due = bool(args.eval_steps and val_rows and step % args.eval_steps == 0)
+        if coordinated_stop(args, device, clock if args.job_end_unix else None, validation_due):
             break
+        step_started = time.monotonic()
+        startup_seconds = step_started - startup if step == start_step + 1 else None
         prompts = next(prompt_iter)
         torch.manual_seed(args.seed * 1_000_003 + step * 7919 + rank)
         t0 = time.time()
         janus = args.objective == "janus_one_iteration"
         teacher_tree = args.objective == "teacher_tree"
-        if janus:
+        janus_multi = args.objective == "janus_multi_iteration"
+        if janus_multi:
+            batch = rollout.run_janus_multi(model, prompts, verdict_rule=args.verdict_rule)
+        elif janus:
             batch = rollout.run_one_iteration(model, prompts, verdict_rule=args.verdict_rule)
         elif teacher_tree:
             teacher.render_seconds = teacher.teacher_seconds = 0.0
@@ -1334,8 +1522,12 @@ def main():
                                 args.verdict_target, args.verdict_pass_threshold)
             janus_counts = assign_janus_advantages(batch, gcfg)
             zero_var, n_groups = janus_counts["zero_var_final"], janus_counts["groups"]
+        elif janus_multi:
+            score_janus_multi(batch, reward, decoder, args.render_batch_size, args.verdict_pass_threshold)
+            janus_counts = assign_janus_multi_advantages(batch, gcfg)
+            zero_var, n_groups = janus_counts["zero_var_final"], janus_counts["groups"]
         elif teacher_tree:
-            score_teacher_tree(batch, reward, args.verdict_pass_threshold)
+            score_teacher_tree(batch, reward, args.verdict_pass_threshold, args.teacher_ce_filter)
             zero_var, n_groups = assign_tree_advantages(batch, gcfg)
             shadow_zero_var = assign_shadow_advantages(batch, gcfg)
         else:
@@ -1348,7 +1540,11 @@ def main():
         t3 = time.time()
 
         if step % args.logging_steps == 0:
-            if teacher_tree:
+            if janus_multi:
+                sums = looks_good_stats(batch, "train/", args.verdict_pass_threshold, args.max_refinements + 1)
+                sums.update(janus_multi_extra_stats(batch, "train/"))
+                sums["train/zero_var_groups_verdict"] = janus_counts["zero_var_verdict"]
+            elif teacher_tree:
                 sums = teacher_tree_stats(batch, "train/", args.verdict_pass_threshold)
                 sums["train/zero_var_groups_shadow"] = shadow_zero_var
             elif janus:
@@ -1362,7 +1558,12 @@ def main():
             if args.tree_branch or teacher_tree:
                 sums.update(tree_stats(batch, rollout.eos_id, rollout.im_start_tok, "train/"))
             sums = reduce_sum(sums, device)
-            if teacher_tree:
+            if janus_multi:
+                metrics = finalize_looks_good_stats(sums, "train/", args.max_refinements + 1)
+                metrics.update(finalize_janus_multi_extra(sums, "train/"))
+                metrics["train/frac_zero_adv_groups_verdict"] = (
+                    sums["train/zero_var_groups_verdict"] / max(sums["train/groups"], 1.0))
+            elif teacher_tree:
                 metrics = finalize_teacher_tree_stats(sums, "train/")
                 metrics["train/frac_zero_adv_groups_shadow"] = (
                     sums["train/zero_var_groups_shadow"] / max(sums["train/groups"], 1.0))
@@ -1379,21 +1580,31 @@ def main():
             if teacher_tree:  # parts of time/rollout
                 metrics.update({"time/teacher_render": teacher.render_seconds,
                                 "time/teacher_generate": teacher.teacher_seconds})
+            if startup_seconds is not None:  # process start -> first update (model loads, resume)
+                metrics["time/startup"] = startup_seconds
             metrics.update({"time/rollout": t1 - t0, "time/reward": t2 - t1, "time/train": t3 - t2,
                             "train/lr": scheduler.get_last_lr()[0], "train/epoch_frac":
                             step * args.prompts_per_gpu / max(train_ds.per_epoch(), 1)})
             log(metrics, step)
 
+        clock.add_step(time.monotonic() - step_started)
         if args.save_steps and step % args.save_steps == 0:
-            save_checkpoint(model, optimizer, scheduler, step, args, device)
+            last_saved_path = save_checkpoint(model, optimizer, scheduler, step, args, device, clock=clock)
+            last_saved_step = step
+        elif args.resume_save_steps and step % args.resume_save_steps == 0:
+            last_saved_path = save_checkpoint(model, optimizer, scheduler, step, args, device,
+                                              resume=True, clock=clock)
             last_saved_step = step
         if coordinated_stop(args, device):
             break
-        if args.eval_steps and val_rows and step % args.eval_steps == 0:
+        if validation_due:
+            validation_started = time.monotonic()
             log(run_validation(model, rollout, reward, val_rows, args, device, step, decoder), step, validation=True)
+            clock.validation = time.monotonic() - validation_started
 
     if last_saved_step != completed_step:
-        save_checkpoint(model, optimizer, scheduler, completed_step, args, device)
+        last_saved_path = save_checkpoint(model, optimizer, scheduler, completed_step, args, device,
+                                          resume=bool(args.resume_save_steps), clock=clock)
     reward.close()
     if is_main():
         atomic_json(os.path.join(args.output_dir,
@@ -1401,7 +1612,7 @@ def main():
                     dict(start_step=start_step, step=completed_step, target_step=args.max_steps,
                          complete=completed_step >= args.max_steps,
                          reason='target_reached' if completed_step >= args.max_steps else 'deadline_or_stop_file',
-                         checkpoint=os.path.join(args.output_dir, f'checkpoint-{completed_step}')))
+                         checkpoint=last_saved_path))
     rank0_print(f"Done at step {completed_step}/{args.max_steps}.")
     if dist.is_initialized():
         dist.barrier()

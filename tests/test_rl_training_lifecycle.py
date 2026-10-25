@@ -6,7 +6,8 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 
-from llava.train.rl.training_lifecycle import checkpoint_directory, stop_requested
+from llava.train.rl.training_lifecycle import (RESUME_SUBDIR, StepClock, checkpoint_directory, checkpoint_dirs,
+                                                deadline_allows_step, prune_resume_checkpoints, stop_requested)
 
 spec = importlib.util.spec_from_file_location('resubmit', Path(__file__).resolve().parents[1]/'scripts/rl_ft/resubmit_until_complete.py')
 resubmit = importlib.util.module_from_spec(spec)
@@ -110,6 +111,58 @@ class TrainingLifecycleTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'unresolved'):
                     resubmit.main()
                 submit.assert_not_called()
+
+
+class ShortJobLifecycleTest(unittest.TestCase):
+    def test_deadline_needs_step_validation_and_save_to_fit(self):
+        clock = StepClock(dict(step_seconds=[800, 900], validation_seconds=300, save_seconds=20))
+        need = 1.25 * 900 + 1.25 * 20  # the longest recent step and the save, with the margin
+        self.assertTrue(deadline_allows_step(1000, 1000 + need, clock))
+        self.assertFalse(deadline_allows_step(1000, 1000 + need - 1, clock))
+        need_val = need + 1.25 * 300
+        self.assertTrue(deadline_allows_step(1000, 1000 + need_val, clock, validation_due=True))
+        self.assertFalse(deadline_allows_step(1000, 1000 + need_val - 1, clock, validation_due=True))
+
+    def test_unmeasured_validation_counts_as_a_step_and_unmeasured_save_has_a_default(self):
+        clock = StepClock(dict(step_seconds=[100]))
+        self.assertFalse(deadline_allows_step(0, 125 + 125 + 120 - 1, clock, validation_due=True))
+        self.assertTrue(deadline_allows_step(0, 125 + 125 + 120, clock, validation_due=True))
+
+    def test_no_deadline_or_no_measurement_never_stops(self):
+        self.assertTrue(deadline_allows_step(10**9, 0, StepClock(dict(step_seconds=[10**6]))))
+        self.assertTrue(deadline_allows_step(10**9, 1, StepClock()))
+
+    def test_clock_keeps_a_window_and_round_trips_through_state(self):
+        clock = StepClock(window=3)
+        for t in (1, 2, 3, 4):
+            clock.add_step(t)
+        clock.save, clock.validation = 7.0, 9.0
+        again = StepClock(json.loads(json.dumps(clock.to_dict())), window=3)
+        self.assertEqual(again.steps, [2.0, 3.0, 4.0])
+        self.assertEqual((again.save, again.validation), (7.0, 9.0))
+
+    def test_latest_checkpoint_spans_milestones_and_resume_and_prefers_milestones(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for step, sub in ((100, ''), (125, ''), (126, RESUME_SUBDIR), (125, RESUME_SUBDIR)):
+                path = root/sub/f'checkpoint-{step}'
+                path.mkdir(parents=True)
+                fill_checkpoint(path, step)
+            (root/RESUME_SUBDIR/'checkpoint-127').mkdir()          # unpublished: no state.json
+            found = checkpoint_dirs(root)
+            self.assertEqual([s for s, _ in found], [100, 125, 125, 126])
+            self.assertEqual(found[-1][1], str(root/RESUME_SUBDIR/'checkpoint-126'))
+            self.assertEqual(found[2][1], str(root/'checkpoint-125'))  # milestone after its resume twin
+
+    def test_resume_pruning_never_touches_milestones(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for step, sub in ((100, ''), (101, RESUME_SUBDIR), (102, RESUME_SUBDIR)):
+                path = root/sub/f'checkpoint-{step}'
+                path.mkdir(parents=True)
+                fill_checkpoint(path, step)
+            prune_resume_checkpoints(root, 102)
+            self.assertEqual([s for s, _ in checkpoint_dirs(root)], [100, 102])
 
 
 if __name__ == '__main__':

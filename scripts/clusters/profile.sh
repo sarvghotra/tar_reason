@@ -1,6 +1,9 @@
 # Shared profile selection; does not activate environments or allocate resources.
 if [[ -z "${TAR_CLUSTER:-}" ]]; then
-    if [[ -f "$REPO_ROOT/.cluster" ]]; then
+    # Inside a job the scheduler names the cluster; otherwise the checkout's .cluster.
+    if [[ "${SLURM_CLUSTER_NAME:-}" =~ ^[a-zA-Z0-9_-]+$ && -f "$REPO_ROOT/scripts/clusters/$SLURM_CLUSTER_NAME/profile.sh" ]]; then
+        TAR_CLUSTER="$SLURM_CLUSTER_NAME"
+    elif [[ -f "$REPO_ROOT/.cluster" ]]; then
         read -r TAR_CLUSTER < "$REPO_ROOT/.cluster"
     else
         TAR_CLUSTER=generic

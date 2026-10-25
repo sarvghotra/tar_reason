@@ -1,5 +1,6 @@
 """Explicit, fingerprinted full-SFT versus RL-adapter evaluation loading."""
 import json
+import os
 from pathlib import Path
 
 from llava.train.rl.geneval2_eval_io import sha256_file
@@ -32,6 +33,48 @@ def evaluation_resets_context(metadata, requested=None):
     return saved
 
 
+BASE_IDENTITY_FILES = ('config.json', 'trainer_state.json')
+
+
+def base_identity(base):
+    """sha256 of the files that identify an SFT checkpoint (same config, different steps differ)."""
+    base = Path(base)
+    return {name: sha256_file(base/name) for name in BASE_IDENTITY_FILES if (base/name).is_file()}
+
+
+def resolve_base_model(recorded, state, shared=None):
+    """The adapter's base model on this cluster.
+
+    Adapters record an absolute base path, which exists only where they were
+    trained. When it is missing, use the copy in the synced input folder
+    ($TAR_SHARED): new checkpoints name it relative to that folder and record
+    its identity hashes; older ones are found through the folder's
+    PROVENANCE.json (original path -> copy). A substitute whose identity hashes
+    differ from the recorded ones is refused.
+    """
+    recorded = Path(recorded)
+    if recorded.exists():
+        return recorded.resolve(strict=True)
+    shared = shared or os.environ.get('TAR_SHARED')
+    if not shared:
+        raise FileNotFoundError(f'Base model {recorded} is missing and TAR_SHARED is not set')
+    shared = Path(shared)
+    candidate = None
+    if state.get('base_model_shared_rel'):
+        candidate = shared/state['base_model_shared_rel']
+    elif (shared/'PROVENANCE.json').is_file():
+        provenance = json.loads((shared/'PROVENANCE.json').read_text())
+        matches = [rel for rel, source in provenance.items() if str(recorded) in source.values()]
+        if len(matches) == 1:
+            candidate = shared/matches[0]
+    if candidate is None or not candidate.is_dir():
+        raise FileNotFoundError(f'Base model {recorded} is missing and has no copy under {shared}')
+    expected = state.get('base_model_identity')
+    if expected and base_identity(candidate) != expected:
+        raise ValueError(f'{candidate} is not the base model recorded by this checkpoint')
+    return candidate.resolve(strict=True)
+
+
 def checkpoint_metadata(checkpoint, checkpoint_type, rl_objective):
     checkpoint = Path(checkpoint).resolve(strict=True)
     if checkpoint_type == 'rl_adapter':
@@ -39,7 +82,7 @@ def checkpoint_metadata(checkpoint, checkpoint_type, rl_objective):
         if state.get('objective') != rl_objective:
             raise ValueError('Checkpoint is not from the final-pixel RL objective')
         adapter = json.loads((checkpoint/'adapter_config.json').read_text())
-        base = Path(adapter['base_model_name_or_path']).resolve(strict=True)
+        base = resolve_base_model(adapter['base_model_name_or_path'], state)
         return dict(checkpoint=str(checkpoint), checkpoint_step=state['step'], checkpoint_state=state,
                     adapter_sha256=sha256_file(checkpoint/'adapter_model.safetensors'),
                     base_model=str(base), base_config_sha256=sha256_file(base/'config.json'))
@@ -77,8 +120,11 @@ def checkpoint_metadata(checkpoint, checkpoint_type, rl_objective):
 def load_evaluation_policy(metadata, device, attn_implementation):
     import torch
     from transformers import Qwen2ForCausalLM
-    model = Qwen2ForCausalLM.from_pretrained(metadata['base_model'], torch_dtype=torch.bfloat16,
-                                            attn_implementation=attn_implementation)
+    from llava.train.rl.hf_compat import dtype_kwargs
+    # Load straight onto the device (no CPU copy of the 15 GB policy); weights are identical.
+    model = Qwen2ForCausalLM.from_pretrained(metadata['base_model'], **dtype_kwargs(torch.bfloat16),
+                                            attn_implementation=attn_implementation,
+                                            device_map={'': str(device)})
     if metadata.get('checkpoint_type', 'rl_adapter') == 'rl_adapter':
         from peft import PeftModel
         model = PeftModel.from_pretrained(model, metadata['checkpoint'], is_trainable=False)

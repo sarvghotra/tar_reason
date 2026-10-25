@@ -1,5 +1,286 @@
 # Agent handoff — September 11, 2026
 
+## October 25: checkpoint-350 kept permanently; ck350 looks_good evaluation submitted
+
+User asked for ck300 of the teacher-tree no-distillation and multi-iteration Janus runs;
+`--save_total_limit 3` had already pruned it (kept: 350, 366/370, 375), so the user chose
+ck350 and asked to keep it permanently. Copies (sha256-verified) in
+`models/<run>_kept/checkpoint-350/` (+ `checkpoint-350.sha256`), and nearline tars
+`/nearline/6004852/xiaofeng/tar_reason_archive/checkpoints/<run>_checkpoint-350.tar`
+(`tar --compare` clean). The user chose the old-environment whole-node pipeline (not
+`scripts/eval/looks_good_suite.py`) so results compare directly with ck100/ck150/ck300/SFT.
+Suite `results/evaluations/teacher_noce_janusmulti_ck350_looksgood_4iter_20261025/`
+{noce350_sample, janusmulti350_sample}: same derivation as the ck100 suite plus
+`export WANDB__SERVICE_WAIT=300` in every script; `--validate` passed; 34 jobs
+373625–373658 (reports 373641 / 373658). Scratch file quota was 970K/1000K: on the
+user's approval `rl500_four_models_all_images_20260930` was archived whole to
+`/nearline/6004852/xiaofeng/tar_reason_archive/evaluations/` (`tar --compare` clean) and
+its 137,856 per-prompt files removed (checkpoint-500 copies, code, summaries kept;
+`ARCHIVED.md`); quota now 832K/1000K.
+
+## October 23: one uv environment, synced $SCRATCH/tar_reason folder, cluv; GPU sizing; short jobs
+
+Plan: `~/.claude/plans/noble-riding-elephant.md` (approved). Nothing in flight was
+touched: the training segments run from `launches/*/code` with `tar/`, and the step-100
+suite runs from its own snapshot with `qwen_reward/`.
+
+**Environment.**
+- `pyproject.toml`/`uv.lock` (76 packages): Python 3.11.14 (uv-managed), torch 2.8.0+cu128,
+  torchvision 0.23.0, flash-attn 2.8.3.post2 (official wheel; sm80/90/100/120),
+  transformers 5.17.0, tokenizers 0.23.1, hub 1.7.1, peft 0.18.1. Other pins match
+  `qwen_reward`.
+- Venv `/scratch/xiaofeng/tar_reason/env/venvs/139952560390`: 7.9 GB, 24.8K files,
+  hard-linked from `env/uv_cache`. `.venv` links to it.
+- `$HOME` is 43/48 GiB and scratch 872K/1000K files, so nothing large goes to `$HOME`.
+- `~/.config/uv/uv.toml` was written by `scripts/clusters/setup_uv.sh` (cache-dir on
+  scratch).
+- `[tool.cluv]` validates against cluv e17dd88's schema for fir, rorqual, nibi, narval,
+  trillium, tamia, killarney and mila. Accounts other than Fir's are unconfirmed (profiles
+  leave them empty; launchers refuse).
+
+**Port to transformers 5.**
+- `llava/train/rl/hf_compat.py`:
+  - `dtype=` from 4.56, `torch_dtype` before; 4.55 forwards unknown keys to the config,
+    which would load fp32.
+  - `without_model_generation_defaults`. 5.x removed `use_model_defaults` and always fills
+    unset generation fields from the checkpoint's generation_config.json (SFT: temperature
+    0.7, top-k 20, top-p 0.8, repetition penalty 1.05). PEFT's `generate` also copies the
+    wrapper's config onto the base model, so both levels are blanked and restored.
+  - The existing hostile-defaults test fails without the guard and passes with it.
+- Main's TA-Tok decoder-key remap (3d4ae90) applied.
+- Greedy judge scoring is unchanged: 5.x applies warpers only when sampling, and
+  `repetition_penalty` from the judge config (Qwen2.5-VL TIIF judge: 1.05) was merged in
+  4.57 as well.
+
+**CPU tests.**
+- RL suite: 164/164 under `.venv` (5.17) and under `tar/` (4.50), rerun Oct 25 before
+  committing; cluster/launch/shared-input tests 29/29, `test_eval_suite` 3/3.
+- Compat tests pass under 4.50, 4.57.6 and 5.17.
+- New: `test_rl_hf_compat`, `test_rl_staging`, lifecycle additions, `test_cluster_launch`,
+  `test_shared_inputs`, `test_eval_suite`, evaluation-policy remap tests.
+
+**Shared folder** `/scratch/xiaofeng/tar_reason/shared`.
+- Built by CPU job 67026228 (5.5 min) from `scripts/clusters/fir/shared_sources.txt`:
+  87 files, 112.4 GB. `/project` inputs were copied (22.7 GB); judges, benchmarks and
+  SigLIP2 were hard-linked from `tar_reason_results`.
+- `verify` OK.
+- `/scratch/xiaofeng/tar_reason/results` is a link to `/scratch/xiaofeng/tar_reason_results`.
+- Adapters whose recorded base is missing resolve through `base_model_shared_rel` (new
+  checkpoints record it and the base's config/trainer_state hashes) or `PROVENANCE.json`
+  (old checkpoints); a hash mismatch is refused.
+
+**Measured GPU needs.** Source: `sacct` `gres/gpumem`/`gpuutil`, Oct 15–23. Values are the
+4-GPU sum divided by 4.
+
+| Job / stage | Peak per GPU | Avg util |
+|---|---|---|
+| Training (all four objectives) | 68–77 GB | 99% |
+| gen-geneval2 | 47 GB | 85% |
+| gen-tiif / gen-genai | 27–28 GB | 71–75% |
+| replay-geneval2 | 21.5 GB | 54% |
+| replay-tiif / replay-genai | 4.5 GB | 54% |
+| score-tiif | 17 GB | 46% |
+| score-genai | 52 GB | 36% |
+| finalize / summary / report | 0 | 0 |
+
+- In the ck300 sampled suite (86 GPU-h on whole 4×H100 nodes), the 4.5 GB replays took
+  40% of the GPU-hours.
+- Training start-up (66978196): about 16 min to the first rollout. Of that, about 12 min
+  was the policy plus resume: 4 ranks reading 15 GB from `/project` (shards 4 min 08 s).
+  Then 4 judge loads. Steps take about 900 s.
+- Evaluation generation reaches its first record after 8–12 min.
+
+**Scheduling and loading.**
+- `scripts/rl_ft/submit_short_array.sh`: 3 h `--array=0-K%1` chains, GPUs requested per
+  task (no node shape) with `--switches`, guards in `scripts/rl_ft/short_array.py`.
+- Trainer:
+  - `--job_end_unix` stops at an update boundary when `1.25 × (longest recent step +
+    validation if due + save)` no longer fits.
+  - `--resume_save_steps` saves to `output_dir/resume`, outside `save_total_limit`.
+  - The judge worker starts before the policy load.
+  - `TAR_STAGE_DIR` stages inputs to node-local disk (`llava/train/rl/staging.py`);
+    recorded paths stay canonical.
+  - `time/startup` is logged.
+- Training load is left on the CPU-then-device path on purpose: creating LoRA on the GPU
+  would change `lora_A` initialisation. Evaluation policies now load straight to the device.
+- `scripts/eval/looks_good_suite.py`: repo version of the derived suites. Same commands
+  (checked flag by flag against janus300_sample), one GPU per task, light replays 4 per GPU,
+  finalize on `TAR_GPU_TINY`, summaries on CPU.
+- `scripts/clusters/cluv_job.sh` checks each commit out once under `$TAR_ROOT/code/`.
+- `cluster_env.sh` legacy mode gained the Fir cvmfs libcuda shim (`TAR_NVIDIA_DRIVER_SHIM`).
+- Resubmitting from inside a job used to leak `TMPDIR=/localscratch/<old job>`; the
+  submitters now unset it.
+
+**Gates, in order.**
+1. GPU parity: **done**, with the interpretation below.
+   - Run: `results/evaluations/env_parity_mig_20261023/`, job 96661, 25 min, on one
+     H100 MIG 3g.40gb slice. The full-H100 copy (67028107) had waited about 10 h on
+     priority and was cancelled when the MIG copy started. Measures come from
+     `scripts/env_parity/{dump,compare}.py` over 50,227 sampled tokens (16 ck300 GenEval2
+     episodes), 200 judged images and 906 questions.
+
+   | Comparison | Result |
+   |---|---|
+   | Tokenizer | 983 strings with identical ids; vocabulary 217207, `<I0>` 151671, EOS 151645 in every environment |
+   | ck300 adapter | 392/392 LoRA tensors loaded |
+   | **Training stack**: `tar/` (torch 2.1, tf 4.50, FA 2.5.9) vs `.venv` FA2 | Restricted log-prob mean \|Δ\| 1.0e-4, p99 9.5e-7, max 0.20 (base). Effectively identical; gate passed |
+   | **Judge**: qwen_reward vs `.venv` | Per-question mean \|Δ\| 0.0037 (p99 0.12). Mean AM 0.86953 vs 0.86955. The old environment re-scoring its own recorded images differs by 0.0014; gate passed |
+   | **Eval-stack policy**, SDPA (torch 2.6 vs 2.8) | Mean \|Δ\| 0.033, p99 0.13. Missed the pre-set gate (0.02 / 0.25 on mean / p99) |
+   | FA2 vs SDPA inside `.venv` | 0.032 / 0.13 |
+   | FA2 vs SDPA between the two old environments | 0.033 / 0.13 |
+   | Renderer: TA-Tok features, torch 2.1 vs 2.6 | Identical |
+   | Renderer: TA-Tok features vs 2.8 | Max 0.375, p99 0.016 (bf16 ulps) |
+   | Renderer: VQ pixels from fixed codes, old vs old | Mean 0.23, max 22 |
+   | Renderer: VQ pixels from fixed codes, old vs new | Mean 0.15-0.27, max 24 |
+   | Renderer: seeded AR samples | About 25% identical everywhere, as expected |
+
+   **Conclusion:**
+   - The eval-path drift equals the attention-kernel noise that already separated
+     the old training and evaluation environments. The renderer pre-set gates
+     (feature 0.05, pixel 8 max) also failed, on the same kind of noise.
+   - The judge is unbiased.
+   - Training numerics carry over essentially exactly, so existing checkpoints can
+     resume in `.venv`.
+   - New-environment benchmark numbers should still be compared with new-environment
+     baselines.
+2. uv-mode training smoke.
+   - First attempt, array 67028565 (`uvsmoke_janusmulti_r3_20261023`):
+     - It started 10 min after submission, on two partly free nodes (fc[10503-10504]).
+     - Per-node staging copied 40.2 GB to `/localscratch` in 11.1 s, and the policy was
+       loaded within about 40 s of job start.
+     - It then failed at the first NCCL broadcast. Elements 1-3 were cancelled.
+   - NCCL diagnostic, job 67030081, 2 nodes × 2 GPUs:
+     - With `--gpus-per-task` binding, NCCL's P2P transport fails ("invalid device
+       ordinal"), both within a node and across nodes.
+     - `--gpu-bind=none` still gives one device per task ("Duplicate GPU detected").
+     - `NCCL_P2P_DISABLE=1` works in both cases.
+     - `srun_ddp.sh` now sets it for single-GPU tasks. Traffic is one LoRA-gradient
+       all-reduce per optimizer step.
+   - Second attempt, array 67031749 (`uvsmoke2_...`):
+     - NCCL passed, staging took 15.7 s, and the policy loaded through transformers 5.
+     - It then failed loading the renderer: torch >= 2.6 defaults `torch.load` to
+       `weights_only=True`, and `ar_dtok` holds an `EasyDict`. The eval scripts already
+       wrapped this with `safe_globals`; `ImageDecoder` now does it itself.
+     - The pending parity snapshot was refreshed, and elements 1-3 were cancelled.
+   - Third attempt, array 67037400 (`uvsmoke3_...`): **passed**.
+     - Element 0 (fc[10114,10210]):
+       - Staging took 10.5 s. Policy and renderer loaded in 45 s, with the judge ready
+         at the same time. `time/startup` was 69 s; the old 24 h segments took about
+         16 min.
+       - Steps 1-4 took about 270-320 s each (2 prompts × 4 rollouts per GPU), with
+         validation at step 3 and saves of 3-7 s.
+       - It stopped by the deadline at 25 of 30 min, after saving `resume/checkpoint-4`.
+     - Element 1 (fc[10116,10118,10504]):
+       - It resumed from `resume/checkpoint-4`. Staging copied 40.2 GB in 14.7 s, and
+         `time/startup` was 63 s.
+       - It trained steps 5-6, wrote milestone `checkpoint-6` and the status
+         `target_reached`, and cancelled elements 2-3 itself.
+     - Losses were finite and KL stayed at 0-0.013.
+     - `state.json` carries the timing history, `base_model_shared_rel` and the identity
+       hashes. The config sha (`e359d0b8…`) equals the original's, and the adapter
+       records the canonical shared base path.
+     - This also covers cross-node training (2 and 3 nodes). A same-seed
+       single-node-vs-multi-node loss comparison was not run.
+3. Still to do:
+   - the cross-node run (`NODES=2`);
+   - baselines (SFT, ck300) re-run in the new environment with `looks_good_suite.py`;
+   - Rorqual through cluv;
+   - Blackwell (no Blackwell cluster yet).
+
+## October 21: step-100 looks_good evaluation (4 iterations, sampled); Sept suites archived
+
+Step-100 results (both `RESULTS.md` written; the step-100 jobs all completed after the
+resubmissions). Per image 1-5, ×100:
+
+| Model | GenEval2 AM | GenEval2 GM | TIIF short/long | GenAI |
+|---|---|---|---|---|
+| noce100 | 66.3 66.1 65.8 65.1 65.1 | 21.0 21.0 20.6 20.3 20.1 | 65.1/61.1 64.6/60.8 65.2/60.5 64.0/60.5 65.2/60.6 | 34.3 34.9 34.8 35.8 35.1 |
+| janusmulti100 | 65.5 66.5 67.0 67.0 67.2 | 21.1 22.3 21.9 21.5 22.1 | 66.8/62.1 66.9/61.1 67.4/60.5 66.9/60.8 68.5/60.8 | 34.8 35.9 36.8 37.1 37.9 |
+
+
+User request: evaluate step 100 of `..._teachertree_noce_..._20261020` and
+`..._janusmulti_r3_reset_..._20261020` on GenEval2, TIIF and GenAI, per iteration, at
+most 4 iterations (= `--max_refinements 4`, up to 5 images), sampling only. Root
+`results/evaluations/teacher_noce_janusmulti_ck100_looksgood_4iter_20261021/`
+{noce100_sample, janusmulti100_sample}; reset context, seed 421, frozen ck150/ck300
+eval code (same manifest). `prepare_and_submit.py` derives every script from the
+ck300 suite's completed janus300_sample scripts (checkpoint swap, cap 5 -> 4, image-5
+replay/score items dropped, TASKS/arrays recomputed; the parse/rebuild was checked to
+be the identity on the template); `--validate` passed. 34 jobs 66674259–66674292
+(reports 66674275 / 66674292). SFT/ck300 sampled per-image numbers (same seed, cap 5)
+are comparable for images 1–5. Scratch file quota was 928K/1000K: on the user's
+approval four September suites (ck500_all_images_20260919, t21_rl_ck400_all_images_20260920,
+t21_ck17k_rl_ck100_all_images_20260923, ck400_intermediate_images_20260918) were archived
+whole to `/nearline/6004852/xiaofeng/tar_reason_archive/evaluations/<suite>.tar`
+(`tar --compare` clean) and their 119,236 per-prompt files removed; checkpoints, code,
+scripts, summaries kept; `ARCHIVED.md` in each suite. Quota now 809K/1000K. W&B shows
+these runs as "crashed" between steps: heartbeat only advances on history uploads
+(~15 min/step) and W&B times out after ~7-10 min; training is unaffected.
+Oct 22: GPU partitions were down overnight; the suite started at 03:42. noce100
+gen-geneval2-finalize (66674260) failed at `wandb.init` (wandb-core service port file not
+ready in 30 s; generation outputs intact, no metrics.json written); its replay, summary
+and report were cancelled by the dependency. Resubmitted unchanged scripts with
+`--export=ALL,WANDB__SERVICE_WAIT=300` (W&B `x_service_wait`): finalize 66763029,
+replay 66763031, summary 66763032, report 66763033; old ids kept in `launch.json`
+(`previous_job_ids`). A second identical failure (janusmulti100 gen-tiif task 0, rank 0
+slot) followed, so every unstarted job was cancelled and resubmitted with the same
+variable (scratchpad `resubmit_ck100.py`; dependencies rewired, jobs on COMPLETED
+deps dropped; the failed array reran only index 0, other ranks skip done batches):
+29 jobs 66767370–66767401, reports 66767384 (noce100) / 66767401 (janusmulti100).
+Running GenAI generation tasks were left alone; janusmulti100 gen-genai task 0 (started
+04:56, before the fix) then failed the same way at rank 0, so its index 0 and GenAI
+chain + report were resubmitted with the variable (66769187–66769193, report 66769193).
+noce100 gen-genai completed on all ranks. Every remaining job now has the longer wait.
+The janusmulti100 gen-tiif rerun (66767388_0) then failed in rank 2: `prompt-0163.png`
+was 0 bytes (written 05:12:33 by the first run) while its record held a real image's
+sha256 (data loss on scratch after an atomic write; a scan of every generated record in
+both configs found no other bad pair). The pair was moved to
+`quarantine/janusmulti100_sample/tiif_final/` (README there) so the rerun regenerates
+prompt 163 with its original seeds; TIIF chain + report resubmitted as 66773292–66773298
+(report 66773298; gen-tiif reruns index 0 only).
+
+## October 20: two more runs requested — multi-iteration Janus and teacher tree without CE
+
+User request: (1) Janus-Pro RL with multiple iterations; (2) VLM teacher reflections
+with reset and multiple iterations but no distillation CE. Answers: (1) every image
+gets the episode's final-image AM, every reflection verdict correctness; reset
+context; 8 prompts x 8 episodes per GPU, <= 3 refinements; (2) identical to the
+agreement-filtered teacher run (66087439) except `--teacher_ce_coef 0`. New
+`--objective janus_multi_iteration` (`run_janus_multi`, `build_janus_multi_rows`,
+`score_janus_multi`, `assign_janus_multi_advantages`, looks_good stats/validation).
+`grpo_loss(teacher_mask=...)`: teacher tokens always leave text-phase metrics and
+`teacher_nll` now covers every spliced teacher token (distilled or not), so a
+CE-0 run still reports it. 143 CPU tests pass (new `tests/test_rl_janus_multi.py`).
+Submitted from one frozen snapshot (`launches/janus_multi_teacher_noce_t21_20261020/`,
+snapshot passes all 143 tests; flags parsed by the frozen trainer): janus_multi job
+66092812 (`..._janusmulti_r3_reset_g8p8_ep2_kl001_lr1e4_20261020`) and teacher_noce job
+66092813 (`..._teachertree_noce_b1x2_p4g8_r3_ep2_kl001_lr1e4_20261020`), 24 h segments
+with continuation to 500 steps, running next to the agreement-filtered teacher run
+66087439 (`..._teachertree_agree_ce003_..._20261020`, launched from
+`launches/teacher_tree_agree_t21_20261020/`).
+
+## October 20: teacher_tree run 1 stopped at step 82; agreement-filtered restart
+
+Run 1 (job 65919413, `..._teachertree_b1x2_p4g8_r3_ep2_kl001_lr1e4_20261019`) ran 21 h,
+82 steps, ~15 min/step (render ~230 s, policy ~290 s, judge ~95 s, train ~250-300 s per
+GPU), no errors; checkpoints 25/50/75 kept. Teacher: 0-0.5% malformed replies, verdict
+accuracy ~0.87-0.96 vs judge all_pass but recall ~0.54 (passes only half of passing
+images), so ~80-90% of episodes ran to 3 refinements. Distillation (CE 0.1) moved the
+policy's reflection text far from SFT (text KL 0.02 -> ~0.85-0.95 by step 11, then flat;
+image KL <= 0.03) and copied the teacher's caution: shadow "looks good" fell from 16.5%
+(step 4) to 0.35% (step 10), then partly recovered (3-6%, on-pass 0.2-0.33 at steps
+21-80). Train refinement gain ~+0.01 AM. val32 (teacher-free): step 0 draft/final
+0.621/0.675, step 75 0.686/0.662, verdict recall 0.45 -> 0.33. The agent cancelled it at
+step 82 on the user's choice, which was made from a stale step-11 report (the agent did
+not re-check progress first); the user then chose the filtered restart again with
+corrected numbers. New opt-in `--teacher_ce_filter agree` (`TEACHER_CE_FILTER`): only
+teacher reflections whose verdict equals the judge's all_pass target of the critiqued
+image are distilled (others still drive the rollout, no loss); method metadata (old
+teacher_tree checkpoints mean `all`). 137 CPU tests pass. Also: checkpoint-300
+looks_good suite complete (84 tasks, no failures; RESULTS.md per config): sampled
+draft -> final GenEval2 77.4 -> 76.2, TIIF short/long 70.6/67.0 -> 72.0/67.3, GenAI
+38.2 -> 39.0; greedy GenEval2 48.4 -> 52.0.
+
 ## October 19: `--objective teacher_tree` implemented (CPU validated; GPU checks next)
 
 User design: tree rollouts with large groups, up to 3 refinements with early stop,

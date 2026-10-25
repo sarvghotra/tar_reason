@@ -17,6 +17,11 @@ draft, one reflection and at most one refinement. The verdict is read from the
 reflection text ("Correction: looks good" = Janus-Pro-R1's "Yes"); the draft,
 the reflection and the final image are trained as three separate segments.
 
+``run_janus_multi`` (opt-in ``--objective janus_multi_iteration``) extends the
+Janus episode to up to ``max_refinements`` reflect -> refine rounds with the
+policy's own reflections: "looks good" stops, a refine verdict forces the next
+image, and every reflection (including one on the last image) is a segment.
+
 ``run_teacher_tree`` (opt-in ``--objective teacher_tree``) is a tree whose
 reflections are written by a teacher VLM from the rendered image: "looks good"
 stops, a correction is followed by M policy images. Teacher tokens are spliced
@@ -33,6 +38,7 @@ import torch
 from transformers import GenerationConfig, LogitsProcessor, LogitsProcessorList
 
 from llava.train.rl.grpo import KIND_IMG, KIND_NONE, KIND_TXT
+from llava.train.rl.hf_compat import NO_MODEL_DEFAULTS, without_model_generation_defaults
 
 ITERATIVE_PROMPT_PREFIX = "Generate an image iteratively by self-reflecting and correcting.\n"
 SYSTEM_PROMPT = "You are a helpful assistant."
@@ -150,6 +156,21 @@ class OneIteration:
 
 
 @dataclass(eq=False)
+class JanusSpan:
+    """janus_multi_iteration: one trained segment (an image, or a reflection on
+    image ``index``) with its exact sampling context and per-action PG mask."""
+    context: List[int] = field(repr=False)
+    actions: List[int] = field(repr=False)
+    kind: int                                  # KIND_IMG | KIND_TXT
+    index: int                                 # image index, or the critiqued image's index
+    pg: List[float] = field(repr=False)
+    verdict: Optional[bool] = None             # reflections: "looks good"
+    mismatch: Optional[str] = None             # reflections: looks_good_im_start | correction_eos | cap
+    reward: float = 0.0
+    adv: float = 0.0
+
+
+@dataclass(eq=False)
 class ShadowReflection:
     """teacher_tree: a policy reflection sampled after an image and not continued.
 
@@ -190,6 +211,7 @@ class TreeNode:
     value: float = 0.0     # mean final reward of the subtree
     adv: float = 0.0
     teacher: bool = False
+    distill: bool = True   # teacher reflection: receives the cross-entropy loss
     image: object = field(default=None, repr=False)
     teacher_reply: Optional[str] = field(default=None, repr=False)
     teacher_verdict: Optional[bool] = None
@@ -221,6 +243,7 @@ class Trajectory:
     verdicts: List[bool] = field(default_factory=list)  # run_looks_good: per reflection
     scored_images: List = field(default_factory=list, repr=False)  # exact scored PILs, in order
     image_scores: List = field(default_factory=list, repr=False)   # (am, gm, per-question) per image
+    janus_spans: List[JanusSpan] = field(default_factory=list, repr=False)  # janus_multi_iteration
 
     @property
     def codes(self):
@@ -390,15 +413,16 @@ class EpisodeRollout:
             if self.cfg.img_sample:
                 kwargs = dict(do_sample=True, temperature=self.cfg.img_temperature,
                               top_k=self.cfg.img_top_k, top_p=self.cfg.img_top_p)
-            gen = model.generate(
-                # A checkpoint's decoding defaults must not add unmodelled
-                # probability transforms (including Transformers' fallback).
-                generation_config=GenerationConfig(), use_model_defaults=False,
-                input_ids=ids, attention_mask=mask,
-                min_new_tokens=self.cfg.gen_seq_len, max_new_tokens=self.cfg.gen_seq_len,
-                **kwargs, repetition_penalty=1.0, logits_processor=self.image_proc,
-                pad_token_id=self.pad_id, eos_token_id=None, use_cache=True,
-            )[:, ids.shape[1]:]
+            with without_model_generation_defaults(model):
+                gen = model.generate(
+                    # A checkpoint's decoding defaults must not add unmodelled
+                    # probability transforms (including Transformers' fallback).
+                    generation_config=GenerationConfig(), **NO_MODEL_DEFAULTS,
+                    input_ids=ids, attention_mask=mask,
+                    min_new_tokens=self.cfg.gen_seq_len, max_new_tokens=self.cfg.gen_seq_len,
+                    **kwargs, repetition_penalty=1.0, logits_processor=self.image_proc,
+                    pad_token_id=self.pad_id, eos_token_id=None, use_cache=True,
+                )[:, ids.shape[1]:]
             if gen.shape[1] != self.cfg.gen_seq_len:
                 raise RuntimeError(f"image phase produced {gen.shape[1]} tokens")
             if int(gen.min()) < self.img_start or int(gen.max()) >= self.img_end:
@@ -416,13 +440,14 @@ class EpisodeRollout:
             if self.cfg.reflect_sample:
                 kwargs = dict(do_sample=True, temperature=self.cfg.reflect_temperature,
                               top_k=self.cfg.reflect_top_k, top_p=self.cfg.reflect_top_p)
-            gen = model.generate(
-                generation_config=GenerationConfig(), use_model_defaults=False,
-                input_ids=ids, attention_mask=mask,
-                max_new_tokens=max_new_tokens or self.cfg.reflect_tokens, repetition_penalty=1.0,
-                logits_processor=self.text_proc, pad_token_id=self.pad_id,
-                eos_token_id=self.text_stop_ids, use_cache=True, **kwargs,
-            )[:, ids.shape[1]:].tolist()
+            with without_model_generation_defaults(model):
+                gen = model.generate(
+                    generation_config=GenerationConfig(), **NO_MODEL_DEFAULTS,
+                    input_ids=ids, attention_mask=mask,
+                    max_new_tokens=max_new_tokens or self.cfg.reflect_tokens, repetition_penalty=1.0,
+                    logits_processor=self.text_proc, pad_token_id=self.pad_id,
+                    eos_token_id=self.text_stop_ids, use_cache=True, **kwargs,
+                )[:, ids.shape[1]:].tolist()
             for row in gen:
                 # Keep the sampled EOS/transition action, discard only batch padding.
                 cut = len(row)
@@ -642,6 +667,123 @@ class EpisodeRollout:
             active = pending
         assign_tree_masses(nodes, trajectories)
         return RolloutBatch(prompts, order_tree_leaves(nodes, trajectories), nodes)
+
+    # -- Janus-style iterations with the policy's own reflections -------------
+
+    def run_janus_multi(self, model, prompts: List[Dict], num_rollouts: Optional[int] = None,
+                        verdict_rule: str = "correction") -> RolloutBatch:
+        """Draft, then up to ``max_refinements`` reflect -> refine rounds (``--objective
+        janus_multi_iteration``). A reflection whose verdict is "looks good" stops the
+        episode; otherwise the next image is sampled, as ``run_one_iteration`` does
+        (a sampled <im_start> keeps its context; a trailing EOS is dropped from the
+        context and <im_start><S0> spliced, newline-aware; a capped reflection gets
+        the same splice). The image at the cap is still reflected on (verdict
+        credit) and the episode then stops. Each reflection is a trained span whose
+        stop token keeps KL but no PG when it disagrees with the verdict (not
+        capped). Reset context rebuilds each round from the prompt and the latest
+        image. Each sampled context must fit ``max_seq_len``.
+        """
+        count = self.cfg.num_rollouts if num_rollouts is None else num_rollouts
+        if count < 1:
+            raise ValueError("num_rollouts must be positive.")
+        if self.cfg.max_refinements < 1:
+            raise ValueError("janus_multi_iteration needs max_refinements >= 1.")
+        looks_good_verdict("", verdict_rule)  # validate the rule name
+        limit = min(self.cfg.max_seq_len,
+                    getattr(model.config, "max_position_embeddings", self.cfg.max_seq_len))
+        was_training = model.training
+        model.eval()
+        try:
+            return self._run_janus_multi(model, prompts, count, limit, verdict_rule)
+        finally:
+            model.train(was_training)
+
+    def _run_janus_multi(self, model, prompts, count, limit, verdict_rule):
+        reset = self.cfg.reset_context_per_turn
+        trajectories = []
+        for p_idx, prompt in enumerate(prompts):
+            prefix = self.make_prefix(prompt["prompt"])
+            if len(prefix) + 2 * self.cfg.gen_seq_len + len(self.reflect_splice) + self.cfg.reflect_tokens + 3 > limit:
+                raise ValueError("Sequence budget cannot fit a draft, a reflection and one refinement.")
+            for _ in range(count):
+                trajectories.append(Trajectory(p_idx, list(prefix), [KIND_NONE] * len(prefix)))
+                if reset:
+                    trajectories[-1].segments.append(RolloutSegment(list(prefix), [KIND_NONE] * len(prefix)))
+
+        def context(t):
+            return t.segments[-1].seq if reset else t.seq
+
+        def append(t, tokens, kind):
+            t.seq.extend(tokens)
+            t.kinds.extend([kind] * len(tokens))
+            if reset:
+                t.segments[-1].seq.extend(tokens)
+                t.segments[-1].kinds.extend([kind] * len(tokens))
+
+        def append_images(pending):
+            contexts = [list(context(t)) for t in pending]
+            for t, ctx, image in zip(pending, contexts, self._sample_images(model, contexts)):
+                t.janus_spans.append(JanusSpan(ctx, list(image), KIND_IMG, len(t.images), [1.0] * len(image)))
+                append(t, image, KIND_IMG)
+                t.images.append([token - self.img_start for token in image])
+
+        if not trajectories:
+            return RolloutBatch(prompts, trajectories)
+        append_images(trajectories)
+        active = trajectories
+        while active:
+            ready = []
+            for t in active:
+                if reset and len(t.images) > 1:
+                    current = self.make_prefix(prompts[t.prompt_idx]["prompt"]) + [
+                        code + self.img_start for code in t.codes]
+                    t.segments.append(RolloutSegment(current, [KIND_NONE] * len(current)))
+                if len(context(t)) + len(self.reflect_splice) + self.cfg.reflect_tokens > limit:
+                    t.stop_reason = "max_seq_len"
+                    continue
+                append(t, self.reflect_splice, KIND_NONE)
+                ready.append(t)
+            pending = []
+            reflections = self._sample_reflections(model, [context(t) for t in ready],
+                                                   self.cfg.reflect_tokens) if ready else []
+            for t, tokens in zip(ready, reflections):
+                text = self.tok.decode(tokens, skip_special_tokens=True).strip()
+                verdict = looks_good_verdict(text, verdict_rule)[0]
+                last = tokens[-1] if tokens else None
+                capped = last not in (self.eos_id, self.im_start_tok)
+                agrees = (last == self.eos_id) if verdict else (last == self.im_start_tok)
+                pg = [1.0] * len(tokens)
+                if tokens and not agrees and not capped:
+                    pg[-1] = 0.0
+                mismatch = "cap" if capped else None if agrees else (
+                    "looks_good_im_start" if verdict else "correction_eos")
+                t.janus_spans.append(JanusSpan(list(context(t)), list(tokens), KIND_TXT, len(t.images) - 1, pg,
+                                               verdict=verdict, mismatch=mismatch))
+                t.reflections.append(text)
+                t.verdicts.append(verdict)
+                if verdict:
+                    append(t, tokens, KIND_TXT)
+                    t.stop_reason = "looks_good"
+                    continue
+                if len(t.images) - 1 >= self.cfg.max_refinements:
+                    append(t, tokens, KIND_TXT)
+                    t.stop_reason = "max_refinements"
+                    continue
+                if last == self.im_start_tok:
+                    append(t, tokens, KIND_TXT)
+                    splice = list(self.image_splice)
+                else:
+                    append(t, tokens[:-1] if last == self.eos_id else tokens, KIND_TXT)
+                    splice = self._forced_image_splice(context(t))
+                if len(context(t)) + len(splice) + self.cfg.gen_seq_len > limit:
+                    t.stop_reason = "max_seq_len"
+                    continue
+                append(t, splice, KIND_NONE)
+                pending.append(t)
+            if pending:
+                append_images(pending)
+            active = pending
+        return RolloutBatch(prompts, trajectories)
 
     # -- teacher-written reflections over a tree of images --------------------
 
@@ -1118,9 +1260,10 @@ class EpisodeRollout:
         Tree rows (``_pack_tree_nodes``): image tokens get their node's tree
         advantage with the episode weights of ``build_tree_training_rows``, except
         that a leaf's normalizer counts only policy-sampled tokens. Teacher
-        reflection tokens get no policy gradient and no KL (weight 0, pg_mask 0)
-        and a cross-entropy weight that makes the CE term ``teacher_ce_coef`` x the
-        mean over teacher reflections of their per-token NLL. Each shadow
+        reflection tokens get no policy gradient and no KL (weight 0, pg_mask 0);
+        those of ``distill`` reflections get a cross-entropy weight that makes the
+        CE term ``teacher_ce_coef`` x the mean over distilled teacher reflections of
+        their per-token NLL (the others get no loss at all). Each shadow
         reflection gets its own row (context + tokens) with PG and KL weighted to
         ``shadow_coef`` x the mean over shadows of per-token means; a stop token
         that disagrees with the shadow's verdict keeps KL but no PG (as Janus).
@@ -1134,7 +1277,7 @@ class EpisodeRollout:
                 and math.isfinite(shadow_coef) and shadow_coef >= 0):
             raise ValueError("teacher_ce_coef and shadow_coef must be finite and nonnegative.")
         drafts = sum(1 for n in batch.nodes if n.parent is None)
-        teachers = sum(1 for n in batch.nodes if n.teacher)
+        teachers = sum(1 for n in batch.nodes if n.teacher and n.distill)
         shadows = [s for n in batch.nodes for s in n.shadows if s.tokens]
         scale = {}
         for trajectory in batch.trajectories:
@@ -1149,8 +1292,8 @@ class EpisodeRollout:
                 if owner is None:
                     values = (0.0, 0.0, 0.0, 1.0, 0)
                 elif owner.teacher:
-                    values = (0.0, 0.0, teacher_ce_coef * drafts / (teachers * len(owner.actions)), 0.0,
-                              SEGMENT_TEACHER)
+                    distill = teacher_ce_coef * drafts / (teachers * len(owner.actions)) if owner.distill else 0.0
+                    values = (0.0, 0.0, distill, 0.0, SEGMENT_TEACHER)
                 else:
                     values = (owner.adv, scale[owner], 0.0, 1.0,
                               SEGMENT_DRAFT if owner.parent is None else SEGMENT_FINAL)
@@ -1190,6 +1333,7 @@ class EpisodeRollout:
             out["pg_mask"][i, :n] = torch.tensor(pg)
             out["pos_segment"][i, :n] = torch.tensor(segment)
         out["train_mask"] = out["pos_kind"] != KIND_NONE
+        out["teacher_mask"] = out["pos_segment"] == SEGMENT_TEACHER  # metrics: every spliced teacher token
         return out
 
     def build_tree_training_rows(self, batch: RolloutBatch, reflect_token_weight: float,
@@ -1240,6 +1384,63 @@ class EpisodeRollout:
         pg_mask = self._pg_mask(input_ids, pos_kind, text_policy_gradient)
         if pg_mask is not None:
             out["pg_mask"] = pg_mask
+        return out
+
+    def build_janus_multi_rows(self, trajectories: List[Trajectory]):
+        """Rows for ``janus_multi_iteration``: every span (image or reflection) is a
+        segment; token weight 1 / (#actions of the span) / (#spans of the episode),
+        so a loss summed and divided by #episodes is the mean over episodes of the
+        mean per-span token mean. Image tokens get the episode's final-reward
+        advantage (``t.adv``); reflection tokens their own verdict advantage. Spans
+        pack into one row while each context extends it (reset context starts a new
+        row every round; a dropped EOS too). ``pos_segment``: 1 draft, 2 reflection,
+        3 refined image.
+        """
+        if not trajectories or any(not t.janus_spans for t in trajectories):
+            raise ValueError("Janus multi-iteration rows need janus_multi_iteration trajectories.")
+        rows = []
+        for t in trajectories:
+            current = None
+            spans = t.janus_spans
+            for span in spans:
+                if not span.actions:
+                    raise ValueError("Every segment needs at least one sampled action.")
+                if current is None or span.context[:len(current["seq"])] != current["seq"]:
+                    current = dict(seq=[], kinds=[], adv=[], weight=[], segment=[], pg=[])
+                    rows.append(current)
+                extra = span.context[len(current["seq"]):]
+                weight = 1.0 / len(span.actions) / len(spans)
+                if span.kind == KIND_IMG:
+                    adv, segment = t.adv, (SEGMENT_DRAFT if span.index == 0 else SEGMENT_FINAL)
+                else:
+                    adv, segment = span.adv, SEGMENT_REFLECTION
+                current["seq"] += extra + list(span.actions)
+                current["kinds"] += [KIND_NONE] * len(extra) + [span.kind] * len(span.actions)
+                current["adv"] += [0.0] * len(extra) + [adv] * len(span.actions)
+                current["weight"] += [0.0] * len(extra) + [weight] * len(span.actions)
+                current["segment"] += [0] * len(extra) + [segment] * len(span.actions)
+                current["pg"] += [1.0] * len(extra) + list(span.pg)
+        rows.sort(key=lambda row: len(row["seq"]))  # stable
+        shape = (len(rows), max(len(row["seq"]) for row in rows))
+        out = dict(input_ids=torch.full(shape, self.pad_id, dtype=torch.long),
+                   attention_mask=torch.zeros(shape, dtype=torch.long),
+                   pos_kind=torch.zeros(shape, dtype=torch.long),
+                   adv=torch.zeros(shape, dtype=torch.float32),
+                   weight=torch.zeros(shape, dtype=torch.float32),
+                   pos_segment=torch.zeros(shape, dtype=torch.long),
+                   pg_mask=torch.ones(shape, dtype=torch.float32))
+        for i, row in enumerate(rows):
+            n = len(row["seq"])
+            if row["kinds"][0] != KIND_NONE:
+                raise ValueError("A Janus row needs a context before its first action.")
+            out["input_ids"][i, :n] = torch.tensor(row["seq"])
+            out["attention_mask"][i, :n] = 1
+            out["pos_kind"][i, :n] = torch.tensor(row["kinds"])
+            out["adv"][i, :n] = torch.tensor(row["adv"])
+            out["weight"][i, :n] = torch.tensor(row["weight"])
+            out["pos_segment"][i, :n] = torch.tensor(row["segment"])
+            out["pg_mask"][i, :n] = torch.tensor(row["pg"])
+        out["train_mask"] = out["pos_kind"] != KIND_NONE
         return out
 
     def build_janus_rows(self, trajectories: List[Trajectory]):

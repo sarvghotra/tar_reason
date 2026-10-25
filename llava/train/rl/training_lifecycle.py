@@ -39,3 +39,76 @@ def checkpoint_directory(output_dir, step):
     finally:
         if temporary.exists():
             shutil.rmtree(temporary)
+
+
+# ---------------------------------------------------------------------------
+# Short (e.g. 3-hour) jobs: step-aware deadline and resume checkpoints
+# ---------------------------------------------------------------------------
+
+RESUME_SUBDIR = 'resume'
+
+
+class StepClock:
+    """Recent step, validation and save durations (seconds) for deadline decisions.
+
+    Carried in each checkpoint's state.json so the first step after a resume
+    already has an estimate.
+    """
+
+    def __init__(self, timing=None, window=5):
+        timing = timing or {}
+        self.window = window
+        self.steps = [float(t) for t in timing.get('step_seconds', [])][-window:]
+        self.validation = timing.get('validation_seconds')
+        self.save = timing.get('save_seconds')
+
+    def add_step(self, seconds):
+        self.steps = (self.steps + [float(seconds)])[-self.window:]
+
+    def to_dict(self):
+        return dict(step_seconds=self.steps, validation_seconds=self.validation, save_seconds=self.save)
+
+
+def deadline_allows_step(now, job_end_unix, clock, validation_due=False, margin=1.25,
+                         default_save_seconds=120.0):
+    """Whether one more step, its validation (if due) and the exit save fit before the job ends.
+
+    The step estimate is the longest of the recent steps; an unmeasured
+    validation is assumed to take as long. No job end, or no step measured
+    yet, never stops.
+    """
+    if not job_end_unix or not clock.steps:
+        return True
+    step = max(clock.steps)
+    need = margin * step
+    if validation_due:
+        need += margin * (step if clock.validation is None else clock.validation)
+    need += default_save_seconds if clock.save is None else margin * clock.save
+    return now + need <= job_end_unix
+
+
+def checkpoint_dirs(output_dir):
+    """(step, path) of every published checkpoint, milestone or resume, oldest first."""
+    found = []
+    for root in (Path(output_dir), Path(output_dir)/RESUME_SUBDIR):
+        if not root.is_dir():
+            continue
+        for path in root.iterdir():
+            if path.name.startswith('checkpoint-') and (path/'state.json').is_file():
+                try:
+                    found.append((int(path.name.split('-', 1)[1]), str(path)))
+                except ValueError:
+                    pass
+    # A milestone and a resume copy of the same step are equivalent; prefer the milestone.
+    found.sort(key=lambda item: (item[0], RESUME_SUBDIR + os.sep not in item[1]))
+    return found
+
+
+def prune_resume_checkpoints(output_dir, keep_step):
+    """Remove resume checkpoints other than `keep_step`; milestones are never touched."""
+    root = Path(output_dir)/RESUME_SUBDIR
+    if not root.is_dir():
+        return
+    for path in root.iterdir():
+        if path.name.startswith('checkpoint-') and path.name != f'checkpoint-{keep_step}':
+            shutil.rmtree(path, ignore_errors=True)

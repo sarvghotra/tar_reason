@@ -276,14 +276,26 @@ spliced: "looks good" stops the episode; a correction is followed by M policy im
 | Tokens | Credit | Loss |
 |---|---|---|
 | draft / refined images | tree value = mean final AM of the subtree, minus siblings' mean | PG + KL, episode weights per draft subtree |
-| teacher reflection (incl. EOS / `<im_start>`) | none (not a policy sample) | `TEACHER_CE_COEF` x mean per-token NLL |
+| teacher reflection (incl. EOS / `<im_start>`) | none (not a policy sample) | `TEACHER_CE_COEF` x mean per-token NLL; `TEACHER_CE_FILTER=agree`: only reflections whose verdict equals the judge's all_pass |
 | shadow reflections (`SHADOW_REFLECTIONS` per image, not continued) | 1[verdict == all judge questions >= 0.5], prompt groups, unbiased std | `SHADOW_COEF` x mean of per-shadow token means, PG + KL |
 
 Stats (`train/`): `am_draft`, `am_final`, `delta_am_refined`, `stop_*_rate`,
 `teacher_verdict_accuracy/precision/recall`, `teacher_looks_good_on_fail`,
-`teacher_malformed_reply_rate`, `shadow_verdict_accuracy`, `shadow_looks_good_on_pass/fail`,
+`teacher_malformed_reply_rate`, `teacher_distill_rate`, `shadow_verdict_accuracy`, `shadow_looks_good_on_pass/fail`,
 `shadow_mismatch_rate`, `ce_loss`, `teacher_nll`, `pg_/kl_{draft,shadow,refined}`, and
 `time/teacher_render`, `time/teacher_generate` (both inside `time/rollout`). Validation runs
 the teacher-free looks_good protocol (the policy's own reflections; `val/am_upto_k`,
 `verdict_accuracy`, `looks_good_on_fail`). `check_teacher_reflections.py` checks the teacher's
 format compliance and agreement with the judge on saved SFT drafts before a run.
+
+# Multi-iteration Janus (`janus_multi_iteration`)
+
+`OBJECTIVE=janus_multi_iteration MAX_REFINEMENTS=3 RESET_CONTEXT_PER_TURN=1 ADV_NORM=std`: draft,
+then up to 3 reflect -> refine rounds with the policy's own reflections; "looks good" stops, a
+refine verdict forces the next image (as `run_one_iteration`), and the image at the cap is still
+reflected on. Every image (draft and refinements) gets the episode's final-image AM advantage;
+every reflection gets 1[verdict == all judge questions on the critiqued image >= 0.5], normalized
+over the prompt's reflections. Loss = mean over episodes of the mean per-span token mean. Every
+image is rendered and judged. Stats: the looks_good set (`am_upto_k`, `verdict_accuracy`,
+`looks_good_on_fail`, ...) plus `reward_verdict`, `mismatch_*_rate`, `delta_am_refined`,
+`pg_/kl_{draft,reflection,refined}`. Validation: teacher-free looks_good protocol.

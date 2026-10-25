@@ -12,7 +12,8 @@ from pathlib import Path
 
 
 class QwenPixelReward:
-    def __init__(self, python, model_path, device, timeout=1800, question_batch_size=1):
+    def __init__(self, python, model_path, device, timeout=1800, question_batch_size=1, wait=True):
+        """Start the worker; with `wait=False` it loads in the background until `wait_ready()`."""
         worker = Path(__file__).with_name("qwen_reward_worker.py")
         self.timeout = timeout
         if question_batch_size < 1:
@@ -24,14 +25,26 @@ class QwenPixelReward:
             command,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
         self._response_buffer = bytearray()
+        self._ready = False
         atexit.register(self.close)
         try:
             os.set_blocking(self.process.stdout.fileno(), False)
+        except BaseException:
+            self.close()
+            raise
+        if wait:
+            self.wait_ready()
+
+    def wait_ready(self):
+        if self._ready:
+            return
+        try:
             if self._read() != {"ready": True}:
                 raise RuntimeError("Unexpected Qwen reward worker startup response.")
         except BaseException:
             self.close()
             raise
+        self._ready = True
 
     def _read(self):
         deadline = time.monotonic() + self.timeout

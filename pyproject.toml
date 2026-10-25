@@ -1,0 +1,103 @@
+[project]
+name = "tar-reason"
+version = "0.1.0"
+description = "Tar RL fine-tuning with final-pixel rewards, evaluation and cluster tooling"
+requires-python = "==3.11.*"
+dependencies = [
+    # torch >= 2.7 PyPI-style wheels use the cxx11 ABI; cu128 covers sm_80 (A100), sm_89 (L40S),
+    # sm_90 (H100/H200) and sm_100 (B100/B200). 2.8 is the newest torch with official FA2 wheels.
+    "torch==2.8.0",
+    "torchvision==0.23.0",
+    "flash-attn==2.8.3.post2",
+    "transformers==5.17.0",
+    "tokenizers==0.23.1",
+    "huggingface-hub==1.7.1",
+    "peft==0.18.1",
+    "accelerate==1.13.0",
+    "safetensors==0.8.0",
+    "regex==2026.9.10",
+    "numpy==2.4.6",
+    "pillow==11.2.1",
+    "pyyaml==6.0.3",
+    "tqdm==4.70.0",
+    "jinja2==3.1.6",
+    "einops==0.8.1",
+    "easydict==1.13",
+    "wandb==0.26.0",
+    "qwen-vl-utils==0.0.14",
+    "av==18.1.0",
+    "scipy",
+    "pyarrow",
+]
+
+[tool.uv]
+# This is a script repository, not an installable package: launchers put the
+# checkout on PYTHONPATH.
+package = false
+python-preference = "only-managed"
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3.post2/flash_attn-2.8.3.post2+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl" }
+
+# ---------------------------------------------------------------------------
+# cluv (https://mila-iqia.github.io/cluv/): run `cluv sync` / `cluv submit` from
+# the Fir login node, the hub. Inputs in $SCRATCH/tar_reason/shared are pushed
+# from Fir to every cluster (rsync, never --delete); outputs under
+# $SCRATCH/tar_reason/results are fetched back to Fir. Before the first sync on
+# a cluster run scripts/clusters/setup_uv.sh there, so the venv and uv cache
+# live in $SCRATCH (cluv's own `uv sync` would otherwise create .venv in $HOME).
+# Accounts other than Fir's must be confirmed with `sshare -U` before use.
+# ---------------------------------------------------------------------------
+[tool.cluv]
+job_script_path = "scripts/clusters/cluv_job.sh"
+results_path = "$SCRATCH/tar_reason/results"   # on Fir a link to $SCRATCH/tar_reason_results
+results_symlink = "results"
+data_source = "fir:$SCRATCH/tar_reason/shared"
+datasets_path = "$SCRATCH/tar_reason/shared"
+
+[tool.cluv.env]
+TAR_ROOT = "$SCRATCH/tar_reason"
+UV_OFFLINE = "1"
+HF_HUB_OFFLINE = "1"
+WANDB_MODE = "offline"        # online where compute nodes have internet (below)
+WANDB__SERVICE_WAIT = "300"
+
+[tool.cluv.local]
+env = { SCRATCH = "$HOME/scratch" }
+
+[tool.cluv.clusters.fir]
+env = { WANDB_MODE = "online", TAR_CLUSTER = "fir" }
+sbatch_args = { account = "rrg-bengioy-ad_gpu" }
+
+[tool.cluv.clusters.rorqual]
+env = { TAR_CLUSTER = "rorqual" }
+
+[tool.cluv.clusters.nibi]
+env = { WANDB_MODE = "online", TAR_CLUSTER = "nibi" }
+
+[tool.cluv.clusters.narval]
+env = { TAR_CLUSTER = "narval" }
+
+[tool.cluv.clusters.trillium]
+# Jobs must be submitted from $SCRATCH; $HOME is read-only on compute nodes.
+project_dir = "$SCRATCH/tar_reason/project"
+env = { TAR_CLUSTER = "trillium" }
+
+[tool.cluv.clusters.tamia]
+env = { TAR_CLUSTER = "tamia" }
+
+[tool.cluv.clusters.killarney]
+# Submitting from /home is not permitted.
+project_dir = "$SCRATCH/tar_reason/project"
+env = { WANDB_MODE = "online", TAR_CLUSTER = "killarney" }
+
+[tool.cluv.clusters.mila]
+env = { WANDB_MODE = "online", UV_OFFLINE = "0", TAR_CLUSTER = "mila" }

@@ -5,8 +5,8 @@ import unittest
 
 from unittest.mock import patch
 
-from llava.train.rl.evaluation_policy import (checkpoint_metadata, evaluation_resets_context,
-                                              load_evaluation_policy)
+from llava.train.rl.evaluation_policy import (base_identity, checkpoint_metadata, evaluation_resets_context,
+                                              load_evaluation_policy, resolve_base_model)
 
 OBJECTIVE = 'final_pixel_qwen3vl_soft_tifa_am_v1'
 
@@ -49,6 +49,59 @@ class EvaluationPolicyTests(unittest.TestCase):
             (p/'state.json').unlink()
             with self.assertRaises(FileNotFoundError):
                 checkpoint_metadata(p, 'rl_adapter', OBJECTIVE)
+
+    def adapter(self, root, base, state):
+        root.mkdir(parents=True)
+        (root/'state.json').write_text(json.dumps({'step': 300, 'objective': OBJECTIVE, **state}))
+        (root/'adapter_config.json').write_text(json.dumps({'base_model_name_or_path': str(base)}))
+        (root/'adapter_model.safetensors').write_bytes(b'adapter')
+        return root
+
+    def sft(self, root, step):
+        root.mkdir(parents=True)
+        (root/'config.json').write_text(json.dumps({'model_type': 'qwen2'}))
+        (root/'trainer_state.json').write_text(json.dumps({'global_step': step}))
+        return root
+
+    def test_missing_base_uses_the_shared_copy_named_by_new_checkpoints(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            shared_copy = self.sft(t/'shared/models/sft/t21/checkpoint-17000', 17000)
+            state = {'base_model_shared_rel': 'models/sft/t21/checkpoint-17000',
+                     'base_model_identity': base_identity(shared_copy)}
+            ck = self.adapter(t/'ck', '/elsewhere/cluster/models/sft/t21/checkpoint-17000', state)
+            with patch.dict('os.environ', {'TAR_SHARED': str(t/'shared')}):
+                self.assertEqual(checkpoint_metadata(ck, 'rl_adapter', OBJECTIVE)['base_model'],
+                                 str(shared_copy.resolve()))
+            # Same config but a different SFT step (e.g. t21 ck16000) is refused.
+            (shared_copy/'trainer_state.json').write_text(json.dumps({'global_step': 16000}))
+            with patch.dict('os.environ', {'TAR_SHARED': str(t/'shared')}):
+                with self.assertRaisesRegex(ValueError, 'not the base model'):
+                    checkpoint_metadata(ck, 'rl_adapter', OBJECTIVE)
+
+    def test_missing_base_of_old_checkpoints_resolves_through_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            original = '/nonexistent-project/jeet/models/sft_ckpt/slf_ref_edit_t21/checkpoint-17000'
+            copy = self.sft(t/'shared/models/sft/slf_ref_edit_t21/checkpoint-17000', 17000)
+            (t/'shared/PROVENANCE.json').write_text(json.dumps({
+                'models/sft/slf_ref_edit_t21/checkpoint-17000': {'source': original, 'resolved': '/lustre/x'},
+                'models/tar/ta_tok.pth': {'source': '/project/6004852/jeet/models/tar/ta_tok.pth', 'resolved': '/y'}}))
+            ck = self.adapter(t/'ck', original, {})
+            self.assertEqual(resolve_base_model(original, {}, t/'shared'), copy.resolve())
+            with patch.dict('os.environ', {'TAR_SHARED': str(t/'shared')}):
+                self.assertEqual(checkpoint_metadata(ck, 'rl_adapter', OBJECTIVE)['base_model'], str(copy.resolve()))
+            with self.assertRaises(FileNotFoundError):
+                resolve_base_model('/project/other/checkpoint-1', {}, t/'shared')
+
+    def test_existing_base_path_is_used_as_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = self.sft(Path(tmp)/'base', 1)
+            self.assertEqual(resolve_base_model(base, {'base_model_shared_rel': 'ignored'}, '/nonexistent'),
+                             base.resolve())
+            with patch.dict('os.environ', {}, clear=True):
+                with self.assertRaisesRegex(FileNotFoundError, 'TAR_SHARED'):
+                    resolve_base_model(Path(tmp)/'gone', {})
 
     def test_context_mode_sft_opt_in_and_rl_metadata_guard(self):
         sft = {'checkpoint_type': 'sft', 'checkpoint_state': {'source': 'sft', 'step': 17000}}

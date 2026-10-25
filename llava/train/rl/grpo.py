@@ -156,7 +156,7 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
               adv: torch.Tensor, weight: torch.Tensor, kinds: torch.Tensor,
               denom: float, cfg: GRPOConfig, pg_mask: Optional[torch.Tensor] = None,
               segments: Optional[torch.Tensor] = None, ce_weight: Optional[torch.Tensor] = None,
-              segment_names=SEGMENT_NAMES):
+              segment_names=SEGMENT_NAMES, teacher_mask: Optional[torch.Tensor] = None):
     """Token-level clipped surrogate + KL(policy || ref) estimator.
 
     All inputs are flat (N,) over the trainable tokens of one micro-batch.
@@ -166,7 +166,10 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
     keeping their KL term; None leaves every token's policy gradient.
     ``ce_weight`` (teacher_tree) adds ``ce_weight * -logp`` (supervised
     distillation of spliced teacher tokens, which should carry weight 0);
-    None leaves the loss unchanged. ``segment_names`` labels ``segments``.
+    None leaves the loss unchanged. ``teacher_mask`` marks every spliced
+    teacher token (distilled or not) for metrics: they leave the text-phase
+    means and give ``sum_teacher_nll`` (default: ``ce_weight > 0``).
+    ``segment_names`` labels ``segments``.
     """
     log_ratio = logp - old_logp
     ratio = log_ratio.exp()
@@ -187,7 +190,7 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
     teacher = None
     if ce_weight is not None:
         tok = tok + ce_weight * -logp
-        teacher = ce_weight > 0
+        teacher = (ce_weight > 0) if teacher_mask is None else teacher_mask.bool()
     loss = tok.sum() / denom
 
     with torch.no_grad():

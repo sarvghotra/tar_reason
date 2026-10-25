@@ -164,3 +164,62 @@ for that cluster have been guessed here.
 Transfer code through Git. Symlinks and ignored input/output trees are not
 transferred with it; recreate links on the destination. Copy actual datasets
 and checkpoints separately when they are not already available there.
+
+## uv mode and cluv (portable layout)
+
+Every cluster gets one folder, `$SCRATCH/tar_reason` (`TAR_ROOT`):
+
+| Path | Content | Synced |
+|---|---|---|
+| `shared/` | Inputs: GenEval2 training prompts, benchmarks, renderer, SFT base, judges, SigLIP2 config. `MANIFEST.json` holds sizes and sha256; `PROVENANCE.json` maps each input to its original path | Pushed from Fir to every cluster by `cluv sync` (rsync, never `--delete`) |
+| `results/` | Outputs (`models/`, `evaluations/`, `logs/`, `wandb/`, `launches/`) | Fetched back to Fir by `cluv sync`; on Fir a link to `$SCRATCH/tar_reason_results` |
+| `env/` | `venvs/<uv.lock sha256[:12]>`, one immutable venv per lock, and `uv_cache/` | Rebuilt per cluster (never copied) |
+| `code/<commit>` | Checkouts made by `cluv_job.sh` | No |
+| `cache/` | wandb, triton, torch caches | No |
+
+Outputs only flow back to the hub, so another cluster's file quota never sees
+Fir's ~800K result files. A run moves to another cluster by publishing its
+checkpoint: `shared_inputs.py publish --dest $TAR_ROOT/shared CKPT checkpoints/RUN/checkpoint-N`.
+
+### One-time setup
+
+On Fir (the hub):
+1. `TAR_ROOT=$SCRATCH/tar_reason bash scripts/clusters/setup_uv.sh`. This writes
+   `~/.config/uv/uv.toml` with `cache-dir` on scratch, builds the lock-hash venv,
+   and links `.venv` to it.
+2. `python3 scripts/clusters/shared_inputs.py build --dest $SCRATCH/tar_reason/shared --sources scripts/clusters/fir/shared_sources.txt`.
+   Run it as a CPU job: it copies about 23 GB and hashes 112 GB.
+3. Install cluv (`uv tool install git+https://github.com/mila-iqia/cluv@e17dd88`),
+   then `cluv login <cluster>` for each cluster (SSH ControlMaster with MFA).
+
+On each other cluster:
+1. Clone the repository to the path cluv expects. On Trillium and Killarney that is
+   `$SCRATCH/tar_reason/project`: jobs cannot be submitted from `/home`.
+2. Run `setup_uv.sh` there **before** the first `cluv sync`. Otherwise cluv's own
+   `uv sync` creates `.venv` in `$HOME`.
+3. Confirm the allocation with `sshare -U`. Put `SLURM_ACCOUNT=...` (and
+   `TAR_CPU_ACCOUNT=...`) in `scripts/clusters/<cluster>/config.local.sh`.
+4. From Fir, run `cluv sync`. Then, on the cluster:
+   `python3 scripts/clusters/shared_inputs.py verify --dest $SCRATCH/tar_reason/shared [--full]`.
+
+### Using it
+
+- **cluv submission:** `cluv submit <cluster> [sbatch flags] -- bash scripts/rl_ft/bash.sh`
+  runs at the pushed commit through `scripts/clusters/cluv_job.sh`.
+- **Training with cluv chunking:** `cluv submit <cluster> --chunking 3 --time=<total> --ntasks=4
+  --gpus-per-task=<type>:1 --cpus-per-task=6 --mem-per-gpu=64G --switches=1@00:30:00
+  --signal=B:USR1@600 -- bash scripts/rl_ft/array_element.sh scripts/rl_ft/configs/<run>.env`.
+  cluv turns this into `--time=03:00:00 --array=0-K%1`. `array_element.sh` resumes, stops
+  before the limit, and cancels the rest once the run is complete or stalled. Run
+  settings live in a committed `.env` file (see `scripts/rl_ft/configs/`), because
+  cluv does not forward the local environment.
+- **Direct submission:** the repo submitters (`scripts/rl_ft/submit_short_array.sh`,
+  `scripts/eval/looks_good_suite.py`) work on any cluster with `TAR_ROOT` set. They
+  freeze code and settings into `results/launches/` or the suite directory.
+- **cluv skips unchanged pushes:** it skips a push when `shared/`'s *top-level*
+  mtime predates its last push. `shared_inputs.py build`/`publish` touch it; after
+  manual changes, `touch $SCRATCH/tar_reason/shared`. The same applies after a
+  scratch purge (DRAC: files unused for about 60 days); `verify` reports it.
+- **W&B on clusters without internet:** compute nodes on Rorqual, Narval, Trillium
+  and tamIA have none, so jobs log offline. Upload with `wandb sync` from Fir after
+  the results are fetched.

@@ -65,6 +65,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQAReward, geometric_mean
+from llava.train.rl.hf_compat import dtype_kwargs
 from tok.ta_tok import TextAlignedTokenizer
 from tok.utils import ScalingLayer
 
@@ -510,7 +511,7 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     model = Qwen2ForCausalLM.from_pretrained(
-        args.model, torch_dtype=torch.bfloat16, attn_implementation=args.attn_implementation
+        args.model, **dtype_kwargs(torch.bfloat16), attn_implementation=args.attn_implementation
     ).to(device).eval()
     image_start_id = tokenizer.convert_tokens_to_ids("<I0>")
 

@@ -116,7 +116,9 @@ reflection. It is parsed into the policy's own format (a leading space,
 "looks good" stops, otherwise `--tree_branch` gives M policy images per teacher
 reflection (every entry needs R = 1), up to `--max_refinements`. Teacher tokens
 are off-policy: no PG and no KL, only cross-entropy (`--teacher_ce_coef` x the
-mean per-token NLL over teacher reflections). Image tokens get final-reward tree
+mean per-token NLL over distilled teacher reflections; `--teacher_ce_filter agree`
+distills only those whose verdict equals the judge's all_pass target of the image
+they critique, default `all`). Image tokens get final-reward tree
 credit (an intermediate image is credited with the final rewards it led to). After
 every image the policy samples `--shadow_reflections` reflections from the teacher
 reflection's context; they are never continued, and their reward is verdict
@@ -125,6 +127,16 @@ correctness against the judge's all_pass target (prompt groups, unbiased std;
 KL, no PG). Each image is rendered once; the judge scores those exact pixels.
 Validation is the teacher-free looks_good protocol. Unparseable teacher replies
 stop the episode (`teacher_malformed`). All settings are checkpoint method metadata.
+
+Opt-in `--objective janus_multi_iteration` (`EpisodeRollout.run_janus_multi`): the
+Janus episode with up to `--max_refinements` reflect -> refine rounds and the
+policy's own reflections (no teacher, no tree). "Looks good" stops; a refine verdict
+forces the next image with `run_one_iteration`'s splice rule; the image at the cap is
+still reflected on. Every image span is trained with the episode's final-image AM
+advantage; every reflection span with verdict correctness against the judge's
+all_pass target of the image it critiques (pooled per prompt group); both use the
+unbiased group std; the loss averages per-span token means per episode. A stop token
+that disagrees with its verdict keeps KL, no PG. Validation: teacher-free looks_good.
 
 Benchmark scripts default to `--protocol native` (the trained policy). Opt-in
 `--protocol main_adhoc` reproduces origin/main's forced one-refinement generation
@@ -149,13 +161,35 @@ Recreate environments on each cluster; do not transfer compiled environments.
 stack in a separate process. Keep outputs, W&B files, caches and logs in
 `results/`; use node-local temporary storage when available.
 
+uv mode (set `TAR_ROOT=$SCRATCH/tar_reason`) is the portable layout, one folder
+per cluster:
+- `shared/` holds the inputs (`MANIFEST.json`, `PROVENANCE.json`;
+  `scripts/clusters/shared_inputs.py`). cluv pushes it from Fir without `--delete`.
+- `results/` holds the outputs. They are fetched back to Fir; on Fir this is a
+  link to `$SCRATCH/tar_reason_results`.
+- `env/venvs/<uv.lock hash>` holds the one environment (`pyproject.toml`/`uv.lock`:
+  Python 3.11, torch 2.8 cu128, transformers 5.17, flash-attn 2.8.3).
+  `scripts/clusters/setup_uv.sh` builds it and links `.venv` to it. `$HOME` quotas
+  are too small for it.
+
+HEAD must keep running under transformers 4.50 (`tar/`), 4.57 (`qwen_reward/`) and
+5.x. Go through `llava/train/rl/hf_compat.py` (`dtype_kwargs`,
+`without_model_generation_defaults`); never pass `torch_dtype` or
+`use_model_defaults` directly. 5.x merges the checkpoint's generation_config.json
+(temperature 0.7, top-k 20, top-p 0.8, repetition penalty 1.05) into `generate`
+unless blanked. Legacy environments stay for frozen snapshots until the parity gates in
+`docs/AGENT_HANDOFF.md` pass; judge numbers can shift between environments, so
+compare configurations only within one environment and one GPU model.
+
 ## Validation and jobs
 
 CPU regressions, when the environment and temporary filesystem are healthy:
 
 ```bash
 PYTHONPATH="$PWD:$PWD/tests" tar/bin/python -m unittest discover -s tests -p 'test_rl_*.py' -v
-PYTHONPATH="$PWD:$PWD/tests" python3 -m unittest test_cluster_layout test_gpu_monitor -v
+PYTHONPATH="$PWD:$PWD/tests" .venv/bin/python -m unittest discover -s tests -p 'test_rl_*.py' -v
+PYTHONPATH="$PWD:$PWD/tests" python3 -m unittest test_cluster_layout test_gpu_monitor test_cluster_launch test_shared_inputs -v
+PYTHONPATH="$PWD:$PWD/tests" .venv/bin/python -m unittest test_eval_suite -v
 ```
 
 The distributed CPU test needs local Gloo sockets. Run scheduler commands and
@@ -167,6 +201,24 @@ allocation may be cancelled when its owning terminal disappears. Inspect
 `squeue`, `sacct`, and both stdout/stderr before reporting success. The GPU smoke
 test writes reports under `results/evaluations/qwen_reward_smoke/` and performs
 no optimizer updates. Passing it is not equivalent to validating a full RL run.
+
+Request GPUs by count, not node shape, wherever the cluster allows it:
+`--ntasks=N --gpus-per-task=TYPE:1 --mem-per-gpu=...`, with `--switches=1@<wait>`
+for multi-GPU training. Trillium and tamIA accept only whole nodes.
+
+Train as 3-hour `--array=0-K%1` chains (`scripts/rl_ft/submit_short_array.sh`):
+- `LAUNCHER=srun` with `scripts/clusters/srun_ddp.sh`;
+- `JOB_DEADLINE=1`, so an update is started only if it, its validation and the
+  save fit before the end;
+- `RESUME_SAVE_STEPS` saves to `output_dir/resume`, outside the milestone rotation;
+- `TAR_STAGE_DIR` stages inputs to node-local disk.
+Seeds depend on the step and rank, so a chain samples what one long job would with
+the same GPU count.
+
+Evaluation suites come from `scripts/eval/looks_good_suite.py`: one GPU per task,
+light replays packed per GPU, finalize steps on a small GPU, summaries on CPU.
+Measured needs are in `docs/AGENT_HANDOFF.md`. Training needs 80 GB GPUs; most
+evaluation stages fit 40-48 GB.
 
 ## W&B preference
 

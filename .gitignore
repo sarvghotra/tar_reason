@@ -138,6 +138,8 @@ util_scripts/debug_vcot_dataset/
 !.env.example
 !.env.*.example
 .venv/
+# uv project environment: a symlink to $TAR_ROOT/env/venvs/<lock hash> (not matched by ".venv/").
+.venv
 venv/
 *.safetensors
 /hf_cache/

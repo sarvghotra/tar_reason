@@ -107,10 +107,14 @@ class FakeJudge:
         return am, [a / 2 for a in am], [[a] * len(q) for a, q in zip(am, vqa_lists)]
 
 
-def scored(reset=False, norm='mean'):
+# A1 now fails all_pass although the teacher said "looks good" there: the only disagreement.
+AMS_DISAGREE = dict(AMS, **{'pixels-2': .3})
+
+
+def scored(reset=False, norm='mean', ams=AMS, ce_filter='all'):
     rollout, batch, teacher = fixture(reset)
-    judge = FakeJudge(AMS)
-    trainer.score_teacher_tree(batch, judge)
+    judge = FakeJudge(ams)
+    trainer.score_teacher_tree(batch, judge, ce_filter=ce_filter)
     cfg = GRPOConfig(adv_norm=norm)
     trainer.assign_tree_advantages(batch, cfg)
     trainer.assign_shadow_advantages(batch, cfg)
@@ -316,6 +320,39 @@ class TeacherRowTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rollout.build_teacher_tree_rows(batch, -1.0, 1.0)
 
+    def test_zero_distillation_weight_keeps_teacher_tokens_out_of_the_objective(self):
+        rollout, batch, _, _ = scored(reset=True)
+        rows = rollout.build_teacher_tree_rows(batch, 0.0, .7)
+        self.assertEqual(float(rows['ce_weight'].sum()), 0.0)
+        self.assertEqual(int(rows['teacher_mask'].sum()), 10)
+        self.assertTrue(bool((rows['weight'][rows['teacher_mask']] == 0).all()))
+        params, metrics = [], {}
+        for coef in (0.0, 1e-12):  # coef 0 still reports teacher NLL; tiny coef ~ same update
+            model = new_model()
+            opt = torch.optim.SGD([p for p in model.parameters() if p.requires_grad], lr=.2)
+            scheduler = torch.optim.lr_scheduler.LambdaLR(opt, lambda _: 1)
+            args = policy_args(train_micro_batch=2, max_grad_norm=1e6, num_ppo_epochs=1,
+                               objective='teacher_tree', teacher_ce_coef=coef, shadow_coef=.7)
+            metrics[coef] = trainer.train_on_rollouts(model, rollout, batch, args, GRPOConfig(), opt, scheduler,
+                                                      torch.device('cpu'))
+            params.append([p.detach().clone() for p in model.parameters() if p.requires_grad])
+        self.assertEqual(metrics[0.0]['ce_loss'], 0.0)
+        self.assertGreater(metrics[0.0]['teacher_nll'], 0.0)
+        self.assertAlmostEqual(metrics[0.0]['teacher_nll'], metrics[1e-12]['teacher_nll'], places=6)
+        self.assertAlmostEqual(metrics[0.0]['kl_txt'], metrics[1e-12]['kl_txt'], places=6)
+        for p, q in zip(*params):
+            torch.testing.assert_close(p, q, rtol=1e-6, atol=1e-9)
+        # Text-phase metrics exclude teacher tokens whatever their CE weight.
+        torch.manual_seed(1)
+        logp, old, ref, adv = (torch.randn(5) for _ in range(4))
+        kinds, weight = torch.tensor([2, 2, 2, 2, 1]), torch.tensor([.2, .2, 0, 0, .2])
+        teacher = torch.tensor([False, False, True, True, False])
+        _, m = grpo_loss(logp, old, ref, adv, weight, kinds, 1.0, GRPOConfig(), ce_weight=torch.zeros(5),
+                         teacher_mask=teacher)
+        d = ref[:2] - logp[:2]
+        self.assertAlmostEqual(m['kl_txt'], float((d.exp() - d - 1).mean()), places=6)
+        self.assertEqual(m['sum_teacher_tokens'], 2.0)
+
     def test_loss_without_ce_weight_is_unchanged(self):
         torch.manual_seed(3)
         logp, old, ref, adv = (torch.randn(7) for _ in range(4))
@@ -331,12 +368,42 @@ class TeacherRowTests(unittest.TestCase):
         self.assertEqual(metrics['sum_teacher_tokens'], 2.0)
         self.assertAlmostEqual(metrics['sum_teacher_nll'], float(-(logp[3] + logp[4])), places=6)
 
+    def test_agreement_filter_distills_only_verdicts_matching_the_judge(self):
+        for ce_filter, distilled in (('all', [True] * 4), ('agree', [True, True, False, True])):
+            with self.subTest(ce_filter=ce_filter):
+                rollout, batch, _, _ = scored(ams=AMS_DISAGREE, ce_filter=ce_filter)
+                teachers = [n for n in batch.nodes if n.teacher]  # tA, tB, tA1, tA2
+                self.assertEqual([n.distill for n in teachers], distilled)
+                c = .3
+                rows = rollout.build_teacher_tree_rows(batch, c, .7)
+                self.assertAlmostEqual(float(rows['ce_weight'].sum()), c * 2, places=5)  # mean over distilled
+                b = row_by_tokens(rows, [1, 7, 9, 9, 9, 4, 6, 20, 2])
+                torch.testing.assert_close(b['ce_weight'][-2:], torch.tensor([c * 2 / (sum(distilled) * 2)] * 2))
+                a1 = batch.nodes[4]
+                ids, ce = rows['input_ids'], rows['ce_weight']
+                tA1 = [float(ce[i, j]) for i in range(len(ids)) for j in range(ids.shape[1] - 1)
+                       if ids[i, j] == 10 and ids[i, j + 1] == 4 and rows['pos_kind'][i, j] == KIND_IMG]
+                self.assertTrue(tA1)  # A1's row continues with its teacher reflection
+                if ce_filter == 'agree':
+                    for i in range(len(ids)):
+                        n = int(rows['attention_mask'][i].sum())
+                        if ids[i, :n].tolist()[-2:] == [20, 2] and 10 in ids[i, :n].tolist():
+                            self.assertEqual(rows['ce_weight'][i, n - 2:n].tolist(), [0.0, 0.0])
+                            self.assertEqual(rows['weight'][i, n - 2:n].tolist(), [0.0, 0.0])
+                s = trainer.finalize_teacher_tree_stats(trainer.teacher_tree_stats(batch, 'x/'), 'x/')
+                self.assertAlmostEqual(s['x/teacher_distill_rate'], sum(distilled) / 4)
+                self.assertAlmostEqual(s['x/teacher_distilled_looks_good_share'],
+                                       (1 + distilled[2]) / sum(distilled))
+                self.assertAlmostEqual(s['x/teacher_verdict_accuracy'], .75)
+        with self.assertRaises(ValueError):
+            scored(ce_filter='typo')
+
     def test_teacher_cross_entropy_gradient_is_exact(self):
-        """SGD step difference between teacher_ce_coef c and 0 = -lr * c * grad(mean teacher NLL).
-        The PG/KL terms (images and shadows) are identical in both runs and cancel."""
-        for reset in (False, True):
-            with self.subTest(reset=reset):
-                rollout, batch, _, _ = scored(reset)
+        """SGD step difference between teacher_ce_coef c and 0 = -lr * c * grad(mean NLL of the
+        distilled teacher reflections). The PG/KL terms are identical in both runs and cancel."""
+        for reset, ams, ce_filter in ((False, AMS, 'all'), (True, AMS, 'all'), (True, AMS_DISAGREE, 'agree')):
+            with self.subTest(reset=reset, ce_filter=ce_filter):
+                rollout, batch, _, _ = scored(reset, ams=ams, ce_filter=ce_filter)
                 lr, c = .2, .5
                 params = []
                 metrics = {}
@@ -359,8 +426,9 @@ class TeacherRowTests(unittest.TestCase):
                     train[0, len(node.context):] = True
                     kinds = torch.where(train, torch.tensor(KIND_TXT), torch.tensor(KIND_NONE))
                     logp = masked_token_logprobs(model, ids, torch.ones_like(ids), train, kinds, 8, 16)
-                    nll.append(-logp.mean())
-                    nll_sum += float(-logp.sum())
+                    if node.distill:
+                        nll.append(-logp.mean())
+                    nll_sum += float(-logp.sum())  # teacher_nll covers every teacher token
                     tokens += len(node.actions)
                 loss = torch.stack(nll).mean()
                 loss.backward()
@@ -463,11 +531,14 @@ for line in sys.stdin:
                     '--output_dir', 'unused', '--objective', 'teacher_tree', '--num_rollouts', '8']
         with patch('sys.argv', required + ['--tree_branch', '1x2']):
             args = trainer.parse_args()
-            self.assertEqual((args.tree_branch, args.shadow_reflections, args.teacher_ce_coef, args.shadow_coef),
-                             ([[1, 2]], 1, .1, 1.0))
+            self.assertEqual((args.tree_branch, args.shadow_reflections, args.teacher_ce_coef, args.shadow_coef,
+                              args.teacher_ce_filter), ([[1, 2]], 1, .1, 1.0, 'all'))
+        with patch('sys.argv', required + ['--teacher_ce_filter', 'agree']):
+            self.assertEqual(trainer.parse_args().teacher_ce_filter, 'agree')
         for extra in (['--tree_branch', '2'], ['--verdict_target', 'soft_am'], ['--max_refinements', '0'],
                       ['--text_policy_gradient', 'transitions'], ['--shadow_reflections', '-1'],
-                      ['--teacher_ce_coef', 'nan'], ['--length_normalization', 'constant']):
+                      ['--teacher_ce_coef', 'nan'], ['--length_normalization', 'constant'],
+                      ['--teacher_ce_filter', 'some']):
             with self.subTest(extra=extra), patch('sys.argv', required + extra), \
                     patch('sys.stderr'), self.assertRaises(SystemExit):
                 trainer.parse_args()
@@ -477,7 +548,7 @@ for line in sys.stdin:
             args = policy_args(output_dir=directory, save_total_limit=3, max_seq_len=64, objective='teacher_tree',
                                tree_branch=[[1, 2]], reset_context_per_turn=True, verdict_rule='correction',
                                verdict_target='all_pass', verdict_pass_threshold=.5, shadow_reflections=1,
-                               shadow_coef=1.0, teacher_ce_coef=.1, teacher_max_tokens=96,
+                               shadow_coef=1.0, teacher_ce_coef=.1, teacher_max_tokens=96, teacher_ce_filter='agree',
                                reward_model_name_or_path='/x/Qwen3-VL-8B-Instruct/')
             method = trainer.rl_method_settings(args)
             self.assertEqual({k: method[k] for k in ('objective', 'teacher_model', 'teacher_prompt_version',
@@ -492,15 +563,24 @@ for line in sys.stdin:
             ck = Path(directory) / 'checkpoint-1'
             self.assertEqual(trainer.validate_resume_checkpoint(ck, args)['rl_method'], method)
             for key, value in (('teacher_ce_coef', .2), ('shadow_reflections', 2), ('objective', 'final_episode'),
-                               ('tree_branch', [[1, 3]])):
+                               ('tree_branch', [[1, 3]]), ('teacher_ce_filter', 'all')):
                 changed = copy.copy(args)
                 setattr(changed, key, value)
                 with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'RL method settings differ'):
                     trainer.validate_resume_checkpoint(ck, changed)
+            # A teacher_tree checkpoint written before the filter existed distilled everything: 'all' only.
+            legacy = dict(method)
+            legacy.pop('teacher_ce_filter')
+            (ck / 'state.json').write_text(json.dumps({'step': 1, 'objective': trainer.RL_OBJECTIVE,
+                                                       'rl_method': legacy}))
+            with self.assertRaisesRegex(ValueError, 'RL method settings differ'):
+                trainer.validate_resume_checkpoint(ck, args)
+            legacy_args = SimpleNamespace(**dict(vars(args), teacher_ce_filter='all'))
+            self.assertEqual(trainer.validate_resume_checkpoint(ck, legacy_args)['step'], 1)
             # A Janus checkpoint written before the teacher keys still resumes as Janus, never as teacher_tree.
             janus = dict(method, objective='janus_one_iteration', tree_branch=[], reset_context_per_turn=False)
             for key in ('shadow_reflections', 'shadow_coef', 'teacher_ce_coef', 'teacher_max_tokens',
-                        'teacher_prompt_version', 'teacher_model'):
+                        'teacher_prompt_version', 'teacher_model', 'teacher_ce_filter'):
                 janus.pop(key)
             (ck / 'state.json').write_text(json.dumps({'step': 1, 'objective': trainer.RL_OBJECTIVE,
                                                        'rl_method': janus}))

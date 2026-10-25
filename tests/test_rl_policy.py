@@ -203,7 +203,8 @@ class RLPolicyTests(unittest.TestCase):
             model.generation_config = GenerationConfig(
                 do_sample=True, top_k=1, top_p=0.1, temperature=0.3,
                 repetition_penalty=2.0, no_repeat_ngram_size=1,
-                suppress_tokens=[8, 4] if hostile else None,
+                # Transformers 5 rejects forcing a suppressed token, so 8 is only forced.
+                suppress_tokens=[4] if hostile else None,
                 min_p=0.9 if hostile else None,
                 forced_eos_token_id=8 if hostile else None,
                 eos_token_id=8 if hostile else 2, pad_token_id=0)

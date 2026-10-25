@@ -12,7 +12,28 @@ DATA_PATH="${DATA_PATH:-scripts/rl_ft/data.yaml}"
 VAL_DATA_PATH="${VAL_DATA_PATH:-scripts/rl_ft/val.yaml}"
 
 # ===================== Config params ========================
-N_GPUS=${N_GPUS:-${SLURM_GPUS_ON_NODE:-4}}
+# torchrun: one node, N_GPUS local ranks. srun: one task per GPU on any nodes
+# (sbatch --gpus=N --ntasks=N --gpus-per-task=1), see scripts/clusters/srun_ddp.sh.
+LAUNCHER="${LAUNCHER:-torchrun}"
+case "$LAUNCHER" in
+    torchrun) N_GPUS=${N_GPUS:-${SLURM_GPUS_ON_NODE:-4}}
+              LAUNCH=(torchrun --standalone --nproc_per_node="$N_GPUS") ;;
+    srun) N_GPUS="${SLURM_NTASKS:?LAUNCHER=srun needs an allocation with one task per GPU}"
+          LAUNCH=(srun --kill-on-bad-exit=1 bash "$REPO_ROOT/scripts/clusters/srun_ddp.sh" python) ;;
+    *) echo 'LAUNCHER must be torchrun or srun.' >&2; exit 1 ;;
+esac
+# Short jobs: JOB_DEADLINE=1 stops before an update that would not finish (plus its
+# validation and save) before the Slurm end time; RESUME_SAVE_STEPS=N saves resume
+# checkpoints outside the milestone rotation.
+JOB_DEADLINE="${JOB_DEADLINE:-0}"
+JOB_END_UNIX=0
+if [[ "$JOB_DEADLINE" == 1 ]]; then
+    end="${SLURM_JOB_END_TIME:-}"
+    [[ -n "$end" ]] || end="$(date -d "$(squeue -h -j "${SLURM_JOB_ID:?JOB_DEADLINE=1 needs a Slurm job}" -o %e)" +%s)"
+    [[ "$end" =~ ^[0-9]+$ ]] || { echo "Could not read the job end time: $end" >&2; exit 1; }
+    JOB_END_UNIX="$end"
+fi
+RESUME_SAVE_STEPS="${RESUME_SAVE_STEPS:-0}"
 
 PREV_STAGE_CHECKPOINT="${PREV_STAGE_CHECKPOINT:-$SFT_MODEL}"
 
@@ -50,7 +71,9 @@ TEXT_POLICY_GRADIENT="${TEXT_POLICY_GRADIENT:-all}"  # all | transitions (prose:
 # final_episode | janus_one_iteration (one refinement; draft / verdict / final rewards;
 # requires MAX_REFINEMENTS=1; ADV_NORM=std matches Janus-Pro-R1) | teacher_tree
 # (judge-model reflections drive a tree of policy images, e.g. TREE_BRANCH=1x2;
-# teacher tokens distilled, shadow reflections rewarded for verdict correctness).
+# teacher tokens distilled, shadow reflections rewarded for verdict correctness) |
+# janus_multi_iteration (own reflections, up to MAX_REFINEMENTS rounds; final AM on
+# images, verdict correctness on reflections).
 OBJECTIVE="${OBJECTIVE:-final_episode}"
 VERDICT_RULE="${VERDICT_RULE:-correction}"   # correction | anywhere ("looks good" location)
 ADV_STD_FLOOR="${ADV_STD_FLOOR:-0}"
@@ -59,6 +82,7 @@ VERDICT_PASS_THRESHOLD="${VERDICT_PASS_THRESHOLD:-0.5}"
 SHADOW_REFLECTIONS="${SHADOW_REFLECTIONS:-1}"   # teacher_tree: policy reflections per image (not continued)
 SHADOW_COEF="${SHADOW_COEF:-1.0}"               # teacher_tree: mean shadow-reflection loss weight
 TEACHER_CE_COEF="${TEACHER_CE_COEF:-0.1}"       # teacher_tree: mean teacher-reflection NLL weight
+TEACHER_CE_FILTER="${TEACHER_CE_FILTER:-all}"   # teacher_tree: all | agree (distill only verdicts = judge all_pass)
 TEACHER_MAX_TOKENS="${TEACHER_MAX_TOKENS:-96}"  # teacher_tree: teacher reply cap (judge tokens)
 TEACHER_BATCH_SIZE="${TEACHER_BATCH_SIZE:-16}"  # teacher_tree: images per teacher generate call
 RENDER_BATCH_SIZE="${RENDER_BATCH_SIZE:-1}"           # images per renderer call
@@ -97,7 +121,7 @@ ENCODER="$VISION_MODEL"
 tar_require_paths "$PREV_STAGE_CHECKPOINT/config.json" "$DATA_PATH" "$VAL_DATA_PATH"
 tar_require_paths "$REWARD_MODEL_PATH/config.json" "$REWARD_PYTHON" "$AR_MODEL" "$ENCODER" "$DECODER"
 
-tar_launch torchrun --standalone --nproc_per_node=${N_GPUS} \
+tar_launch "${LAUNCH[@]}" \
     llava/train/rl/train_grpo.py \
     --model_name_or_path "$PREV_STAGE_CHECKPOINT" \
     --attn_implementation flash_attention_2 \
@@ -137,6 +161,7 @@ tar_launch torchrun --standalone --nproc_per_node=${N_GPUS} \
     --shadow_reflections "${SHADOW_REFLECTIONS}" \
     --shadow_coef "${SHADOW_COEF}" \
     --teacher_ce_coef "${TEACHER_CE_COEF}" \
+    --teacher_ce_filter "${TEACHER_CE_FILTER}" \
     --teacher_max_tokens "${TEACHER_MAX_TOKENS}" \
     --teacher_batch_size "${TEACHER_BATCH_SIZE}" \
     --render_batch_size "${RENDER_BATCH_SIZE}" \
@@ -163,4 +188,6 @@ tar_launch torchrun --standalone --nproc_per_node=${N_GPUS} \
     --encoder_path "${ENCODER}" \
     --decoder_path "${DECODER}" \
     --cfg_scale 4.0 \
+    --job_end_unix "${JOB_END_UNIX}" \
+    --resume_save_steps "${RESUME_SAVE_STEPS}" \
     "$@"
