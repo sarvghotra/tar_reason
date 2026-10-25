@@ -113,7 +113,7 @@ case $GEN_FAMILY in
     DIFF_MODEL=${DIFF_MODEL:?set DIFF_MODEL=flux1-dev | sd35-large | qwen-image}
     case $DIFF_MODEL in flux1-dev|sd35-large) DIFF_RES=${DIFF_RES:-1024} ;; qwen-image) DIFF_RES=${DIFF_RES:-1328} ;;
       *) echo "DIFF_MODEL must be flux1-dev, sd35-large or qwen-image (got '$DIFF_MODEL')"; exit 1 ;; esac
-    N_ITERS=${N_ITERS:-2} ;;   # every iteration = the same single-pass image (2: known to work with all scorers)
+    N_ITERS=2 ;;   # every iteration = the same single-pass image (forced: N_ITERS already defaults to 5 above)
   *) echo "GEN_FAMILY must be tar, janus or diffusers (got '$GEN_FAMILY')"; exit 1 ;;
 esac
 case $BENCH in
