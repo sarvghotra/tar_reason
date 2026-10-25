@@ -123,6 +123,10 @@ from the repo and checks their line numbers); republish `tools/walkthrough/out/t
   still had errors. Use `val/am_upto_d` / `val/allpass_upto_d` (every prompt, its image after d rounds or its last
   image if it ended earlier; added 2026-10-13), plus `am_0` / `am_final` and the paired `delta_am_k`. With one
   refinement round (`1,1`) `val/am_1` = `val/am_final` (every draft gets a round-1 node); `val_oracle/am_1` does not.
+  **Never compare `val/delta_am_k` with `val_oracle/delta_am_k`** (nor `improved_k` / `degraded_k`; jeet, 2026-10-24): each is the
+  mean of (node − parent) over that mode's round-k nodes, and the oracle writes no critique for drafts that already pass everything, so
+  its delta is averaged over imperfect drafts only and is inflated by construction. Compare own vs oracle with whole-val-set
+  quantities only: `am_final − am_0`, `am_upto_d − am_upto_0`, `allpass_upto_d` (jeet is adding `delta_am_final` to both prefixes).
 - Trajectories: each validation logs the first `--log_images` (8) val prompts as draft|refined strips with the
   critique in the caption; the same prompts every time. Training rollouts are not saved.
 - Gallery of those strips (no GPU, seconds): from `tar_reason/`, run
