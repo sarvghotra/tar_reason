@@ -87,8 +87,8 @@ GROUP=parent
 ADV_NORM=std
 ADV_STD_FLOOR=0.04
 
-CRITIQUE_SOURCE=hybrid
-HYBRID_ORACLE_FRAC=0.5
+CRITIQUE_SOURCE=${CRITIQUE_SOURCE:-hybrid}   # oracle = refiner only (critique never sampled, so the critic is not trained)
+HYBRID_ORACLE_FRAC=${HYBRID_ORACLE_FRAC:-0.5}
 ORACLE_FAIL_THRESHOLD=0.5
 
 BREAK_WEIGHT=2.0
