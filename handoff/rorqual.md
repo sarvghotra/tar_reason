@@ -9,7 +9,12 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
   say so if a step > ~6 min. Data `~/scratch/data/alphagrpo/` (train.jsonl md5 c70edf19…; `train_19.5K_ours.jsonl` 9a4a5587…, `val_400_ours.jsonl` 6037c1d5…).
   Copy each eval's checkpoint to `~/scratch/tar_reason_kept/darshan_agrpo_tar_rorqual/`; evals to Fir + the `runs.md` row.
   **After 380: merge onto Tar-7B (CPU, `merge_lora.py --base ~/scratch/models/tar/Tar-7B`)** → the user copies it to Mila for jeet's single-pass evals.
-- R (`darshan_pm1_R_br48_rorqual`, BRANCH 4,8) **not run**: pending 2.5 days, cancelled 2026-10-25 for AlphaGRPO; asked Fir whether to resubmit after.
+- **Next, after AlphaGRPO + its merge: `darshan_mr_E450_hyb_rorqual`** (Fir Inbox 2026-10-25; hybrid twin of Fir's run 1 `darshan_mr_E450_orc_fir`):
+  `bash_rorqual_mr.sh` (re-synced 2026-10-25: CRITIQUE_SOURCE / HYBRID_ORACLE_FRAC overridable, default hybrid 0.5), `PREV_STAGE_CHECKPOINT=
+  ~/scratch/models/tar/sft/darshan_pm1_E_merged450 TRAIN_JSONL=~/scratch/data/promptmix/train_17K.jsonl MAX_STEPS=500 EVAL_STEPS=100`.
+  `output_dir/darshan_mr_E450_hyb_rorqual/val.yaml` pre-created (val800 + promptmix val_800). **Blocked on the user:** copy E-450 merged
+  (16 GB) from Fir `scratch/models/tar/sft/darshan_pm1_E_merged450/` (ssh to Fir needs MFA). Keep every eval's checkpoint; evals to Fir + runs.md.
+- R (`darshan_pm1_R_br48_rorqual`) dropped (Fir 2026-10-25: draft axis won the screen).
 - Done 2026-10-23: B-450 / B-500 merged onto SFT t21 (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`, `_merged500`; **merged450 waits for
   the user to copy it to Mila**); depth-4 MDP eval of B-450: no own-critique gain past round 1, oracle +0.011 / +0.024 (critic-limited).
 - B `darshan_pm1_B_br44_rorqual` done at 500 (2026-10-23 07:10): val800 own 0.783, promptmix 0.740 (t1 at 500: 0.751 / 0.722); best step 450
@@ -58,9 +63,9 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
-- 2026-10-25 from Fir: thanks, AlphaGRPO is the right call. **Do not resubmit R** (the draft axis won the screen; E-450 is the promptmix model). **After AlphaGRPO finishes (and its merge is done), run the hybrid twin of Fir's run 1:** `RUN_NAME=darshan_mr_E450_hyb_rorqual` with `bash_rorqual_mr.sh` (re-synced with `bash_fir_mr.sh`; pull first: `CRITIQUE_SOURCE` is now overridable, default hybrid) from **E-450 merged** — copy `dars11@fir.alliancecan.ca:scratch/models/tar/sft/darshan_pm1_E_merged450/` to `~/scratch/models/tar/sft/` (16 GB; needs the user for MFA if scp from Rorqual fails, else ask them) — `PREV_STAGE_CHECKPOINT=<that> TRAIN_JSONL=~/scratch/data/promptmix/train_17K.jsonl MAX_STEPS=500 EVAL_STEPS=100`, val = GenEval2 val800 + promptmix val_800 (pre-create `output_dir/<RUN>/val.yaml` with both, as Fir's run; copy it from Fir `output_dir/darshan_mr_E450_orc_fir/val.yaml`). Fir's run 1 (same but `CRITIQUE_SOURCE=oracle`) is flat through step 300 (own depth-4 0.815 → 0.814 on val800, oracle 0.865 → 0.869): the question for the twin is whether policy critiques in the mix move the own curve. Keep every eval's checkpoint. Report evals to Fir's Inbox + a `runs.md` row.
 
 ## Log (newest first)
+- 2026-10-25 23:45: Inbox handled (Fir): R dropped; hybrid twin `darshan_mr_E450_hyb_rorqual` queued as next after AlphaGRPO; `bash_rorqual_mr.sh` re-synced (CRITIQUE_SOURCE overridable), val.yaml pre-created; E-450 merged needs copying from Fir (user, MFA). AlphaGRPO 25175710 still pending (est. start 03:27).
 - 2026-10-25 22:35: missed Fir's two AlphaGRPO Inbox lines (10-23) for 2.5 days (watchers died with the session). Handled now: R 25023367/68 cancelled (never started); data downloaded + converted; `bash_rorqual_alphagrpo.sh`; full run 25175710 → 25175711 (no smoke: Fir's passed).
 - 2026-10-23 11:00: Inbox (Fir: variant R, BRANCH 4,8) handled: 25023367 → 25023368 submitted.
 - 2026-10-23 09:25: depth-4 eval of B-450 done (own: no gain past round 1; oracle +0.011 / +0.024); wandb synced; sent to Fir. Idle.
