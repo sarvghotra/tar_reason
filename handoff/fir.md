@@ -61,6 +61,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-25 22:40 EDT from TamIA: **promptmix C (KL 0.01) done**, 200 steps. Draft → final, val800 / promptmix val_400: step 50 0.699 → 0.706 / 0.636 → 0.642; 100 0.698 → 0.712 / 0.672 → 0.679; **150 0.738 → 0.748 / 0.696 → 0.698** (best of A/B/C/D at 150, below E 0.755 / 0.716); **200 0.640 → 0.698 / 0.699 → 0.717**. KL runs away after 150 (train KL mean 0.27 over 151–175, **0.81 over 176–200**, max 1.6; grad up to 0.74) and the val800 draft collapses at 200. So KL 0.01 learns fastest early but is unstable; not usable for 500 steps as is. Checkpoint-200 kept; wandb `darshan_pm1_C_kl01_tamia` synced. TamIA is idle (launcher `bash_tamia_promptmix.sh` ready).
 (empty)
 
 ## Log (newest first)

@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-23 13:50 EDT)
+## Now (2026-10-25 22:40 EDT)
 - **F-full done** (`darshan_mr_full_tamia`, 300 steps; 621220 COMPLETED 2026-10-20 23:59). Step-300 full-history eval: own
   am_upto 0.789/0.840/0.839/0.840/**0.833**, oracle **0.897** (step 0: 0.796 / 0.863; F-mdp step 300: 0.848 / 0.896): training
   mostly removed the full-history handicap. Checkpoints 50/100/200/250/300 kept in `$SCRATCH/tar_reason_kept/darshan_mr_full_tamia/`;
@@ -10,15 +10,12 @@ Owned by the TamIA session.
 - **F-full mdp eval of checkpoint-300 done** (`fullF300_mdp_eval_tamia`, 636248, 1 h 28 min): own am_upto
   0.783/0.836/0.839/0.846/**0.847**, oracle **0.898** = F-mdp-300 (0.848 / 0.896). The full-history-trained model is as good under
   mdp as the mdp-trained one, and nearly as good under full history (0.833). `tar_reason_t11` is free to rebase now.
-- **Task C of the single-round promptmix screen (Fir Inbox 2026-10-21): `darshan_pm1_C_kl01_tamia` = jeet's t1 recipe from SFT
-  t21 with `KL_COEF=0.01`**, 200 steps, evals every 50, 4 nodes. New worktree **`/scratch/d/dars11/git/tar_reason_pm`** (latest
-  code, `b5ea15e`+) with the new launcher `scripts/rl_ft/bash_tamia_promptmix.sh` (port of `bash_fir_promptmix.sh`: account,
-  12 h jobs, paths, STAGE_LOCAL off; trainer settings identical). Data checked: `$SCRATCH/data/promptmix/train_17K.jsonl` (md5
-  5a7d8259) + `val_400.jsonl` (= first 400 rows of val_800), 0 overlap with either val set (no new copy needed).
-  **Smoke `pm_smoke_tamia` passed** (636249, 19 min: judge 40 s, both val sets, steps 1–2 at ~1.3 min/step on 1 node,
-  checkpoint-2, val_dump, `Done.`; DATASET_SEED from RUN_NAME). **C submitted 2026-10-23 13:45: jobs 639316 → 639317** (4 nodes
-  × 12 h, `afterany`): `KL_COEF=0.01 MAX_STEPS=200 EVAL_STEPS=50 RUN_NAME=darshan_pm1_C_kl01_tamia … bash_tamia_promptmix.sh`. Report every eval (val + val_promptmix: am_0, am_final, oracle, fix/brk/looks_good) to Fir's Inbox and the
-  `runs.md` row; decision at step 200 (rule in `fir.md` Now). Fir runs A, Rorqual B.
+- **Promptmix screen C (KL 0.01) done** (`darshan_pm1_C_kl01_tamia`, 639316, 200 steps in one 5 h 47 min job; spare 639317
+  cancelled; wandb synced; checkpoint-200 kept in `$SCRATCH/tar_reason_kept/darshan_pm1_C_kl01_tamia/`). Best single-round variant
+  at step 150 apart from E (val800 0.748, promptmix 0.698), then KL ran away (mean 0.81 over 176–200, max 1.6) and the val800 draft
+  collapsed (0.738 → 0.640 at 200; final 0.698); promptmix final 0.717. Details in `runs.md`, summary in Fir's Inbox.
+  Worktree `tar_reason_pm` (launcher `bash_tamia_promptmix.sh`) is ready for further promptmix runs.
+- **No jobs running or queued on TamIA.**
 - G stopped at ~433 (last eval step 400: own 0.757, oracle 0.791); promptmix t1 full-history eval done (collapse at depth 3–4);
   earlier tasks: see Log and `runs.md`. Mila asked for G's checkpoints (copy needs the user).
 - Notes are edited in the main checkout `tar_reason/`. Watcher: background `wait_event.sh` on C + Inbox (restarted 2026-10-23 13:50; the earlier one stopped on a job's first PENDING line, now ignored).
@@ -47,6 +44,7 @@ Owned by the TamIA session.
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-25 22:40: promptmix C done (639316 COMPLETED 10-25 14:28; KL runaway after 150, val800 draft collapse at 200); spare 639317 cancelled; checkpoint-200 kept (50–150 pruned: the watcher died with the session); wandb synced; reported to `runs.md` + Fir.
 - 2026-10-23 13:55: Fir Inbox (status check; B won the screen, E ahead of B per step, C still wanted for the KL axis) answered by the 13:50 note in Fir's Inbox.
 - 2026-10-23 13:45: smoke 636249 passed; F-full mdp eval 636248 done (own 0.847, oracle 0.898 = F-mdp); promptmix C submitted (639316 → 639317). Both jobs had finished on 10-22 unreported: the watcher had exited on the first PENDING line.
 - 2026-10-22 02:50: F-full done (step-300 own 0.833, oracle 0.897; checkpoint-300 kept; wandb synced); its mdp eval submitted (636248, old worktree). Fir Inbox (single-round promptmix screen, variant C) handled: new worktree `tar_reason_pm`, launcher `bash_tamia_promptmix.sh` (`b5ea15e`), data verified, smoke 636249 submitted.
