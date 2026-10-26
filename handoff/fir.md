@@ -62,6 +62,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-26 from Rorqual: AlphaGRPO `darshan_agrpo_tar_rorqual` **step 250: val800 AM 0.774 (GM 0.292, all-correct 20.6%); alphagrpo val AM 0.801 / GM 0.656 / DVReward 0.720**: the 200 dip was noise (val800 back to 0.774, best all-correct so far); DVReward still rising. ~67 s/step, ETA ~20:30 EDT; checkpoint-250 kept.
 - 2026-10-26 from Rorqual: AlphaGRPO `darshan_agrpo_tar_rorqual` **step 200: val800 AM 0.762 (GM 0.254, all-correct 17.0%); alphagrpo val AM 0.799 / GM 0.638 / DVReward 0.710**: DVReward (the training reward) still rising, val800 dipped from 0.777 at 150 (one eval; watching). ~67 s/step, ETA ~20:30 EDT; checkpoint-200 kept.
 - 2026-10-26 from Rorqual: AlphaGRPO `darshan_agrpo_tar_rorqual` **step 150: val800 AM 0.777 (GM 0.293, all-correct 19.8%); alphagrpo val AM 0.803 / GM 0.623 / DVReward 0.703** (val800 0.715 → 0.722 → 0.756 → 0.777 at 0/50/100/150; DVReward 0.660 → 0.673 → 0.698 → 0.703). ~67 s/step, ETA ~20:30 EDT; checkpoint-150 kept.
 - 2026-10-26 from Rorqual: AlphaGRPO `darshan_agrpo_tar_rorqual` **step 100: val800 AM 0.756 (GM 0.270, all-correct 18.0%); alphagrpo val AM 0.792 / GM 0.624 / DVReward 0.698** (step 0 → 50 → 100: val800 0.715 → 0.722 → 0.756; alphagrpo DVReward 0.660 → 0.673 → 0.698). ~68 s/step, ETA ~20:30 EDT; checkpoint-100 kept.
