@@ -590,6 +590,12 @@ class LazyParquetDataset(IterableDataset):
         # process, before workers are forked, so a second epoch does not replay
         # the first one's random decisions.
         self._epoch = 0
+        # Set by the trainer at train start to the restored global_step (0 on
+        # a fresh run), see set_stream_offset(). A resume restarts the stream
+        # at epoch 0, and with --ignore_data_skip nothing moves it forward, so
+        # without this every resume re-read the rows the checkpoint had
+        # already trained on (job 281276: ~1000 steps of critic/text replay).
+        self._stream_offset = 0
         # When True, the stream is split across (rank, worker) pairs here and
         # the DataLoader must NOT additionally be wrapped by Accelerate's
         # IterableDatasetShard (see LLaVATrainer.get_train_dataloader). When
@@ -632,6 +638,24 @@ class LazyParquetDataset(IterableDataset):
         """Called by Accelerate's dataloader wrapper before each epoch."""
         self._epoch = int(epoch)
 
+    def set_stream_offset(self, step):
+        """Fold the restored global step into the worker seeds.
+
+        Called in the parent process before workers fork. A non-zero offset
+        gives every worker a new shard order, row-group order and mixture
+        draw, so a resumed run continues on rows the checkpoint has not seen
+        rather than replaying the head of the stream. Zero (a fresh run)
+        leaves the seeding byte-identical to before this hook existed.
+        """
+        self._stream_offset = int(step)
+
+    def _seed_parts(self):
+        """Seed components shared by every RNG this dataset derives."""
+        parts = [self.dataset_seed, self._epoch]
+        if self._stream_offset:
+            parts += ["resume", self._stream_offset]
+        return parts
+
     def make_worker_rng(self, worker_id):
         """Build the RNG a DataLoader worker should use for this epoch.
 
@@ -640,8 +664,8 @@ class LazyParquetDataset(IterableDataset):
         """
         if self.shard_by_rank:
             rank, _ = dist_rank_world()
-            return random.Random(derive_seed(self.dataset_seed, self._epoch, "rank", rank, worker_id))
-        return random.Random(derive_seed(self.dataset_seed, self._epoch, worker_id))
+            return random.Random(derive_seed(*self._seed_parts(), "rank", rank, worker_id))
+        return random.Random(derive_seed(*self._seed_parts(), worker_id))
 
     def _shard_slots(self):
         """(shard_id, num_shards) for this process/worker of the file list."""
@@ -838,12 +862,36 @@ class LazyParquetDataset(IterableDataset):
                 print(f"[dataset] skipping unreadable parquet shard {url}", flush=True)
         return good
 
-    def _iter_parquet_rows(self, file_path):
+    def _iter_parquet_rows(self, file_path, rng=None):
+        """Yield a shard's rows, row group by row group, in a random order.
+
+        Reading every shard from row 0 in storage order made the rows a job
+        sees a function of position only: after a resume (the stream restarts
+        at epoch 0) or under a new seed, every shard was re-read from the top,
+        so sets with <= interleave_shards files per worker (the critic and
+        GPT-edit sets, 2-3 files per slot at 80 slots) replayed the first ~1000
+        steps of rows exactly, regardless of how the file list was shuffled.
+        Drawing the row-group order (and the row order inside each 16-row
+        batch) from the worker RNG makes the start point and ordering depend on
+        the seed and epoch instead. Memory stays one Arrow batch per shard.
+
+        Without `rng` the storage order is kept (used by nothing in training;
+        the validation mixin overrides this method).
+        """
         parquet_file = pq.ParquetFile(file_path)
-        for batch in parquet_file.iter_batches(batch_size=self.parquet_batch_size):
-            table = batch.to_pandas()
-            for i in range(len(table)):
-                yield table.iloc[i].to_dict()
+        row_groups = list(range(parquet_file.num_row_groups))
+        if rng is not None:
+            rng.shuffle(row_groups)
+        for row_group in row_groups:
+            for batch in parquet_file.iter_batches(
+                batch_size=self.parquet_batch_size, row_groups=[row_group]
+            ):
+                table = batch.to_pandas()
+                order = list(range(len(table)))
+                if rng is not None:
+                    rng.shuffle(order)
+                for i in order:
+                    yield table.iloc[i].to_dict()
 
     def _interleave_parquet_rows(self, file_paths, rng):
         """Interleave rows from a bounded window of parquet shards.
@@ -859,7 +907,7 @@ class LazyParquetDataset(IterableDataset):
         pending_files = iter(file_paths)
         active = []
         for _ in range(min(self.interleave_shards, len(file_paths))):
-            active.append(self._iter_parquet_rows(next(pending_files)))
+            active.append(self._iter_parquet_rows(next(pending_files), rng=rng))
 
         while active:
             # Randomize shard order each round, but consume exactly one row from
@@ -874,7 +922,7 @@ class LazyParquetDataset(IterableDataset):
                         file_path = next(pending_files)
                     except StopIteration:
                         continue
-                    next_active.append(self._iter_parquet_rows(file_path))
+                    next_active.append(self._iter_parquet_rows(file_path, rng=rng))
                     continue
 
                 next_active.append(shard_rows)
@@ -1370,6 +1418,10 @@ class FiniteParquetDatasetMixin:
         # so it stays pinned to epoch 0 while training re-randomises.
         return
 
+    def set_stream_offset(self, step):
+        # Same reason: the resume offset must not move the validation rows.
+        return
+
     def _pick_conversation_variant(self, variant_keys, rng):
         # Same reason as the short-prompt pop below: validation must stay
         # byte-identical between evals, so it always takes the first variant.
@@ -1382,7 +1434,10 @@ class FiniteParquetDatasetMixin:
         sources.pop("conversations_short", None)
         return super().parse_item(sources, rng)
 
-    def _iter_parquet_rows(self, file_path):
+    def _iter_parquet_rows(self, file_path, rng=None):
+        # `rng` is accepted for signature parity with the training reader and
+        # ignored: validation rows are read in storage order so every eval
+        # sees the same rows in the same order.
         parquet_file = pq.ParquetFile(file_path)
         row_group_id = getattr(self, "_val_row_group_id", 0)
         row_group_count = getattr(self, "_val_row_group_count", 1)
@@ -1488,6 +1543,7 @@ class WeightedDataset(IterableDataset):
         # it ignores the run-level seed and keeps the historical seeding.
         self.is_eval = is_eval
         self._epoch = 0
+        self._stream_offset = 0
         with open(data_path, "r") as file:
             yaml_data = yaml.safe_load(file)
             datasets = yaml_data.get("datasets")
@@ -1534,6 +1590,13 @@ class WeightedDataset(IterableDataset):
             if hasattr(dataset, "set_epoch"):
                 dataset.set_epoch(epoch)
 
+    def set_stream_offset(self, step):
+        """Restored global step; see LazyParquetDataset.set_stream_offset."""
+        self._stream_offset = int(step)
+        for dataset in self.datasets:
+            if hasattr(dataset, "set_stream_offset"):
+                dataset.set_stream_offset(step)
+
     @property
     def shard_by_rank(self):
         return getattr(self, "_shard_by_rank", False)
@@ -1556,11 +1619,14 @@ class WeightedDataset(IterableDataset):
         worker_id = worker_info.id if worker_info else 0
         # Sub-datasets use derive_seed(self.dataset_seed, idx), so the raw
         # run seed used here cannot collide with any of them.
+        parts = [self.dataset_seed, self._epoch]
+        if self._stream_offset:
+            parts += ["resume", self._stream_offset]
         if self.shard_by_rank:
             rank, _ = dist_rank_world()
-            rng = random.Random(derive_seed(self.dataset_seed, self._epoch, "rank", rank, worker_id))
+            rng = random.Random(derive_seed(*parts, "rank", rank, worker_id))
         else:
-            rng = random.Random(derive_seed(self.dataset_seed, self._epoch, worker_id))
+            rng = random.Random(derive_seed(*parts, worker_id))
         iterators = [iter(dataset) for dataset in self.datasets]
         ratios = {it: r for r, it in zip(self.ratios, iterators)}
 

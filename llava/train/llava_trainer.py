@@ -6,7 +6,7 @@ import torch.nn as nn
 from accelerate import Accelerator
 from accelerate.utils import GradientAccumulationPlugin, InitProcessGroupKwargs
 from torch.utils.data import DataLoader, Dataset, Sampler
-from transformers import Trainer
+from transformers import Trainer, TrainerCallback
 from transformers.trainer import (
     ALL_LAYERNORM_LAYERS,
     get_parameter_names,
@@ -237,6 +237,20 @@ class LengthGroupedSampler(Sampler):
         return iter(indices)
 
 
+class _StreamOffsetCallback(TrainerCallback):
+    """Seed the streaming train dataset with the restored global step."""
+
+    def __init__(self, train_dataset):
+        self._train_dataset = train_dataset
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        step = int(state.global_step or 0)
+        self._train_dataset.set_stream_offset(step)
+        if step:
+            rank0_print(f"[dataset] resume at step {step}: re-seeding the train stream "
+                        f"so it does not replay rows the checkpoint already saw")
+
+
 class LLaVATrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
@@ -257,6 +271,15 @@ class LLaVATrainer(Trainer):
             t: 0.0 for t in self._eval_loss_type_names
         }
         self._collecting_eval_per_type_loss = False
+
+        # On resume, move the data stream instead of replaying its head. HF
+        # restores state.global_step from trainer_state.json before
+        # on_train_begin, and DataLoader workers fork only when iteration
+        # starts after it, so the offset set here reaches every worker.
+        # --ignore_data_skip is still what keeps HF from fast-forwarding
+        # through `global_step` batches; this makes the skip unnecessary.
+        if hasattr(self.train_dataset, "set_stream_offset"):
+            self.add_callback(_StreamOffsetCallback(self.train_dataset))
 
         # Optional in-loop generation eval (draft / critic / refine metrics with
         # the GenEval2 judge); see llava/train/gen_eval.py.
