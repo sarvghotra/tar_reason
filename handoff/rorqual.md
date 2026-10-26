@@ -5,11 +5,11 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Now (2026-10-25)
 - **AlphaGRPO baseline `darshan_agrpo_tar_rorqual`** (Fir Inbox 2026-10-23, user + jeet, paper baseline; priority over R): base Tar-7B, fresh LoRA,
   `scripts/rl_ft/bash_rorqual_alphagrpo.sh` (= `bash_fir_alphagrpo.sh`, names changed), 380 steps, evals every 50 (val800 AM + alphagrpo val_400, draft only).
-  **25175710 → 25175711** (afterany spare), submitted 2026-10-25 22:35, still pending 2026-10-26 11:40. **Rorqual power outage `POWEROUT20261027` 2026-10-27 05:00 → 11-03 04:00 (all nodes):** 25175710's limit cut 24 h → 12 h on 10-26 11:40 so it can start before then (it was blocked with ReqNodeNotAvail); if it doesn't finish, the spare resumes from the last checkpoint after 11-03. Fir's smoke passed (~65 s/step at 9 prompts; expect ~70–90 s/step at 36);
+  **25175710 → 25175711** (afterany spare), submitted 2026-10-25 22:35, still pending 2026-10-26 11:40. **Rorqual power outage `POWEROUT20261027` 2026-10-27 05:00 → 11-03 04:00 (all nodes):** 25175710's limit cut 24 h → 12 h on 10-26 11:40 so it can start before then (it was blocked with ReqNodeNotAvail); **Backups: Fir 566575 → 566577 and TamIA also run AlphaGRPO; whichever starts first keeps it.** If 25175710 starts before 10-27 05:00, tell Fir's Inbox (they cancel theirs); if not, cancel 25175710/11 at 05:00 (don't let it start after 11-03 on top of the others). Fir's smoke passed (~65 s/step at 9 prompts; expect ~70–90 s/step at 36);
   say so if a step > ~6 min. Data `~/scratch/data/alphagrpo/` (train.jsonl md5 c70edf19…; `train_19.5K_ours.jsonl` 9a4a5587…, `val_400_ours.jsonl` 6037c1d5…).
   Copy each eval's checkpoint to `~/scratch/tar_reason_kept/darshan_agrpo_tar_rorqual/`; evals to Fir + the `runs.md` row.
   **After 380: merge onto Tar-7B (CPU, `merge_lora.py --base ~/scratch/models/tar/Tar-7B`)** → the user copies it to Mila for jeet's single-pass evals.
-- **Next, after AlphaGRPO + its merge: `darshan_mr_E450_hyb_rorqual`** (Fir Inbox 2026-10-25; hybrid twin of Fir's run 1 `darshan_mr_E450_orc_fir`):
+- **Next, after 11-03 (lower priority since Fir's oracle-only run 1 was nearly flat): `darshan_mr_E450_hyb_rorqual`** (Fir Inbox 2026-10-25; hybrid twin of Fir's run 1 `darshan_mr_E450_orc_fir`):
   `bash_rorqual_mr.sh` (re-synced 2026-10-25: CRITIQUE_SOURCE / HYBRID_ORACLE_FRAC overridable, default hybrid 0.5), `PREV_STAGE_CHECKPOINT=
   ~/scratch/models/tar/sft/darshan_pm1_E_merged450 TRAIN_JSONL=~/scratch/data/promptmix/train_17K.jsonl MAX_STEPS=500 EVAL_STEPS=100`.
   `output_dir/darshan_mr_E450_hyb_rorqual/val.yaml` pre-created (val800 + promptmix val_800). **Blocked on the user:** copy E-450 merged
@@ -63,9 +63,9 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
-- 2026-10-26 from Fir (user): outage heads-up read. **AlphaGRPO on Tar is now also submitted on Fir (566575 → 566577) and requested on TamIA** as backups; whichever starts first keeps it. If 25175710 starts before the outage, run it and tell Fir in its Inbox (Fir/TamIA then cancel theirs); if it does not start by 10-27 05:00, cancel 25175710/11 when you are back so it does not start after 11-03 on top of the others. The hybrid twin `darshan_mr_E450_hyb_rorqual` stays queued for after 11-03 (lower priority now: Fir's run 1, the oracle-only version, was nearly flat: +0.003 / +0.015 own at depth 4; `runs.md`).
 
 ## Log (newest first)
+- 2026-10-26 11:50: Inbox handled (Fir/user): AlphaGRPO backups on Fir (566575) and TamIA; Rorqual keeps 25175710 only if it starts before the outage, else cancel at 10-27 05:00. Hybrid twin waits for after 11-03.
 - 2026-10-26 11:40: AlphaGRPO 25175710 still pending, blocked by the 10-27 → 11-03 power-outage reservation (24 h limit did not fit); limit cut to 12 h. E-450 merged not yet copied from Fir.
 - 2026-10-25 23:45: Inbox handled (Fir): R dropped; hybrid twin `darshan_mr_E450_hyb_rorqual` queued as next after AlphaGRPO; `bash_rorqual_mr.sh` re-synced (CRITIQUE_SOURCE overridable), val.yaml pre-created; E-450 merged needs copying from Fir (user, MFA). AlphaGRPO 25175710 still pending (est. start 03:27).
 - 2026-10-25 22:35: missed Fir's two AlphaGRPO Inbox lines (10-23) for 2.5 days (watchers died with the session). Handled now: R 25023367/68 cancelled (never started); data downloaded + converted; `bash_rorqual_alphagrpo.sh`; full run 25175710 → 25175711 (no smoke: Fir's passed).
