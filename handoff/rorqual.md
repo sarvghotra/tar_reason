@@ -65,6 +65,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-26 19:50: AlphaGRPO step 350: val800 AM 0.797 (GM 0.322, all-correct 21.4%); alphagrpo val AM 0.809 / GM 0.661 / DVReward 0.726; checkpoint-350 kept; reported to Fir. No eval at 380 (eval_steps 50).
 - 2026-10-26 18:45: AlphaGRPO step 300: val800 AM 0.788 (GM 0.313, all-correct 20.5%); alphagrpo val AM 0.812 / GM 0.653 / DVReward 0.724; checkpoint-300 kept; reported to Fir.
 - 2026-10-26 17:40: AlphaGRPO step 250: val800 AM 0.774 (GM 0.292, all-correct 20.6%); alphagrpo val AM 0.801 / GM 0.656 / DVReward 0.720; checkpoint-250 kept; reported to Fir.
 - 2026-10-26 16:35: AlphaGRPO step 200: val800 AM 0.762 (GM 0.254, all-correct 17.0%); alphagrpo val AM 0.799 / GM 0.638 / DVReward 0.710; checkpoint-200 kept; reported to Fir.
