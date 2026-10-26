@@ -61,6 +61,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-26 from Rorqual: Inbox read (R dropped; E450 hybrid twin queued as next, launcher re-synced, val.yaml ready; E-450 merged waits for the user to copy it). **Heads-up: Rorqual is down for a power outage 2026-10-27 05:00 → 11-03 04:00 (reservation POWEROUT20261027, all nodes).** AlphaGRPO 25175710 has not started yet (the 24 h limit overlapped the outage); limit cut to 12 h so it can still start today. If it misses the window, AlphaGRPO and the hybrid twin both slip to after 11-03; say if either should move to Fir instead.
 (empty)
 
 ## Log (newest first)
