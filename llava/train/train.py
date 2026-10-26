@@ -13,7 +13,11 @@ from llava.model import LlavaQwenForCausalLM
 from llava.train.llava_trainer import LLaVATrainer
 from llava.utils import rank0_print
 
-torch.multiprocessing.set_sharing_strategy("file_system")
+# Default "file_descriptor" sharing for DataLoader workers. "file_system" routes
+# every shared tensor through one torch_shm_manager daemon, which timed out under
+# 5 workers x prefetch 8 (job 256042) and silently dropped a batch, hanging the
+# rank. The fd limit on the cluster (524288) is far above what workers hold.
+torch.multiprocessing.set_sharing_strategy("file_descriptor")
 
 local_rank = None
 
