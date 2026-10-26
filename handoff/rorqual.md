@@ -2,11 +2,14 @@
 
 Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100 80GB per node (like Fir).
 
-## Now (2026-10-23)
-- **Variant R `darshan_pm1_R_br48_rorqual`** (Fir Inbox 2026-10-23): B's recipe with **BRANCH 4,8** (4 drafts × 8 refines; tests the refine axis,
-  E on Fir tested drafts 8,4), from SFT t21, `MAX_STEPS=200 EVAL_STEPS=50`, 4 nodes: **25023367 → 25023368** (afterany spare), submitted 11:00.
-  Expect ~1.6× B's rollout; if a step > ~5 min or memory is tight, resubmit with PROMPTS_PER_GPU=2. Copy each eval's checkpoint to
-  `~/scratch/tar_reason_kept/darshan_pm1_R_br48_rorqual/`; evals 0–200 to Fir + my `runs.md` row.
+## Now (2026-10-25)
+- **AlphaGRPO baseline `darshan_agrpo_tar_rorqual`** (Fir Inbox 2026-10-23, user + jeet, paper baseline; priority over R): base Tar-7B, fresh LoRA,
+  `scripts/rl_ft/bash_rorqual_alphagrpo.sh` (= `bash_fir_alphagrpo.sh`, names changed), 380 steps, evals every 50 (val800 AM + alphagrpo val_400, draft only).
+  **25175710 → 25175711** (afterany spare), submitted 2026-10-25 22:35. Fir's smoke passed (~65 s/step at 9 prompts; expect ~70–90 s/step at 36);
+  say so if a step > ~6 min. Data `~/scratch/data/alphagrpo/` (train.jsonl md5 c70edf19…; `train_19.5K_ours.jsonl` 9a4a5587…, `val_400_ours.jsonl` 6037c1d5…).
+  Copy each eval's checkpoint to `~/scratch/tar_reason_kept/darshan_agrpo_tar_rorqual/`; evals to Fir + the `runs.md` row.
+  **After 380: merge onto Tar-7B (CPU, `merge_lora.py --base ~/scratch/models/tar/Tar-7B`)** → the user copies it to Mila for jeet's single-pass evals.
+- R (`darshan_pm1_R_br48_rorqual`, BRANCH 4,8) **not run**: pending 2.5 days, cancelled 2026-10-25 for AlphaGRPO; asked Fir whether to resubmit after.
 - Done 2026-10-23: B-450 / B-500 merged onto SFT t21 (`~/scratch/models/tar/sft/darshan_pm1_B_merged450`, `_merged500`; **merged450 waits for
   the user to copy it to Mila**); depth-4 MDP eval of B-450: no own-critique gain past round 1, oracle +0.011 / +0.024 (critic-limited).
 - B `darshan_pm1_B_br44_rorqual` done at 500 (2026-10-23 07:10): val800 own 0.783, promptmix 0.740 (t1 at 500: 0.751 / 0.722); best step 450
@@ -55,10 +58,9 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
-- 2026-10-23 from Fir: **AlphaGRPO smoke passed on Fir** (67017374: 2 steps + evals, base Tar val800 draft AM 0.682, alphagrpo val AM 0.668 / quality mean 0.56 / reward 0.61; 1 node, 9 prompts/step: rollout 23 s, judge 31 s, train 11 s). You can skip your own smoke and submit the full run directly (`RUN_NAME=darshan_agrpo_tar_rorqual`, 4 nodes, + afterany spare). Expect ~70–90 s/step at 36 prompts/step (judge-bound).
-- 2026-10-23 from Fir (user + jeet, paper baseline; **after R, or instead of it if R has not started: this has priority**): **AlphaGRPO on base Tar-7B**, 380 steps, 4 nodes. (1) `git pull` (code `d07e3a0`: `--prompt_style plain`, `--reward_combine geomean`, `quality_list` rows). (2) Data: on a login node, `mkdir -p ~/scratch/data/alphagrpo && cd ~/scratch/data/alphagrpo && for f in train test; do curl -sL -o $f.jsonl https://media.githubusercontent.com/media/huangrh99/AlphaGRPO/main/alpha_grpo/dataset/alphagrpo20k/$f.jsonl; done` (144 MB + 7.6 MB; Fir's train.jsonl md5 starts c70edf19a8dd), then from the repo `python util_scripts/convert_alphagrpo.py ~/scratch/data/alphagrpo/train.jsonl ~/scratch/data/alphagrpo/train_19.5K_ours.jsonl` and `... test.jsonl val_400_ours.jsonl --limit 400` (19,500 rows, ~14 semantic + ~21 quality questions each). (3) Port `scripts/rl_ft/bash_fir_alphagrpo.sh` to `bash_rorqual_alphagrpo.sh` (paths/account as your other launchers; base = `models/tar/Tar-7B`). Smoke first (1 node, MAX_STEPS=2, EVAL_MAX_PROMPTS=24) unless Fir's smoke result is in your Inbox by then, then `RUN_NAME=darshan_agrpo_tar_rorqual` with an afterany spare; evals every 50 (val800 AM + alphagrpo val_400, draft only); copy each eval's checkpoint. Judge load is ~5× a promptmix step (14 images × 35 questions per prompt): if a step exceeds ~6 min, say so (we can drop PROMPTS_PER_GPU to 2). Report evals to Fir's Inbox + a `runs.md` row (placeholder row exists; make it yours). After 380: merge onto Tar-7B (CPU) → the user copies to Mila for jeet's single-pass evals.
 
 ## Log (newest first)
+- 2026-10-25 22:35: missed Fir's two AlphaGRPO Inbox lines (10-23) for 2.5 days (watchers died with the session). Handled now: R 25023367/68 cancelled (never started); data downloaded + converted; `bash_rorqual_alphagrpo.sh`; full run 25175710 → 25175711 (no smoke: Fir's passed).
 - 2026-10-23 11:00: Inbox (Fir: variant R, BRANCH 4,8) handled: 25023367 → 25023368 submitted.
 - 2026-10-23 09:25: depth-4 eval of B-450 done (own: no gain past round 1; oracle +0.011 / +0.024); wandb synced; sent to Fir. Idle.
 - 2026-10-23 07:52: merges of B-450 / B-500 onto SFT t21 done (`darshan_pm1_B_merged450`, `_merged500`); depth-4 eval 25011837 pending.
