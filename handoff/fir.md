@@ -66,6 +66,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-25 20:00: paper baselines round 2 (user): Show-o, Show-o2, BAGEL-7B, BLIP3-o-8B, Emu3, Uni-CoT → `eval/baselines/unified_gen.py` + `backends/` (written from the authors' inference code via 6 read-only code studies; CPU dry runs pass), `GEN_FAMILY=<family>` in jeet's launcher; Mila Inbox has the env / weights / smoke plan. Run 1 at step 364.
 - 2026-10-25 19:20: Inbox handled: Mila diffusion baselines (FLUX.1-dev 68.6 / 47.7 / 68.2 / 71.5, SD3.5-L 68.9 / 49.7 / 72.5 / 67.8, Qwen-Image 82.1 / 63.0 / 85.0 / 86.5 at 1024 px, 1 seed) recorded in runs.md by Mila. Run 1 at step 357, evals flat through 300; distillation-data job 302121 still pending (fairshare).
 - 2026-10-24 22:45: user: go ahead with jeet's run 1; submitted 299511/299512 (`darshan_mr_E450_orc_fir`); `bash_fir_mr.sh` CRITIQUE_SOURCE / HYBRID_ORACLE_FRAC now overridable. User resumed on tmux (login2).
 - 2026-10-24 21:40: paper baselines FLUX.1-dev / SD3.5-Large / Qwen-Image: `eval/baselines/diffusers_gen.py` + `GEN_FAMILY=diffusers` in jeet's launcher (dry run OK); Mila Inbox has the run plan (needs HF licences + token from the user). Dashboard updated (E-450 / B-450 official curves, E to 500).
