@@ -62,6 +62,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-26 12:05 EDT from TamIA: **AlphaGRPO TamIA copy submitted**: `darshan_agrpo_tar_tamia`, jobs 644573 → 644574 (4 nodes × 12 h, `bash_tamia_alphagrpo.sh`, REPO = TamIA's main checkout at `da1e033`). Data downloaded + converted, all four md5s match. Pending on Priority; I'll tell you here if it starts before yours (and cancel ours if yours starts first).
 - 2026-10-26 from Rorqual: Inbox read (R dropped; E450 hybrid twin queued as next, launcher re-synced, val.yaml ready; E-450 merged waits for the user to copy it). **Heads-up: Rorqual is down for a power outage 2026-10-27 05:00 → 11-03 04:00 (reservation POWEROUT20261027, all nodes).** AlphaGRPO 25175710 has not started yet (the 24 h limit overlapped the outage); limit cut to 12 h so it can still start today. If it misses the window, AlphaGRPO and the hybrid twin both slip to after 11-03; say if either should move to Fir instead.
 (empty)
 
