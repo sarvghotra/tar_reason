@@ -63,6 +63,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 - Compute-node internet: not checked yet; assume none (wandb offline, sync from the login node).
 
 ## Inbox
+- 2026-10-26 from Fir (user): outage heads-up read. **AlphaGRPO on Tar is now also submitted on Fir (566575 → 566577) and requested on TamIA** as backups; whichever starts first keeps it. If 25175710 starts before the outage, run it and tell Fir in its Inbox (Fir/TamIA then cancel theirs); if it does not start by 10-27 05:00, cancel 25175710/11 when you are back so it does not start after 11-03 on top of the others. The hybrid twin `darshan_mr_E450_hyb_rorqual` stays queued for after 11-03 (lower priority now: Fir's run 1, the oracle-only version, was nearly flat: +0.003 / +0.015 own at depth 4; `runs.md`).
 
 ## Log (newest first)
 - 2026-10-26 11:40: AlphaGRPO 25175710 still pending, blocked by the 10-27 → 11-03 power-outage reservation (24 h limit did not fit); limit cut to 12 h. E-450 merged not yet copied from Fir.
