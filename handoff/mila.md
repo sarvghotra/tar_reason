@@ -3,17 +3,16 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-26 00:30 EDT)
+## Now (2026-10-26 10:30 EDT)
 - **Unified-model baselines (Inbox, round 2 + AlphaGRPO)**. Setup in `$SCRATCH/baselines/` (clones, `build_envs.sh`, `dl.sh`, 1-GPU
   `smoke.sh`, smoke outputs in `smoke/`); envs `~/envs/{showo,showo2,bagel,blip3o,emu3,alphagrpo}` (+ `.freeze.txt`). Job ids in
-  `$SCRATCH/baselines/*_jobs.txt`. Smokes (8 GenEval2 prompts, 1 A100, s/image): Show-o 20 (512 px), Show-o2 21 (432), BLIP3-o 7 (1024),
-  BAGEL 37, **BAGEL + CoT (`--think`) 46**, AlphaGRPO rt2i 52, **srr 146 s/prompt** (plan, image, reflection, image), **Emu3 230**
-  (720 px, batch 4; jeet's estimate was ~60). All images checked. Backend fixes pushed (`cda14e5`, `c5f513e`).
-- Order (user): **BAGEL + CoT first** (`MODEL_NAME=bagel_7b_think`, 3 seeds × 3 benches, pending on `long`), then AlphaGRPO rt2i
-  (3 seeds) + srr (1 seed: GenEval2 2213 / GenAI 13 / TIIF 17), both `afterany` on BAGEL + CoT. Show-o: GenEval2 2213 done, 13 + GenAI ×3
-  running; GenEval2 713 + TIIF ×3 **held** (`scontrol hold`) so BAGEL + CoT gets nodes first: release with `scontrol release`.
-- Not yet submitted: Show-o2, BLIP3-o, BAGEL plain (smokes OK), Emu3 (1 seed; ~13 h GenEval2 / ~26 h GenAI on 4 GPUs: split per
-  bench), Uni-CoT (smoke pending).
+  `$SCRATCH/baselines/*_jobs.txt`. Smoke s/image (1 A100): Show-o 20, Show-o2 21, BLIP3-o 7, BAGEL 37, BAGEL + CoT 46, AlphaGRPO rt2i 52,
+  srr 146 s/prompt, Emu3 230 (batch 4).
+- **Done** (`runs.md`): Show-o, BAGEL + CoT (3 seeds each).
+- **Queued with `RESUME=1`** (resubmitted 10:30 after 7 preemptions on `long`; `30d3b79`): AlphaGRPO rt2i (3 seeds), srr (1 seed: GenEval2
+  2213 / GenAI 13 / TIIF 17), plain BAGEL (3 seeds). Partial copies in `$SCRATCH/tar_reason/results_jeet_partial/`.
+- Not yet submitted: Show-o2, BLIP3-o (smokes OK), Emu3 (1 seed, split per bench), Uni-CoT (smoke pending). Use `RESUME=1` for all.
+- Resume test (`results_resume_test*`, 1 GPU, forced requeue: 64/160 resumed): delete both folders once it finishes.
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -60,6 +59,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-26 10:30: RESUME=1 added and tested; AlphaGRPO + plain BAGEL jobs resubmitted with it. Show-o and BAGEL + CoT done.
 - 2026-10-26 00:55: shared `models/tar/sft/darshan_pm1_E_merged450` (E-450) read-only with jeet (`setfacl -R -m u:sarvjeet-singh.ghotra:rX`), same as F-800 / pm-500; revoke with `setfacl -R -x u:sarvjeet-singh.ghotra <dir>`.
 - 2026-10-26 00:30: unified-model baselines set up and smoke-tested (6 families + AlphaGRPO); BAGEL + CoT evals queued first (user).
 - 2026-10-25 11:30: diffusion baselines done (21 jobs); deleted that Inbox line; told Fir.
