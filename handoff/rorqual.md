@@ -65,6 +65,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-26 13:15: AlphaGRPO step 50: val800 AM 0.722 (GM 0.229, all-correct 14.9%); alphagrpo val AM 0.764 / GM 0.603 / DVReward 0.673; checkpoint-50 kept; reported to Fir.
 - 2026-10-26 12:10: AlphaGRPO step 0: val800 AM 0.715, alphagrpo val AM 0.749 / DVReward 0.660; ~68 s/step, ETA ~20:30. Reported to Fir.
 - 2026-10-26 11:55: AlphaGRPO 25175710 started 11:53 (right after the limit cut); Fir and TamIA Inboxes told to cancel their backups (566575/77, 644573/74).
 - 2026-10-26 11:50: Inbox handled (Fir/user): AlphaGRPO backups on Fir (566575) and TamIA; Rorqual keeps 25175710 only if it starts before the outage, else cancel at 10-27 05:00. Hybrid twin waits for after 11-03.
