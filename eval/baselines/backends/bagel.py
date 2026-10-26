@@ -89,7 +89,16 @@ def load_bagel(repo, weights_dir, device, ema_path=None, vit_transform_size=(980
     vit_transform = ImageTransform(*vit_transform_size)
     model = load_checkpoint_and_dispatch(model, checkpoint=ema_path or os.path.join(weights_dir, "ema.safetensors"),
                                          device_map={"": str(device)}, dtype=torch.bfloat16, force_hooks=True).eval()
-    vae_model = vae_model.to(device).eval()   # the notebook leaves the VAE on CPU (slow decode)
+    # The notebook leaves the VAE (fp32) on CPU; on the GPU its decode runs inside InterleaveInferencer's CUDA bf16
+    # autocast region and fails on dtypes, so decode in fp32 with autocast off (= the notebook's CPU decode). The
+    # inferencer hands over the latent on CPU: move it to the VAE's device.
+    vae_model = vae_model.to(device).eval()
+    _decode = vae_model.decode
+
+    def decode_fp32(z):
+        with torch.autocast("cuda", enabled=False):
+            return _decode(z.to(device=device, dtype=torch.float32))
+    vae_model.decode = decode_fp32
     inferencer = (InterleaveInferencer(model, vae_model, tokenizer, vae_transform, vit_transform, new_token_ids)
                   if InterleaveInferencer else None)
     return inferencer, model, vae_model, tokenizer, new_token_ids, vae_transform, vit_transform

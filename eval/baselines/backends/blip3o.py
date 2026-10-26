@@ -51,7 +51,7 @@ class Backend:
             from huggingface_hub import snapshot_download
             weights = snapshot_download(repo_id=args.model_path)
         disable_torch_init()
-        tokenizer, multi_model, _ = load_pretrained_model(weights, None, os.path.basename(weights))
+        tokenizer, multi_model, _ = load_pretrained_model(weights)   # as eval/geneval/generate.py (fp16, no quantization)
         self.pipe = DiffusionPipeline.from_pretrained(
             os.path.join(weights, "diffusion-decoder"), custom_pipeline="pipeline_llava_gen", torch_dtype=torch.bfloat16,
             use_safetensors=True, variant="bf16", multimodal_encoder=multi_model, tokenizer=tokenizer, safety_checker=None)
