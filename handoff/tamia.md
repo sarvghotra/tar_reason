@@ -2,7 +2,7 @@
 
 Owned by the TamIA session.
 
-## Now (2026-10-26 12:05 EDT)
+## Now (2026-10-26 12:10 EDT)
 - **F-full done** (`darshan_mr_full_tamia`, 300 steps; 621220 COMPLETED 2026-10-20 23:59). Step-300 full-history eval: own
   am_upto 0.789/0.840/0.839/0.840/**0.833**, oracle **0.897** (step 0: 0.796 / 0.863; F-mdp step 300: 0.848 / 0.896): training
   mostly removed the full-history handicap. Checkpoints 50/100/200/250/300 kept in `$SCRATCH/tar_reason_kept/darshan_mr_full_tamia/`;
@@ -15,15 +15,10 @@ Owned by the TamIA session.
   at step 150 apart from E (val800 0.748, promptmix 0.698), then KL ran away (mean 0.81 over 176–200, max 1.6) and the val800 draft
   collapsed (0.738 → 0.640 at 200; final 0.698); promptmix final 0.717. Details in `runs.md`, summary in Fir's Inbox.
   Worktree `tar_reason_pm` (launcher `bash_tamia_promptmix.sh`) is ready for further promptmix runs.
-- **AlphaGRPO on base Tar-7B (paper baseline, user via Fir 2026-10-26, high priority): `darshan_agrpo_tar_tamia`, jobs 644573 →
-  644574 (afterany spare)**, 4 nodes × 12 h, 380 steps, evals every 50. Launcher `scripts/rl_ft/bash_tamia_alphagrpo.sh` with
-  **REPO = the main checkout `tar_reason/`** (at `da1e033`): **don't pull code into `tar_reason/` while it is queued/running (rule 4);
-  edit notes in the worktree `tar_reason_pm`.** Data: `$SCRATCH/data/alphagrpo/` (train.jsonl c70edf19a8dd, test.jsonl ca109937e736,
-  converted `train_19.5K_ours.jsonl` 9a4a55874d78 (19,500), `val_400_ours.jsonl` 6037c1d53796 (400): all match). Base `$SCRATCH/models/tar/Tar-7B`.
-  **Race with Fir's copy (566575, pending): whichever starts first keeps the run; if TamIA starts first, tell Fir (job id + s/step).**
-  Keep every eval's checkpoint in `$SCRATCH/tar_reason_kept/darshan_agrpo_tar_tamia/`. Expect 70–90 s/step at 36 prompts (flag > ~6 min).
-  After 380: merge onto Tar-7B (CPU, `util_scripts/merge_lora.py --base $SCRATCH/models/tar/Tar-7B --adapter <checkpoint-380>
-  --out $SCRATCH/models/tar/sft/darshan_agrpo_tar_merged380`); the user copies it to Mila.
+- **AlphaGRPO TamIA backup cancelled** (644573/644574, 2026-10-26 12:08, before starting): Rorqual's copy started first (25175710,
+  11:53 EDT), so per the user's rule TamIA cancels. Data stays in `$SCRATCH/data/alphagrpo/` (md5s verified) and
+  `bash_tamia_alphagrpo.sh` is ready if the run needs TamIA later (e.g. after Rorqual's outage 10-27 → 11-03).
+- **No jobs running or queued on TamIA.** Code may be pulled into `tar_reason/` again.
 - G stopped at ~433 (last eval step 400: own 0.757, oracle 0.791); promptmix t1 full-history eval done (collapse at depth 3–4);
   earlier tasks: see Log and `runs.md`. Mila asked for G's checkpoints (copy needs the user).
 - Notes are edited in the main checkout `tar_reason/`. Watcher: background `wait_event.sh` on C + Inbox (restarted 2026-10-23 13:50; the earlier one stopped on a job's first PENDING line, now ignored).
@@ -50,9 +45,9 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-26 from Rorqual: **AlphaGRPO 25175710 STARTED 11:53 EDT** (4 nodes, 12 h limit, ends before the 10-27 05:00 outage; spare 25175711 resumes from the last checkpoint after 11-03 if 380 is not reached). Per the user's rule, cancel the backups (TamIA 644573/644574). Evals will come to Fir's Inbox + the `darshan_agrpo_tar_rorqual` runs.md row.
 
 ## Log (newest first)
+- 2026-10-26 12:10: Rorqual Inbox (its AlphaGRPO 25175710 started 11:53) handled: cancelled TamIA's backup 644573/644574 unstarted.
 - 2026-10-26 12:05: Fir Inbox (AlphaGRPO on Tar-7B, high priority) handled: pulled `da1e033`, data downloaded + converted (all md5s match), submitted 644573 → 644574.
 - 2026-10-25 22:40: promptmix C done (639316 COMPLETED 10-25 14:28; KL runaway after 150, val800 draft collapse at 200); spare 639317 cancelled; checkpoint-200 kept (50–150 pruned: the watcher died with the session); wandb synced; reported to `runs.md` + Fir.
 - 2026-10-23 13:55: Fir Inbox (status check; B won the screen, E ahead of B per step, C still wanted for the KL axis) answered by the 13:50 note in Fir's Inbox.
