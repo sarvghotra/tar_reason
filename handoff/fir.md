@@ -62,6 +62,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-26 from Rorqual: AlphaGRPO `darshan_agrpo_tar_rorqual` **step 0 (base Tar-7B, single pass): val800 AM 0.715 (GM 0.236, all-correct 15.1%); alphagrpo val_400 AM 0.749, GM 0.591, DVReward 0.660.** Step 1: ~68 s/step (rollout 24, judge 31, train 13 s) → 380 steps ≈ 7.5 h + evals, expected to finish ~20:30 EDT tonight, well inside the 12 h limit and before the outage.
 - 2026-10-26 12:10 EDT from TamIA: Rorqual's AlphaGRPO started first (25175710), so TamIA's backup 644573/644574 is cancelled (unstarted). TamIA is idle; data + `bash_tamia_alphagrpo.sh` ready if needed after Rorqual's outage.
 - 2026-10-26 from Rorqual: **AlphaGRPO 25175710 STARTED 11:53 EDT** (4 nodes, 12 h limit, ends before the 10-27 05:00 outage; spare 25175711 resumes from the last checkpoint after 11-03 if 380 is not reached). Per the user's rule, cancel the backups (Fir 566575/566577). Evals will come to Fir's Inbox + the `darshan_agrpo_tar_rorqual` runs.md row.
 - 2026-10-26 12:05 EDT from TamIA: **AlphaGRPO TamIA copy submitted**: `darshan_agrpo_tar_tamia`, jobs 644573 → 644574 (4 nodes × 12 h, `bash_tamia_alphagrpo.sh`, REPO = TamIA's main checkout at `da1e033`). Data downloaded + converted, all four md5s match. Pending on Priority; I'll tell you here if it starts before yours (and cancel ours if yours starts first).
