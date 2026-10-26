@@ -18,7 +18,8 @@
       "min_loss_scale": 1
     },
     "bf16": {
-      "enabled": "auto"
+      "enabled": "auto",
+      "check_grad_overflow": true
     },
     "optimizer": {
       "type": "AdamW",

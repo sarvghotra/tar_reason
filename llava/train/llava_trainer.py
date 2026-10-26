@@ -417,6 +417,14 @@ class LLaVATrainer(Trainer):
                 # reset accumulator for the next logging window
                 self._per_type_loss_sum[dt] = 0.0
                 self._per_type_loss_count[dt] = 0.0
+        if "loss" in logs:
+            # DeepSpeed (>=0.17.1, bf16.check_grad_overflow) skips the optimizer
+            # step when any rank's grads are non-finite; surface the cumulative
+            # count so a silent NaN step shows up on wandb instead of only in
+            # the engine's steps_per_print line.
+            skipped = getattr(self.model_wrapped, "skipped_steps", None)
+            if skipped is not None:
+                logs["skipped_steps"] = int(skipped)
         super().log(logs, *args, **kwargs)
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
