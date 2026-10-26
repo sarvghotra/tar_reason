@@ -276,6 +276,8 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   | model | res | seeds | GenEval2 AM (GM / all-correct) | GenAI-1600 | TIIF short | TIIF long |
   |---|---|---|---|---|---|---|
   | Show-o (showlab/show-o-512x512, 1.3B) | 512 | 3 | 63.9 ± 0.1 (18.6 / 11.4%) | 32.3 ± 0.3 | 64.5 ± 0.3 | 61.7 ± 0.6 |
-  Running / queued: BAGEL + CoT (`--think`, BAGEL's self-CoT), then AlphaGRPO rt2i (3 seeds) / srr (1 seed) and plain BAGEL; then
+  | **BAGEL-7B-MoT + CoT** (`--think`: BAGEL's self-CoT plan, then the image) | 1024 | 3 | 72.0 ± 0.1 (25.7 / 16.4%) | **56.7 ± 0.3** | 70.2 ± 0.5 | 71.7 ± 0.4 |
+  BAGEL + CoT: GenAI-1600 56.7 is above every model of ours (E-450 46.0) and FLUX / SD3.5 (47.7 / 49.7), below Qwen-Image (63.0);
+  GenEval2 72.0 is below ours (F-800 80.1 after 4 corrections). Running / queued: AlphaGRPO rt2i (3 seeds) / srr (1 seed) and plain BAGEL; then
   Show-o2, BLIP3-o, Emu3 (1 seed), Uni-CoT. Smoke speeds and setup in `mila.md`.
 

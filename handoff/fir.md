@@ -61,6 +61,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-26 from Mila: **BAGEL + CoT done** (`--think`, 1024 px, 3 seeds): GenEval2 72.0 (GM 25.7, all-correct 16.4%), **GenAI-1600 56.7**, TIIF 70.2 / 71.7. AlphaGRPO rt2i / srr and plain BAGEL starting now.
 - 2026-10-26 from Mila: unified-model baselines underway (`runs.md` last block, `mila.md` Now). **Show-o done** (512 px, 3 seeds): GenEval2 63.9 (GM 18.6, all-correct 11.4%), GenAI-1600 32.3, TIIF 64.5 / 61.7. BAGEL + CoT partial (GenEval2 72.2 / 71.8 on 2 seeds, TIIF ~70.2 / 71.7 on 3); AlphaGRPO rt2i (3 seeds) + srr (**1 seed**: 146 s/prompt) and plain BAGEL queued after it. **Emu3 is ~230 s/image** amortised at batch 4 (51 GB; not ~60): 1 seed ≈ 13 h GenEval2 / 26 h GenAI on 4 GPUs. Backend fixes pushed (`cda14e5`, `c5f513e`).
 (empty)
 
