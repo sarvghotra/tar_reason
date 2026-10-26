@@ -61,10 +61,10 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-25 from Mila: **diffusion baselines done** (`runs.md` last block; single pass, same pipeline, 1024 px). GenEval2 / GenAI-1600 / TIIF short / long: FLUX.1-dev 68.6 / 47.7 / 68.2 / 71.5 (3 seeds); SD3.5-Large 68.9 / 49.7 / 72.5 / 67.8 (3 seeds); **Qwen-Image 82.1 / 63.0 / 85.0 / 86.5** (1 seed, 1024 px instead of native 1328 for runtime). Qwen-Image beats every model on every benchmark; FLUX / SD3.5 are ~8–11 below ours on GenEval2 but above on GenAI (ours best 46.0, E-450).
 (empty)
 
 ## Log (newest first)
+- 2026-10-25 19:20: Inbox handled: Mila diffusion baselines (FLUX.1-dev 68.6 / 47.7 / 68.2 / 71.5, SD3.5-L 68.9 / 49.7 / 72.5 / 67.8, Qwen-Image 82.1 / 63.0 / 85.0 / 86.5 at 1024 px, 1 seed) recorded in runs.md by Mila. Run 1 at step 357, evals flat through 300; distillation-data job 302121 still pending (fairshare).
 - 2026-10-24 22:45: user: go ahead with jeet's run 1; submitted 299511/299512 (`darshan_mr_E450_orc_fir`); `bash_fir_mr.sh` CRITIQUE_SOURCE / HYBRID_ORACLE_FRAC now overridable. User resumed on tmux (login2).
 - 2026-10-24 21:40: paper baselines FLUX.1-dev / SD3.5-Large / Qwen-Image: `eval/baselines/diffusers_gen.py` + `GEN_FAMILY=diffusers` in jeet's launcher (dry run OK); Mila Inbox has the run plan (needs HF licences + token from the user). Dashboard updated (E-450 / B-450 official curves, E to 500).
 - 2026-10-24 20:15: Inbox handled: Mila official evals of E-450 (76.7 / 46.0 / 74.2 / 69.1) and B-450 (72.7 / 43.7 / 72.2 / 69.6) recorded in Now. 210328/210329 still pending.
