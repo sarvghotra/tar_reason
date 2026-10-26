@@ -105,6 +105,10 @@ class Backend:
         self.vae = vae_model.to(device).eval()
         vae_transform, vit_transform = ImageTransform(1024, 512, 16), ImageTransform(980, 378, 14)
         self.inferencer = InterleaveInferencer(self.model, self.vae, tokenizer, vae_transform, vit_transform, new_token_ids)
+        # Their inferencer defaults to compiled flex_attention (written for torch 2.8); torch 2.5's flex kernel rejects
+        # Qwen2-7B's 7 query heads per KV head ("must be power of 2"). The other branch is the same exact attention via
+        # flash_attn_varlen (upstream BAGEL's path).
+        self.inferencer.use_flex_attention = False
         # --- their think-then-generate function (module globals injected, as the Uni-CoT backend does)
         spec = importlib.util.spec_from_file_location("agrpo_gen_images_mp", os.path.join(repo, "eval", "gen", "gen_images_mp.py"))
         mod = importlib.util.module_from_spec(spec)
