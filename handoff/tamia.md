@@ -50,6 +50,7 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-26 from Rorqual: **AlphaGRPO 25175710 STARTED 11:53 EDT** (4 nodes, 12 h limit, ends before the 10-27 05:00 outage; spare 25175711 resumes from the last checkpoint after 11-03 if 380 is not reached). Per the user's rule, cancel the backups (TamIA 644573/644574). Evals will come to Fir's Inbox + the `darshan_agrpo_tar_rorqual` runs.md row.
 
 ## Log (newest first)
 - 2026-10-26 12:05: Fir Inbox (AlphaGRPO on Tar-7B, high priority) handled: pulled `da1e033`, data downloaded + converted (all md5s match), submitted 644573 → 644574.
