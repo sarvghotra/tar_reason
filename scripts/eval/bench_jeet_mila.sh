@@ -60,6 +60,9 @@
 #   MODEL_NAME=showo_512   GEN_FAMILY=showo   ...   MODEL_NAME=showo2_7b   GEN_FAMILY=showo2  ...   MODEL_NAME=bagel_7b GEN_FAMILY=bagel ...
 #   MODEL_NAME=blip3o_8b   GEN_FAMILY=blip3o  ...   MODEL_NAME=emu3_gen    GEN_FAMILY=emu3    ...   MODEL_NAME=unicot_7b GEN_FAMILY=unicot ...
 #   UNI_ARGS = extra backend flags (e.g. "--gen_batch 4 --steps 50", repo paths "--bagel_repo ..."), UNI_MODEL_PATH, UNI_RES (folder tag only).
+#   RESUME=1 (unified families only): survive preemption on `long`. Generation keeps a copy of its local outputs in
+#   ${OUT_ROOT}_partial/<same path> (rsync every RESUME_EVERY s, default 600), a requeued job starts from that copy and
+#   unified_gen.py --resume skips the prompts already done.
 #   unicot / alphagrpo are self-correction loops (N_ITERS=2: first image -> final; UNI_N_ITERS=5 keeps every round like our models).
 #   MODEL_NAME=alphagrpo_srr GEN_FAMILY=alphagrpo UNI_ARGS="--mode reflect" ...   MODEL_NAME=alphagrpo_rt2i GEN_FAMILY=alphagrpo UNI_ARGS="--mode think" ...
 #
@@ -240,6 +243,7 @@ case $GEN_FAMILY in showo|showo2|bagel|blip3o|emu3|unicot|alphagrpo)
   read -r -a UNI_EXTRA <<< "${UNI_ARGS:-}"
   GEN_COMMON+=(--family "$GEN_FAMILY" "${UNI_EXTRA[@]}")
   [ -n "${UNI_MODEL_PATH:-}" ] && GEN_COMMON+=(--model_path "$UNI_MODEL_PATH")
+  [ "${RESUME:-0}" = 1 ] && GEN_COMMON+=(--resume)
   echo "GEN_FAMILY=${GEN_FAMILY} UNI_ENV=${GEN_ENV} UNI_RES=${UNI_RES} UNI_ARGS=${UNI_ARGS:-} N_ITERS=${N_ITERS} (MODEL_PATH unused)" ;;
 esac
 
@@ -273,12 +277,31 @@ copy_to_scratch() {
 copy_retry() {   # copy_retry <src> <dst>: cp to scratch, retried (same BeeGFS errors)
   local t; for t in 1 2 3 4 5 6; do cp -f "$1" "$2" && return 0; sleep 30; done; return 1
 }
+# RESUME=1: resume_begin <scratch dir> seeds the local copy of <scratch dir> from ${OUT_ROOT}_partial and syncs it
+# back every RESUME_EVERY s in the background; resume_end stops that and syncs once more. No-ops otherwise.
+PARTIAL_ROOT=${OUT_ROOT}_partial
+RESUME_PID=""
+resume_begin() {
+  [ "${RESUME:-0}" = 1 ] || return 0
+  local L=${1/#$OUT_ROOT/$LOCAL_ROOT} P=${1/#$OUT_ROOT/$PARTIAL_ROOT}
+  mkdir -p "$L" "$P"
+  rsync -a "$P/" "$L/" && echo "$(date +%H:%M:%S) resume: seeded $L from $P ($(find "$L/records" -name '*.json' 2>/dev/null | wc -l) prompts done)"
+  ( while sleep ${RESUME_EVERY:-600}; do rsync -a "$L/" "$P/" || true; done ) &
+  RESUME_PID=$!; RESUME_L=$L; RESUME_P=$P
+}
+resume_end() {
+  [ -n "$RESUME_PID" ] || return 0
+  kill $RESUME_PID 2>/dev/null; wait $RESUME_PID 2>/dev/null; RESUME_PID=""
+  rsync -a "$RESUME_L/" "$RESUME_P/" || true
+}
 gen_retry() {
   local check=$1 t rc a f; shift
   local args=(); for a in "$@"; do args+=("${a//$OUT_ROOT/$LOCAL_ROOT}"); done
   for t in $(seq 1 $GEN_TRIES); do
     rm -rf "$LOCAL_ROOT"; mkdir -p "$LOCAL_ROOT"
+    [ -n "${RESUME_DIR:-}" ] && resume_begin "$RESUME_DIR"
     run_gen "${args[@]}"; rc=$?
+    resume_end
     if copy_to_scratch; then
       while IFS= read -r f; do
         sed -i "s|$LOCAL_ROOT|$OUT_ROOT|g" "$OUT_ROOT/${f#$LOCAL_ROOT/}"
@@ -315,7 +338,9 @@ geneval2_seed() {
     local LRES=${RESULT_DIR/#$OUT_ROOT/$LOCAL_ROOT} T OK=0
     for T in $(seq 1 $GEN_TRIES); do
       rm -rf "$LRES"; mkdir -p "$LRES"
+      resume_begin "$RESULT_DIR"
       run_gen --out_dir "$LRES" --prompts_file "$EVAL_SET" --geneval2 --seed "$SEED"
+      resume_end
       iters_have "$LRES" geneval2_results.json && { OK=1; break; }
       echo "$(date +%H:%M:%S) generation attempt $T/${GEN_TRIES} failed"; sleep 60
     done
@@ -384,7 +409,7 @@ genai_seed() {
   fi
   if [ ! -f "$SEED_DIR/.gen_done" ]; then
     echo "$(date +%H:%M:%S) seed ${SEED}: generation"
-    gen_retry 'genai_images_complete "$SEED_DIR"' \
+    RESUME_DIR=$SEED_DIR gen_retry 'genai_images_complete "$SEED_DIR"' \
         --gen_model "$GEN_MODEL" --output_dir "$OUTPUT_DIR" --root_dir "$GENAI_ROOT" \
         --eval_set_dir "$EVAL_SET_DIR" --seed "$SEED" \
       && touch "$SEED_DIR/.gen_done" \
@@ -454,7 +479,7 @@ tiif_seed() {
   fi
   if [ ! -f "$SAVE_DIR/.gen_done" ]; then
     echo "$(date +%H:%M:%S) seed ${SEED}: generation (short + long)"
-    gen_retry '[ "$rc" -eq 0 ] && [ -n "$(ls -A "$IMAGE_DIR" 2>/dev/null)" ]' \
+    RESUME_DIR=$SAVE_DIR gen_retry '[ "$rc" -eq 0 ] && [ -n "$(ls -A "$IMAGE_DIR" 2>/dev/null)" ]' \
         --gen_model "$GEN_MODEL" --output_dir "$OUTPUT_DIR" --prompts_dir "$PROMPTS_DIR" \
         --eval_model_name "$MODEL_NAME" --seed "$SEED" \
       && touch "$SAVE_DIR/.gen_done" \

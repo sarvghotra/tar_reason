@@ -61,6 +61,9 @@ def parse_args(argv=None):
     parser.add_argument("--dry_run", action="store_true", help="No model: dummy images to check arguments and layout.")
     parser.add_argument("--limit_prompts", type=int, default=0, help="Use only the first N prompts (0 = all).")
     parser.add_argument("--bench", choices=["geneval2", "genai", "tiif"], help="Default: inferred from the flags.")
+    parser.add_argument("--resume", action="store_true",
+                        help="Keep existing outputs and skip prompts whose record (<save_dir>/records/<key>.json, written "
+                             "after all its images) exists; for requeued jobs (bench_jeet_mila.sh RESUME=1).")
     # --- flags shared with jeet's generators (same names and defaults)
     parser.add_argument("--n_iters", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
@@ -131,14 +134,18 @@ def main():
     if args.bench == "geneval2":
         save_dir = os.path.abspath(args.out_dir)
         iter_dirs = [os.path.join(save_dir, str(k)) for k in range(1, n + 1)]
-        reset_output_dirs(iter_dirs, rank, world_size)
+        if args.resume:
+            for d in iter_dirs:
+                os.makedirs(d, exist_ok=True)
+        else:
+            reset_output_dirs(iter_dirs, rank, world_size)
         records = load_geneval2(args.prompts_file, args.strip_photo_prefix)
         keys = list(range(len(records)))
         prompts = [r[0] for r in records]
     elif args.bench == "genai":
         save_dir = os.path.abspath(os.path.join(args.output_dir, args.gen_model))
         iter_dirs = [os.path.join(save_dir, str(k)) for k in range(1, n + 1)]
-        if args.skip_existing:
+        if args.skip_existing or args.resume:
             for d in iter_dirs:
                 os.makedirs(d, exist_ok=True)
         else:
@@ -150,7 +157,7 @@ def main():
         save_dir = os.path.abspath(os.path.join(args.output_dir, args.gen_model))
         images_dir = os.path.join(save_dir, "images")
         model_names = [f"{args.eval_model_name}_iter{k}" for k in range(1, n + 1)]
-        if not args.skip_existing:
+        if not (args.skip_existing or args.resume):
             reset_output_dirs([images_dir], rank, world_size)
         records = load_tiif(args, images_dir, model_names)
         keys = [r[:3] for r in records]
@@ -165,9 +172,40 @@ def main():
     if rank == 0:
         print(f"[{args.family}] {len(prompts)} prompts, writing to {save_dir}", flush=True)
 
-    gen = DryRun(args, getattr(backend, "DEFAULT_SIZE", 512)) if args.dry_run else backend.Backend(args, device)
+    records_dir = os.path.join(save_dir, "records")
+    os.makedirs(records_dir, exist_ok=True)
+
+    def result_key(i):
+        if args.bench == "geneval2":
+            return f"{i:05d}"
+        if args.bench == "genai":
+            return keys[i]
+        return "/".join(map(str, keys[i]))
+
+    def record_path(i):
+        return os.path.join(records_dir, result_key(i).replace("/", "__") + ".json")
+
     jobs = list(range(rank, len(prompts), world_size))
     local_results, local_geneval2 = {}, [{} for _ in range(n)]
+    if args.resume:   # prompts finished by an earlier (preempted) run: reuse their record, regenerate the rest
+        def images_exist(i):   # the periodic copy can carry a record without the images written just before it
+            if args.bench == "geneval2":
+                return all(os.path.exists(os.path.join(d, f"{i:05d}", "samples", "00000.png")) for d in iter_dirs)
+            if args.bench == "genai":
+                return all(os.path.exists(genai_path(d, keys[i])) for d in iter_dirs)
+            dimension, desc, idx = keys[i]
+            return all(os.path.exists(tiif_path(images_dir, dimension, m, desc, idx)) for m in model_names)
+        done = [i for i in jobs if os.path.exists(record_path(i)) and images_exist(i)]
+        for i in done:
+            with open(record_path(i)) as f:
+                local_results[result_key(i)] = json.load(f)
+            if args.bench == "geneval2":
+                for k in range(n):
+                    local_geneval2[k][prompts[i]] = os.path.abspath(
+                        os.path.join(iter_dirs[k], f"{i:05d}", "samples", "00000.png"))
+        jobs = [i for i in jobs if i not in set(done)]
+        print(f"[rank {rank}] resume: {len(done)} prompts already done, {len(jobs)} to generate", flush=True)
+    gen = DryRun(args, getattr(backend, "DEFAULT_SIZE", 512)) if args.dry_run else backend.Backend(args, device)
     t0 = time.perf_counter()
     for b, batch in enumerate(chunks(jobs, args.gen_batch)):
         outputs = gen.run([prompts[i] for i in batch], [args.seed * 100003 + i for i in batch])
@@ -201,6 +239,9 @@ def main():
                 key = f"{dimension}/{desc}/{idx}"
             local_results[key] = {"prompt": prompts[i], "seed": args.seed * 100003 + i, "n_images": len(images),
                                   "accepted_first": bool(rounds and rounds[0]["accepted"]), "rounds": rounds}
+            with open(record_path(i) + ".tmp", "w") as f:   # last: marks the prompt done for --resume
+                json.dump(local_results[key], f, ensure_ascii=False)
+            os.replace(record_path(i) + ".tmp", record_path(i))
             if args.verbose:
                 print(f"[rank {rank}] {key}: {prompts[i]!r} -> {len(images)} image(s)", flush=True)
         print(f"[rank {rank}] batch {b + 1}: {min((b + 1) * args.gen_batch, len(jobs))}/{len(jobs)} prompts, "
