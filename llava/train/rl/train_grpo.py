@@ -734,8 +734,21 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
                 if len(means) >= 2:
                     pm = sum(means) / len(means)
                     rate(f"crit_between_var_{r}", sum((m - pm) ** 2 for m in means), len(means) - 1)
-    # Final-image score per leaf (what the benchmark measures).
+    # Final-image score per leaf (what the benchmark measures) and its change
+    # over the leaf's own draft: the first -> last image gain of a rollout,
+    # averaged over every rollout. A leaf that stopped or was never critiqued
+    # (oracle: nothing failed) contributes 0, so delta_am reads the same under
+    # the policy critic and under oracle critiques, unlike delta_am_1 which
+    # averages the refined children only.
+    def draft_of(n: Node) -> Node:
+        while n.parent is not None:
+            n = n.parent
+        return n
+
     s[f"{prefix}am_final"] = sum(n.am for n in batch.leaves)
+    s[f"{prefix}gm_final"] = sum(n.gm for n in batch.leaves)
+    s[f"{prefix}delta_am"] = sum(n.am - draft_of(n).am for n in batch.leaves)
+    s[f"{prefix}delta_gm"] = sum(n.gm - draft_of(n).gm for n in batch.leaves)
     s[f"{prefix}n_final"] = len(batch.leaves)
     pass_rates("final", batch.leaves)
     return s
@@ -761,7 +774,9 @@ def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
             for src in CRITIQUE_SOURCES:
                 out[f"{prefix}critique_{src}_{r}"] = s[f"{prefix}critique_{src}_{r}"] / n
             out[f"{prefix}critique_fallback_{r}"] = s[f"{prefix}critique_fallback_{r}"] / n
-    out[f"{prefix}am_final"] = s[f"{prefix}am_final"] / max(s[f"{prefix}n_final"], 1.0)
+    n_final = max(s[f"{prefix}n_final"], 1.0)
+    for key in ("am_final", "gm_final", "delta_am", "delta_gm"):
+        out[f"{prefix}{key}"] = s[f"{prefix}{key}"] / n_final
     # Ratio stats (fix_*, brk_*, pass_*): "<key>_num" / "<key>_den". A bucket
     # with no questions is logged as 0, so the wandb key set stays fixed.
     for k in s:

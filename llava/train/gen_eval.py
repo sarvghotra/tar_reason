@@ -7,8 +7,9 @@ separate job is needed. Everything is reused from the RL stack: the rollout
 ``train_grpo.py``. What is measured, per val set in the gen-eval YAML:
 
 ``gen_<set>/*``         the loop as deployed: draft, greedy critique, refine
-                        (am_0, am_1, am_final, looks_good_pass/fail_1, fix_1,
-                        brk_1 per skill, improved/degraded, delta_am_flagged_*).
+                        (am_0, am_1, am_final, delta_am = am_final - am_0 per
+                        rollout, looks_good_pass/fail_1, fix_1, brk_1 per
+                        skill, improved/degraded, delta_am_flagged_*).
 ``bank_<set>/critic_*`` the critic on the frozen draft bank (recall,
                         specificity, grounding, length) and its decision
                         log-prob at the "Self-reflect:" branch (AUROC, acc).
@@ -465,7 +466,8 @@ class GenEvaluator:
         prefix = f"bank_{name}/oracle_"
         sums = reduce_sum(tree_stats(batch, prefix, 1, thr), self.device)
         out = finalize_stats(sums, prefix)
-        keep = ("am_0", "am_1", "am_final", "delta_am_1", "improved_1", "degraded_1", "n_1")
+        keep = ("am_0", "am_1", "am_final", "delta_am", "delta_gm", "delta_am_1",
+                "improved_1", "degraded_1", "n_1")
         return {k: v for k, v in out.items()
                 if k[len(prefix):] in keep or k[len(prefix):].startswith(("fix_", "brk_"))}
 
