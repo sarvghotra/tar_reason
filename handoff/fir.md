@@ -66,6 +66,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-25 21:30: AlphaGRPO-on-BAGEL (jeet, priority): the authors' released LoRA adapters (rt2i, srr) → `backends/alphagrpo.py` (think T2I + their one-round reflection; dry run OK), top of Mila's Inbox. IRG (arXiv 2509.06945): weights not released (HF repo empty, GitHub 'stay tuned'), cannot be run; nearest rows = BAGEL think mode / IRG-style loop on base BAGEL (told the user).
 - 2026-10-25 20:00: paper baselines round 2 (user): Show-o, Show-o2, BAGEL-7B, BLIP3-o-8B, Emu3, Uni-CoT → `eval/baselines/unified_gen.py` + `backends/` (written from the authors' inference code via 6 read-only code studies; CPU dry runs pass), `GEN_FAMILY=<family>` in jeet's launcher; Mila Inbox has the env / weights / smoke plan. Run 1 at step 364.
 - 2026-10-25 19:20: Inbox handled: Mila diffusion baselines (FLUX.1-dev 68.6 / 47.7 / 68.2 / 71.5, SD3.5-L 68.9 / 49.7 / 72.5 / 67.8, Qwen-Image 82.1 / 63.0 / 85.0 / 86.5 at 1024 px, 1 seed) recorded in runs.md by Mila. Run 1 at step 357, evals flat through 300; distillation-data job 302121 still pending (fairshare).
 - 2026-10-24 22:45: user: go ahead with jeet's run 1; submitted 299511/299512 (`darshan_mr_E450_orc_fir`); `bash_fir_mr.sh` CRITIQUE_SOURCE / HYBRID_ORACLE_FRAC now overridable. User resumed on tmux (login2).

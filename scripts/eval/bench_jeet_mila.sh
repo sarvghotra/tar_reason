@@ -60,7 +60,8 @@
 #   MODEL_NAME=showo_512   GEN_FAMILY=showo   ...   MODEL_NAME=showo2_7b   GEN_FAMILY=showo2  ...   MODEL_NAME=bagel_7b GEN_FAMILY=bagel ...
 #   MODEL_NAME=blip3o_8b   GEN_FAMILY=blip3o  ...   MODEL_NAME=emu3_gen    GEN_FAMILY=emu3    ...   MODEL_NAME=unicot_7b GEN_FAMILY=unicot ...
 #   UNI_ARGS = extra backend flags (e.g. "--gen_batch 4 --steps 50", repo paths "--bagel_repo ..."), UNI_MODEL_PATH, UNI_RES (folder tag only).
-#   unicot is a self-correction loop (N_ITERS=2: first image -> final; UNI_N_ITERS=5 keeps every round like our models).
+#   unicot / alphagrpo are self-correction loops (N_ITERS=2: first image -> final; UNI_N_ITERS=5 keeps every round like our models).
+#   MODEL_NAME=alphagrpo_srr GEN_FAMILY=alphagrpo UNI_ARGS="--mode reflect" ...   MODEL_NAME=alphagrpo_rt2i GEN_FAMILY=alphagrpo UNI_ARGS="--mode think" ...
 #
 # Output layout (identical to his, OUTPUT_DIR = OUT_ROOT/<eval set name>):
 #   geneval2: $OUT_ROOT/GenEval2/<GEN_MODEL>/seed_<S>/{1..N}/{geneval2_results.json,results_geneval2.jsonl,eval_log.txt}, log.txt
@@ -121,9 +122,9 @@ case $GEN_FAMILY in
     N_ITERS=2 ;;   # every iteration = the same single-pass image (forced: N_ITERS already defaults to 5 above)
   showo|showo2|bagel|blip3o|emu3)   # unified-model baselines, single pass (eval/baselines/unified_gen.py + backends/)
     N_ITERS=2 ;;
-  unicot)                           # Uni-CoT self-reflection loop: iteration 1 = first image, N = final (like Janus R1)
+  unicot|alphagrpo)                 # self-reflection loops: iteration 1 = first image, N = final (like Janus R1)
     N_ITERS=${UNI_N_ITERS:-2} ;;
-  *) echo "GEN_FAMILY must be tar, janus, diffusers, showo, showo2, bagel, blip3o, emu3 or unicot (got '$GEN_FAMILY')"; exit 1 ;;
+  *) echo "GEN_FAMILY must be tar, janus, diffusers, showo, showo2, bagel, blip3o, emu3, unicot or alphagrpo (got '$GEN_FAMILY')"; exit 1 ;;
 esac
 case $BENCH in
   geneval2) DEFAULT_SEEDS="2213 713 13" ;;
@@ -195,7 +196,7 @@ if [ "$GEN_FAMILY" = diffusers ]; then
   GEN_PREFIX=diffusers_n${N_ITERS}
   RES_TAG=${DIFF_RES}px
 fi
-case $GEN_FAMILY in showo|showo2|bagel|blip3o|emu3|unicot)
+case $GEN_FAMILY in showo|showo2|bagel|blip3o|emu3|unicot|alphagrpo)
   GEN_SCRIPT=eval/baselines/unified_gen.py
   GEN_PREFIX=${GEN_FAMILY}_n${N_ITERS}
   case $GEN_FAMILY in showo) UNI_RES=${UNI_RES:-512} ;; showo2) UNI_RES=${UNI_RES:-432} ;; emu3) UNI_RES=${UNI_RES:-720} ;; *) UNI_RES=${UNI_RES:-1024} ;; esac
@@ -233,7 +234,7 @@ if [ "$GEN_FAMILY" = diffusers ]; then
   [ -n "${DIFF_MODEL_PATH:-}" ] && GEN_COMMON+=(--diff_model_path "$DIFF_MODEL_PATH")
   echo "GEN_FAMILY=diffusers DIFF_MODEL=${DIFF_MODEL} DIFF_RES=${DIFF_RES} DIFF_ARGS=${DIFF_ARGS:-} (single pass, N_ITERS=${N_ITERS} copies; MODEL_PATH unused)"
 fi
-case $GEN_FAMILY in showo|showo2|bagel|blip3o|emu3|unicot)
+case $GEN_FAMILY in showo|showo2|bagel|blip3o|emu3|unicot|alphagrpo)
   GEN_ENV=${UNI_ENV:-/home/mila/s/singhsd/envs/${GEN_FAMILY}}   # one uv env per family (bagel + unicot can share)
   GEN_CUDA_MODULE=""
   read -r -a UNI_EXTRA <<< "${UNI_ARGS:-}"

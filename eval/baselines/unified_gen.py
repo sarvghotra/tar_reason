@@ -5,7 +5,7 @@ jeet's iterative generators (Tar-only flags accepted and ignored), the same prom
 ranks (prompt i -> rank i % world_size) and the same per-iteration output layout (see the Janus module's
 docstring), so the launcher's completeness checks and the three scorers read the results unchanged.
 
-    --family {diffusers, showo, showo2, bagel, blip3o, emu3, unicot}
+    --family {diffusers, showo, showo2, bagel, blip3o, emu3, unicot, alphagrpo}
 
 A backend (eval/baselines/backends/<family>.py) exposes ``add_args(parser)`` and a class ``Backend(args,
 device)`` whose ``run(prompts, seeds)`` returns, per prompt, ``(images, rounds)``: the list of images the
@@ -45,7 +45,7 @@ from janus_pro_r1_gen import (  # noqa: E402  (shared prompt loading, sharding a
     TIIF_DESCRIPTIONS, barrier, chunks, gather, genai_path, init_distributed, iteration_images,
     load_geneval2, load_genai, load_tiif, reset_output_dirs, tiif_path)
 
-FAMILIES = ("diffusers", "showo", "showo2", "bagel", "blip3o", "emu3", "unicot")
+FAMILIES = ("diffusers", "showo", "showo2", "bagel", "blip3o", "emu3", "unicot", "alphagrpo")
 
 
 def load_backend(family):
