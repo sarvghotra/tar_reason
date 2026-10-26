@@ -271,3 +271,11 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   below our models on GenEval2 but above them on GenAI-1600 (47.7 / 49.7 vs 46.0) and comparable on TIIF (FLUX best on TIIF long among
   these three: 71.5). Qwen-Image ran 1 seed at 1024 px instead of its native 1328 px: ~87 s/image at 1328 on one A100 would make its
   GenAI job ~20 h on 2 GPUs, too long for preemptible `long`. Speed (1 A100): FLUX ~24 s, SD3.5-L ~13.5 s, Qwen-Image ~45 s/image at 1024.
+- **Unified-model baselines (Mila 2026-10-26)**, `eval/baselines/unified_gen.py` + `backends/<family>.py`, same pipeline / scorers /
+  prompts / seeds as our final table, authors' benchmark settings, prompts verbatim, single pass unless noted. Mean ± se over seeds.
+  | model | res | seeds | GenEval2 AM (GM / all-correct) | GenAI-1600 | TIIF short | TIIF long |
+  |---|---|---|---|---|---|---|
+  | Show-o (showlab/show-o-512x512, 1.3B) | 512 | 3 | 63.9 ± 0.1 (18.6 / 11.4%) | 32.3 ± 0.3 | 64.5 ± 0.3 | 61.7 ± 0.6 |
+  Running / queued: BAGEL + CoT (`--think`, BAGEL's self-CoT), then AlphaGRPO rt2i (3 seeds) / srr (1 seed) and plain BAGEL; then
+  Show-o2, BLIP3-o, Emu3 (1 seed), Uni-CoT. Smoke speeds and setup in `mila.md`.
+
