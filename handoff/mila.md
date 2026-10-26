@@ -60,6 +60,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-26 00:55: shared `models/tar/sft/darshan_pm1_E_merged450` (E-450) read-only with jeet (`setfacl -R -m u:sarvjeet-singh.ghotra:rX`), same as F-800 / pm-500; revoke with `setfacl -R -x u:sarvjeet-singh.ghotra <dir>`.
 - 2026-10-26 00:30: unified-model baselines set up and smoke-tested (6 families + AlphaGRPO); BAGEL + CoT evals queued first (user).
 - 2026-10-25 11:30: diffusion baselines done (21 jobs); deleted that Inbox line; told Fir.
 - 2026-10-25: diffusion baselines: env + weights + 3 smokes; launcher N_ITERS fix `0a256f1`; 21 jobs submitted (Qwen-Image 1 seed, 1024 px).
