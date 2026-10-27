@@ -3,12 +3,10 @@
 Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100 80GB per node (like Fir).
 
 ## Now (2026-10-25)
-- **AlphaGRPO baseline `darshan_agrpo_tar_rorqual`** (Fir Inbox 2026-10-23, user + jeet, paper baseline; priority over R): base Tar-7B, fresh LoRA,
-  `scripts/rl_ft/bash_rorqual_alphagrpo.sh` (= `bash_fir_alphagrpo.sh`, names changed), 380 steps, evals every 50 (val800 AM + alphagrpo val_400, draft only).
-  **25175710 → 25175711** (afterany spare), submitted 2026-10-25 22:35, **RUNNING since 2026-10-26 11:53** (rg[32302-32303,32402,32502]); Fir/TamIA told to cancel their backups. **Rorqual power outage `POWEROUT20261027` 2026-10-27 05:00 → 11-03 04:00 (all nodes):** 25175710's limit cut 24 h → 12 h on 10-26 11:40 so it can start before then (it was blocked with ReqNodeNotAvail); **Backups: Fir 566575 → 566577 and TamIA also run AlphaGRPO; whichever starts first keeps it.** If 25175710 starts before 10-27 05:00, tell Fir's Inbox (they cancel theirs); if not, cancel 25175710/11 at 05:00 (don't let it start after 11-03 on top of the others). Fir's smoke passed (~65 s/step at 9 prompts; expect ~70–90 s/step at 36);
-  say so if a step > ~6 min. Data `~/scratch/data/alphagrpo/` (train.jsonl md5 c70edf19…; `train_19.5K_ours.jsonl` 9a4a5587…, `val_400_ours.jsonl` 6037c1d5…).
-  Copy each eval's checkpoint to `~/scratch/tar_reason_kept/darshan_agrpo_tar_rorqual/`; evals to Fir + the `runs.md` row.
-  **After 380: merge onto Tar-7B (CPU, `merge_lora.py --base ~/scratch/models/tar/Tar-7B`)** → the user copies it to Mila for jeet's single-pass evals.
+- **AlphaGRPO baseline `darshan_agrpo_tar_rorqual` done 2026-10-26 20:24** (25175710, 380 steps, 8.5 h; spare cancelled). Step 350 (last eval):
+  val800 AM 0.797 (base 0.715), alphagrpo val AM 0.809 / DVReward 0.726 (base 0.749 / 0.660); per-step evals in `runs.md`. Checkpoints 50–380 in
+  `~/scratch/tar_reason_kept/darshan_agrpo_tar_rorqual/`; wandb synced. **Merge 25231267 (CPU) → `~/scratch/models/tar/sft/darshan_agrpo_tar_merged380`;
+  the user copies it to Mila for jeet's single-pass evals** (before Rorqual's power outage 2026-10-27 05:00 → 11-03 04:00, all nodes).
 - **Next, after 11-03 (lower priority since Fir's oracle-only run 1 was nearly flat): `darshan_mr_E450_hyb_rorqual`** (Fir Inbox 2026-10-25; hybrid twin of Fir's run 1 `darshan_mr_E450_orc_fir`):
   `bash_rorqual_mr.sh` (re-synced 2026-10-25: CRITIQUE_SOURCE / HYBRID_ORACLE_FRAC overridable, default hybrid 0.5), `PREV_STAGE_CHECKPOINT=
   ~/scratch/models/tar/sft/darshan_pm1_E_merged450 TRAIN_JSONL=~/scratch/data/promptmix/train_17K.jsonl MAX_STEPS=500 EVAL_STEPS=100`.
@@ -65,6 +63,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-26 20:35: AlphaGRPO done (380, COMPLETED 20:24); checkpoint-380 kept; spare 25175711 cancelled; wandb synced; merge 25231267 submitted; reported to Fir.
 - 2026-10-26 19:50: AlphaGRPO step 350: val800 AM 0.797 (GM 0.322, all-correct 21.4%); alphagrpo val AM 0.809 / GM 0.661 / DVReward 0.726; checkpoint-350 kept; reported to Fir. No eval at 380 (eval_steps 50).
 - 2026-10-26 18:45: AlphaGRPO step 300: val800 AM 0.788 (GM 0.313, all-correct 20.5%); alphagrpo val AM 0.812 / GM 0.653 / DVReward 0.724; checkpoint-300 kept; reported to Fir.
 - 2026-10-26 17:40: AlphaGRPO step 250: val800 AM 0.774 (GM 0.292, all-correct 20.6%); alphagrpo val AM 0.801 / GM 0.656 / DVReward 0.720; checkpoint-250 kept; reported to Fir.
