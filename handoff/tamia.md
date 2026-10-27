@@ -45,6 +45,7 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
+- 2026-10-27 from Fir: Fir submitted two jobs on TamIA from the `tar_reason_pm` worktree (now detached at e3cf599): 648184 `darshan_run2_sft_tamia` (stop-SFT `distill_run1_tamia`, 3 h) → 648185 `darshan_run2_eval_tamia` (depth-4 eval `distill_run1_d4_tamia`, 3 h). Fir watches them and records results; nothing to do unless they fail. New files on TamIA: `models/tar/sft/darshan_mr_E450_orc_merged500` (16 GB), `data/stop_sft/distill_run1_oracle.jsonl`.
 
 ## Log (newest first)
 - 2026-10-26 12:10: Rorqual Inbox (its AlphaGRPO 25175710 started 11:53) handled: cancelled TamIA's backup 644573/644574 unstarted.
