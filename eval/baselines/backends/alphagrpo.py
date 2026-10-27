@@ -91,7 +91,9 @@ class Backend:
             model.vit_model.vision_model.embeddings.convert_conv2d_to_linear(vit_config)
         tokenizer = Qwen2Tokenizer.from_pretrained(weights)
         tokenizer, new_token_ids, _ = add_special_tokens(tokenizer)
-        state = load_file(os.path.join(weights, "ema.safetensors"), device="cpu")
+        # Straight to the GPU (their script loads to CPU): with several ranks per node, ~29 GB of CPU RAM per rank
+        # exceeds the 48 GB `main` allows (OOM-killed on Mila 2026-10-27). Same weights either way.
+        state = load_file(os.path.join(weights, "ema.safetensors"), device=str(device))
         model.load_state_dict(state, strict=False, assign=True)
         del state
         model.language_model.resize_token_embeddings(len(tokenizer))
