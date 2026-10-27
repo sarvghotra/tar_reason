@@ -5,7 +5,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Now (2026-10-25)
 - **AlphaGRPO baseline `darshan_agrpo_tar_rorqual` done 2026-10-26 20:24** (25175710, 380 steps, 8.5 h; spare cancelled). Step 350 (last eval):
   val800 AM 0.797 (base 0.715), alphagrpo val AM 0.809 / DVReward 0.726 (base 0.749 / 0.660); per-step evals in `runs.md`. Checkpoints 50–380 in
-  `~/scratch/tar_reason_kept/darshan_agrpo_tar_rorqual/`; wandb synced. **Merge 25231267 (CPU) → `~/scratch/models/tar/sft/darshan_agrpo_tar_merged380`;
+  `~/scratch/tar_reason_kept/darshan_agrpo_tar_rorqual/`; wandb synced. **Merged (25231267, 10 min, 12 GB) → `~/scratch/models/tar/sft/darshan_agrpo_tar_merged380`;
   the user copies it to Mila for jeet's single-pass evals** (before Rorqual's power outage 2026-10-27 05:00 → 11-03 04:00, all nodes).
 - **Next, after 11-03 (lower priority since Fir's oracle-only run 1 was nearly flat): `darshan_mr_E450_hyb_rorqual`** (Fir Inbox 2026-10-25; hybrid twin of Fir's run 1 `darshan_mr_E450_orc_fir`):
   `bash_rorqual_mr.sh` (re-synced 2026-10-25: CRITIQUE_SOURCE / HYBRID_ORACLE_FRAC overridable, default hybrid 0.5), `PREV_STAGE_CHECKPOINT=
@@ -63,6 +63,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-26 20:50: merge 25231267 COMPLETED → `models/tar/sft/darshan_agrpo_tar_merged380` (12 GB); Mila Inbox told (single-pass official evals after the user copies it).
 - 2026-10-26 20:35: AlphaGRPO done (380, COMPLETED 20:24); checkpoint-380 kept; spare 25175711 cancelled; wandb synced; merge 25231267 submitted; reported to Fir.
 - 2026-10-26 19:50: AlphaGRPO step 350: val800 AM 0.797 (GM 0.322, all-correct 21.4%); alphagrpo val AM 0.809 / GM 0.661 / DVReward 0.726; checkpoint-350 kept; reported to Fir. No eval at 380 (eval_steps 50).
 - 2026-10-26 18:45: AlphaGRPO step 300: val800 AM 0.788 (GM 0.313, all-correct 20.5%); alphagrpo val AM 0.812 / GM 0.653 / DVReward 0.724; checkpoint-300 kept; reported to Fir.
