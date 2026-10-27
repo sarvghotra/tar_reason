@@ -35,6 +35,7 @@ MICRO=${MICRO:-4}
 N_GPUS=${SLURM_GPUS_ON_NODE:-4}
 export PYTHONPATH=${REPO}
 export WANDB_PROJECT=tar_reasoning WANDB_ENTITY=darshan-singh
+export WANDB_MODE=${WANDB_MODE:-offline}   # compute nodes have no internet; sync from a login node
 mkdir -p output_dir/${RUN_NAME}
 echo "RUN_NAME=${RUN_NAME} BASE=${BASE} DATA=${DATA} LR=${LR} EPOCHS=${EPOCHS} BATCH=${BATCH} job=${SLURM_JOB_ID:-local} host=$(hostname)"
 
