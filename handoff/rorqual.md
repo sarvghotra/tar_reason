@@ -63,6 +63,7 @@ Owned by the Rorqual session. Rorqual: Alliance cluster, user `dars11`, 4× H100
 ## Inbox
 
 ## Log (newest first)
+- 2026-10-27 11:55: merged380 is on Mila (Fir dccee54) and Mila queued its single-pass evals; Rorqual in the power outage (to 11-03 04:00), nothing queued. Next: hybrid twin after 11-03 (needs E-450 merged from Fir).
 - 2026-10-26 20:50: merge 25231267 COMPLETED → `models/tar/sft/darshan_agrpo_tar_merged380` (12 GB); Mila Inbox told (single-pass official evals after the user copies it).
 - 2026-10-26 20:35: AlphaGRPO done (380, COMPLETED 20:24); checkpoint-380 kept; spare 25175711 cancelled; wandb synced; merge 25231267 submitted; reported to Fir.
 - 2026-10-26 19:50: AlphaGRPO step 350: val800 AM 0.797 (GM 0.322, all-correct 21.4%); alphagrpo val AM 0.809 / GM 0.661 / DVReward 0.726; checkpoint-350 kept; reported to Fir. No eval at 380 (eval_steps 50).
