@@ -19,7 +19,9 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
-  session `claude` on **`login-4`** (`ssh login-4`, `tmux attach -t claude`).
+  session `claude` on **`login-2`** since 2026-10-26 (`ssh login-2`, `tmux attach -t claude`; login-4 was the earlier
+  tmux node and is not reachable now). The VSCode plugin attached to login-4 resumed the same session on 2026-10-27 and
+  submitted duplicate jobs: close the other client before resuming anywhere.
 - Earlier note on the same session, opened from the VSCode plugin via
   `mila code CODE/LatentDCR --alloc …` (runs on a compute node, not a login node). Resume:
   `cd ~/CODE/LatentDCR && claude --resume 830290ea-cb02-4188-9cf2-1c5fb3768fa2`. No tmux login node chosen yet
@@ -63,6 +65,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-27 17:45: two clients had the session open (tmux login-2 + VSCode login-4); login-4's copy resubmitted srr GenAI as 11414737 (2 GPUs, 48 GB; its first try 11414310 OOMed). Kept 11414737, cancelled my held 11414376.
 - 2026-10-27 00:10: AlphaGRPO-on-Tar evals submitted (Inbox from Fir + Rorqual; both lines removed, ACL pending in Now).
 - 2026-10-26 10:30: RESUME=1 added and tested; AlphaGRPO + plain BAGEL jobs resubmitted with it. Show-o and BAGEL + CoT done.
 - 2026-10-26 00:55: shared `models/tar/sft/darshan_pm1_E_merged450` (E-450) read-only with jeet (`setfacl -R -m u:sarvjeet-singh.ghotra:rX`), same as F-800 / pm-500; revoke with `setfacl -R -x u:sarvjeet-singh.ghotra <dir>`.
