@@ -66,6 +66,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-26 20:50: user resumed on tmux (login2) and handed control over; waiter on 672319 restarted (est. start 22:15). Told Mila: no ACL share of the AlphaGRPO model.
 - 2026-10-26 20:45: pilot 613704/613740 cancelled (user); chained build→SFT→eval job 672808 submitted after 672319 (est. start 21:45).
 - 2026-10-26 22:10: jeet's answers on run 2 (run 1 checkpoint, all 17K): data job 672319 submitted (4 nodes, own chains only); pilot 613704/613740 kept.
 - 2026-10-26 ~20:30: user copied `darshan_agrpo_tar_merged380` from Rorqual to Mila; Mila Inbox told to run the single-pass evals.
