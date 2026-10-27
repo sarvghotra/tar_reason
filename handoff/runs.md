@@ -281,4 +281,18 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   BAGEL + CoT: GenAI-1600 56.7 is above every model of ours (E-450 46.0) and FLUX / SD3.5 (47.7 / 49.7), below Qwen-Image (63.0);
   GenEval2 72.0 is below ours (F-800 80.1 after 4 corrections). Running / queued: AlphaGRPO rt2i (3 seeds) / srr (1 seed) and plain BAGEL; then
   Show-o2, BLIP3-o, Emu3 (1 seed), Uni-CoT. Smoke speeds and setup in `mila.md`.
+  **Fairness of the baseline comparison (applies to the diffusion, Janus and unified-model blocks; keep for the paper's setup):**
+  - Every baseline runs as published: no critique / refine imposed. Single-pass models (FLUX, SD3.5, Qwen-Image, Janus-Pro, Show-o,
+    Show-o2, BLIP3-o, Emu3, BAGEL, AlphaGRPO-on-Tar) produce one image (iteration 2 = copy of 1); built-in reasoning (BAGEL + CoT,
+    AlphaGRPO rt2i) uses the model's own think mode; self-correcting models (Janus-Pro-R1, AlphaGRPO srr, Uni-CoT) use their own loop
+    and prompts, reported first image -> final. Same prompts (verbatim), seeds, benchmarks and scorers for every model, ours included;
+    sampling settings from each authors' benchmark script / model card.
+  - Deviations: (1) AlphaGRPO srr: the authors reflect only GenEval-detector-flagged wrong images (an oracle); we reflect every image
+    (no judge at test time), and their reflection prompt always says the image failed, so good images get edited too. (2) Uni-CoT:
+    capped at 4 rounds (our budget: draft + 4 corrections) vs their 21; it stops earlier when satisfied. (3) Qwen-Image: 1024 px instead
+    of native 1328, 1 seed. (4) Published GenEval numbers that used LLM-rewritten prompts (BAGEL 0.88, Show-o2) are not comparable; ours
+    are verbatim. (5) GenAI-1600 (Qwen3.5-27B VQAScore) and TIIF (local Qwen2.5-VL-7B judge) use open judges, not the official ones:
+    fair across models, not comparable to public leaderboards. (6) Compute is not matched: ours gets 4 correction rounds, most baselines
+    one pass, so report our draft (image 1) as the like-for-like single-pass number next to the final; per-image cost ranges from ~7 s
+    (BLIP3-o) to ~146 s (srr) on an A100. (7) 1 seed (no error bars): Qwen-Image, Emu3, AlphaGRPO srr; 3 seeds for the rest.
 
