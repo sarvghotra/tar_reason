@@ -39,6 +39,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - Watchers: background waiters on TamIA 648537 and Fir 927591 leaving PENDING; then a 28-min self-terminating Monitor watcher on the running one's log.
 
 ## Setup
+- Queue estimates: `sbatch --test-only` and `squeue --start` on Fir are backfill projections, not priority-based (2026-10-28: a 1-node 3 h GPU job was "starting in 45 min" at 04:10 and again at 14:50 while still pending; rank was 69th of 234 pending GPU jobs). Judge the wait from `sprio` / the pending list, not from those.
 - Accounts: `rrg-bengioy-ad_gpu` (member since 2026-10-09; fair-share ~0.27, the allocation is over its share),
   also `def-agrawal_gpu`, `def-bengioy_gpu`. Not in `aip-bengioy`.
 - Paths: `~/scratch` → `/scratch/dars11` (symlink). Notes dir `~/scratch/git/` (`CLAUDE.md` → `tar_reason/handoff/CLAUDE.md`,
