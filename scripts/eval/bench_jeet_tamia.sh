@@ -325,8 +325,12 @@ iters_have() {   # iters_have <dir> <relative file>: true if <dir>/<k>/<file> ex
 }
 
 # ================================================================ GenEval2
-# jeet's evaluation_optz.py (copied from Mila) when present, else the official evaluation.py (same flags and soft_tifa method).
-GENEVAL2_SCORER=evaluation_optz.py; [ -f ${BENCH_DIR}/GenEval2/evaluation_optz.py ] || GENEVAL2_SCORER=evaluation.py
+# jeet's evaluation_optz.py (copied from Mila; `--method soft_tifa` reports AM and GM). The official evaluation.py is not a
+# drop-in (methods soft_tifa_am / soft_tifa_gm, one per run), so require the copy.
+GENEVAL2_SCORER=evaluation_optz.py
+if [ "$BENCH" = geneval2 ] && [ ! -f ${BENCH_DIR}/GenEval2/${GENEVAL2_SCORER} ]; then
+  echo "missing ${BENCH_DIR}/GenEval2/${GENEVAL2_SCORER}: copy it from Mila (\$SCRATCH/benchmarks/GenEval2/)"; exit 1
+fi
 geneval2_seed() {
   local SEED=$1 RESULT_DIR=${RUN_DIR}/seed_$1
   local LOG_FILE=${RESULT_DIR}/log.txt
