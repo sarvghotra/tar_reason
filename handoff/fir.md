@@ -68,6 +68,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 (empty)
 
 ## Log (newest first)
+- 2026-10-29 08:45 PDT: for jeet, copied the run-2 SFT/eval/sweep slurm logs, the wandb offline run, the loss-curve CSV, the launcher and the final adapter to `/scratch/dars11/share/run2_distill/logs/` (world-readable under the ACL'd share dir; README section added).
 - 2026-10-29 04:10 PDT: follow-up sweep 652661 done (checkpoints 200/300/400): linear draft decay from the start, no usable early checkpoint; runs synced; fix (replay or separate critic adapter) waits on the user.
 - 2026-10-29 02:00 PDT: sweep 648537 done (44 min): draft drift grows with the SFT step; 652661 (checkpoints 200/300/400) submitted; sweep runs synced to wandb; runs.md row added; share README updated.
 - 2026-10-29 01:00 PDT: TamIA sweep 648537 started 00:45 PDT after 32 h 45 pending; Fir mirror 927591 cancelled unstarted (20.5 h pending, never got a backfill slot). AlphaGRPO evals still waiting on the Mila → TamIA rsync.
