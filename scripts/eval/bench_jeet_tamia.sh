@@ -152,6 +152,7 @@ TAR_PY=${TAR_ENV}/bin/python
 JUDGE_PY=/home/d/dars11/envs/qwen_judge/bin/python    # GenEval2 scorer (Qwen3-VL-8B), TIIF judge (Qwen2.5-VL-7B) + summaries
 GENAI_PY=/home/d/dars11/envs/genai_judge/bin/python   # t2v_metrics (Qwen3.5-27B); its bin/ has ffmpeg
 export HF_HOME=/scratch/d/dars11/hf_home            # all judge weights are in $HF_HOME/hub
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1    # TamIA compute nodes have no internet: fail fast on a missing weight
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
 TMP_DIR=${SLURM_TMPDIR:-/tmp}
 [ "$GEN_FAMILY" != tar ] || [ -f ${TMP_DIR}/ta_tok.pth ] || cp ${MODELS}/ta_tok.pth ${TMP_DIR}/   # Tar only
@@ -324,6 +325,8 @@ iters_have() {   # iters_have <dir> <relative file>: true if <dir>/<k>/<file> ex
 }
 
 # ================================================================ GenEval2
+# jeet's evaluation_optz.py (copied from Mila) when present, else the official evaluation.py (same flags and soft_tifa method).
+GENEVAL2_SCORER=evaluation_optz.py; [ -f ${BENCH_DIR}/GenEval2/evaluation_optz.py ] || GENEVAL2_SCORER=evaluation.py
 geneval2_seed() {
   local SEED=$1 RESULT_DIR=${RUN_DIR}/seed_$1
   local LOG_FILE=${RESULT_DIR}/log.txt
@@ -369,7 +372,7 @@ geneval2_seed() {
       fi
       # Score into local files, then copy them to scratch (scratch file creation fails intermittently).
       ( L=${LOCAL_ROOT}/geneval2_score_${SEED}_${ITER}; mkdir -p "$L"
-        (cd ${BENCH_DIR}/GenEval2 && CUDA_VISIBLE_DEVICES=$(( ITER - START )) env -u PYTHONPATH $JUDGE_PY evaluation_optz.py \
+        (cd ${BENCH_DIR}/GenEval2 && CUDA_VISIBLE_DEVICES=$(( ITER - START )) env -u PYTHONPATH $JUDGE_PY ${GENEVAL2_SCORER} \
           --benchmark_data "$EVAL_SET" \
           --image_filepath_data "${SCORE_DIR}/${ITER}/geneval2_results.json" \
           --method soft_tifa \
@@ -438,6 +441,7 @@ genai_seed() {
         --output_dir ${OUTPUT_DIR} \
         --gen_model ${GEN_MODEL}/${ITER} \
         --num_prompts ${NUM_PROMPTS} \
+        --cache_dir ${HF_HOME}/hub \
         --result_dir "$L") > "$L/eval_log.txt" 2>&1; rc=$?
       copy_retry "$L/eval_log.txt" "$ITER_LOG" || rc=1
       [ $rc -eq 0 ] && { copy_retry "$L/${GEN_MODEL}/${ITER}/${PT}" "${SEED_DIR}/${ITER}/${PT}" || rc=1; }
