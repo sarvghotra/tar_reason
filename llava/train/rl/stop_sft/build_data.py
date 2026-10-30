@@ -19,6 +19,13 @@ last round have no critique in the dump and are not used.
 own critique is ignored; every passing image gets ``NO_ISSUE_CRITIQUE`` and every failing image the
 oracle critique naming its failed questions. ``--ratio 0`` keeps the rollout's natural pass/fail ratio.
 
+``--draft_replay R`` (2026-10-30, after run 2's draft collapse): also emit ``R`` x as many *draft* examples
+(``kind: draft``) as critique examples: the prompt as context and the policy's own round-0 image as the
+target, CE on the image tokens. Replaying its own drafts anchors the model's drafting while the LoRA
+learns the critique (critique-only CE drifted the draft am_0 from 0.80 to 0.21 over one epoch). Drafts
+are sampled from the unique round-0 images (with replacement once they run out), every draft regardless
+of its judge score, so the drafting distribution is held where it was rather than pushed.
+
     python -m llava.train.rl.stop_sft.build_data --dumps <dir> [<dir> ...] --out data.jsonl
 """
 
@@ -50,8 +57,28 @@ def label(line, threshold=0.5, targets="mixed"):
     else:
         target, source = ((own, "own") if not own_lg else
                           (oracle_critique(vqa_list, line["skills"], pq, threshold), "oracle"))
-    return {"prompt": line["prompt"], "round": line["round"] - 1, "codes": codes,
+    return {"prompt": line["prompt"], "round": line["round"] - 1, "codes": codes, "kind": "critique",
             "target": target, "passed": passed, "source": source, "own_looks_good": own_lg}
+
+
+def draft_examples(examples, n, seed=0):
+    """``n`` draft-replay examples drawn from the unique round-0 images in ``examples``
+    (without replacement while they last, then with). Target = the image itself."""
+    drafts = {}
+    for e in examples:
+        if e["round"] == 0 and e["prompt"] not in drafts:
+            drafts[e["prompt"]] = e
+    pool = list(drafts.values())
+    if not pool or n <= 0:
+        return []
+    rng = random.Random(seed + 1)
+    picked = []
+    while len(picked) < n:
+        chunk = pool[:]
+        rng.shuffle(chunk)
+        picked += chunk[:n - len(picked)]
+    return [{"prompt": e["prompt"], "round": 0, "codes": e["codes"], "kind": "draft", "target": "",
+             "passed": e["passed"], "source": "draft", "own_looks_good": False} for e in picked]
 
 
 def read_dumps(dirs, prefix="val"):
@@ -84,7 +111,7 @@ def counts(examples):
     lines = []
     for r in sorted({k[0] for k in c}):
         cells = [f"{cls}/{src}={c[(r, cls, src)]}" for cls in ("pass", "fail")
-                 for src in ("own", "template", "oracle") if c[(r, cls, src)]]
+                 for src in ("own", "template", "oracle", "draft") if c[(r, cls, src)]]
         lines.append(f"  image round {r}: " + "  ".join(cells))
     return "\n".join(lines)
 
@@ -97,6 +124,8 @@ def main():
     p.add_argument("--ratio", type=float, default=1.0, help="larger class / smaller class after balancing (0 = no balancing)")
     p.add_argument("--targets", choices=["mixed", "oracle"], default="mixed",
                    help="mixed: the policy's own critique where right (task 3a); oracle: judge-derived critique for every image")
+    p.add_argument("--draft_replay", type=float, default=0.0,
+                   help="also emit this many draft-replay examples per critique example (0 = none)")
     p.add_argument("--seed", type=int, default=0)
     args = p.parse_args()
 
@@ -115,6 +144,13 @@ def main():
     out = balance(examples, args.seed, args.ratio)
     print(f"balanced: {len(out)} ({sum(e['passed'] for e in out)} pass / {sum(not e['passed'] for e in out)} fail)")
     print(counts(out))
+    if args.draft_replay > 0:
+        drafts = draft_examples(examples, int(round(args.draft_replay * len(out))), args.seed)
+        n_uniq = len({e["prompt"] for e in drafts})
+        print(f"draft replay: {len(drafts)} examples from {n_uniq} unique drafts "
+              f"({sum(e['passed'] for e in drafts)} pass)")
+        out = out + drafts
+        random.Random(args.seed + 2).shuffle(out)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w") as f:
         for e in out:

@@ -31,6 +31,7 @@ DATA=${DATA:?set DATA (build_data.py output)}
 RUN_NAME=${RUN_NAME:-stop_sft_tamia}
 LR=${LR:-1e-5}
 EPOCHS=${EPOCHS:-1}
+EXTRA_ARGS=${EXTRA_ARGS:-}   # e.g. "--save_steps 500 --draft_loss_weight 1.0"
 BATCH=${BATCH:-16}
 MICRO=${MICRO:-4}
 N_GPUS=${SLURM_GPUS_ON_NODE:-4}
@@ -47,4 +48,4 @@ torchrun --standalone --nproc_per_node=${N_GPUS} \
     -m llava.train.rl.stop_sft.train_stop_sft \
     --model_name_or_path ${BASE} --data ${DATA} --output_dir output_dir/${RUN_NAME} \
     --learning_rate ${LR} --epochs ${EPOCHS} --batch_size ${BATCH} --micro_batch_size ${MICRO} \
-    --report_to wandb --run_name ${RUN_NAME}
+    --report_to wandb --run_name ${RUN_NAME} ${EXTRA_ARGS:-}

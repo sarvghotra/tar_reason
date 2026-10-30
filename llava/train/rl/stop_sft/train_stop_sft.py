@@ -12,6 +12,11 @@ of later stages. Data: ``build_data.py``.
     torchrun --nproc_per_node=4 -m llava.train.rl.stop_sft.train_stop_sft \\
         --model_name_or_path <F-merged> --data data.jsonl --output_dir output_dir/<run>
 
+Draft-replay examples (``kind: draft``, from ``build_data.py --draft_replay``): context = the prompt
+prefix up to ``<im_start><S0>``, target = the 729 image codes, CE over the image vocabulary. The
+loss is the critique-token mean plus ``--draft_loss_weight`` x the image-token mean (each a mean over
+its own tokens, so the 729-token drafts do not swamp the ~40-token critiques).
+
 The saved adapter (``<output_dir>/final``, plus ``checkpoint-<step>``) loads with train_grpo.py
 ``--init_adapter`` for the depth-4 eval.
 """
@@ -27,7 +32,7 @@ import torch
 import torch.distributed as dist
 from transformers import AutoTokenizer, get_cosine_schedule_with_warmup
 
-from llava.train.rl.grpo import KIND_NONE, KIND_TXT, masked_token_logprobs
+from llava.train.rl.grpo import KIND_IMG, KIND_NONE, KIND_TXT, masked_token_logprobs
 from llava.train.rl.rollout import LOOKS_GOOD_RE, RolloutConfig, TreeRollout
 from llava.train.rl.train_grpo import is_main, load_policy, rank0_print
 
@@ -50,6 +55,8 @@ def parse_args(argv=None):
     p.add_argument("--attn_implementation", default="flash_attention_2")
     p.add_argument("--gradient_checkpointing", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--save_steps", type=int, default=100)
+    p.add_argument("--draft_loss_weight", type=float, default=1.0,
+                   help="weight of the image-token mean NLL of draft-replay examples")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--report_to", default="none", choices=["none", "wandb"])
     p.add_argument("--run_name", default=None)
@@ -70,28 +77,33 @@ class Encoder:
         self.stop_fix = self.rollout._encode("\n<im_start>")
 
     def encode(self, ex):
-        """-> (context ids, target ids). Context = MDP state + reflect splice."""
-        ctx = (self.rollout.make_prefix(ex["prompt"]) + [self.img_start + c for c in ex["codes"]]
-               + self.rollout.reflect_splice)
+        """-> (context ids, target ids, target kind). Critique: context = MDP state + reflect
+        splice, target = the critique text (KIND_TXT). Draft replay: context = the prompt prefix,
+        target = the image codes (KIND_IMG)."""
+        prefix = self.rollout.make_prefix(ex["prompt"])
+        img = [self.img_start + c for c in ex["codes"]]
+        if ex.get("kind", "critique") == "draft":
+            return prefix, img, KIND_IMG
+        ctx = prefix + img + self.rollout.reflect_splice
         lg = LOOKS_GOOD_RE.search(ex["target"]) is not None
         tgt = self.rollout._encode(" " + ex["target"]) + (self.stop_lg if lg else self.stop_fix)
-        return ctx, tgt
+        return ctx, tgt, KIND_TXT
 
     def batch(self, examples, pad_id):
         """Right-padded tensors with train_mask on the target tokens."""
         rows = [self.encode(e) for e in examples]
-        width = max(len(c) + len(t) for c, t in rows)
+        width = max(len(c) + len(t) for c, t, _ in rows)
         B = len(rows)
         input_ids = torch.full((B, width), pad_id, dtype=torch.long)
         attention_mask = torch.zeros((B, width), dtype=torch.long)
         train_mask = torch.zeros((B, width), dtype=torch.bool)
         pos_kind = torch.full((B, width), KIND_NONE, dtype=torch.long)
-        for i, (c, t) in enumerate(rows):
+        for i, (c, t, kind) in enumerate(rows):
             L = len(c) + len(t)
             input_ids[i, :L] = torch.tensor(c + t)
             attention_mask[i, :L] = 1
             train_mask[i, len(c):L] = True
-            pos_kind[i, len(c):L] = KIND_TXT
+            pos_kind[i, len(c):L] = kind
         return dict(input_ids=input_ids, attention_mask=attention_mask,
                     train_mask=train_mask, pos_kind=pos_kind)
 
@@ -112,7 +124,10 @@ def main():
         tokenizer.pad_token = tokenizer.eos_token
     enc = Encoder(tokenizer)
     data = [json.loads(l) for l in open(args.data) if l.strip()]
-    rank0_print(f"{len(data)} examples ({sum(e['passed'] for e in data)} pass)")
+    n_draft = sum(e.get("kind") == "draft" for e in data)
+    rank0_print(f"{len(data)} examples: {len(data) - n_draft} critiques "
+                f"({sum(e['passed'] for e in data if e.get('kind') != 'draft')} pass), "
+                f"{n_draft} draft replays (loss weight {args.draft_loss_weight})")
 
     model = load_policy(args, device)
     model.train()
@@ -143,33 +158,43 @@ def main():
     for step in range(1, steps + 1):
         idx = order[(step - 1) * args.batch_size: step * args.batch_size]
         mine = idx[rank::world]
-        tot_lp, tot_n, tot_lg_ok = 0.0, 0, 0
-        for m in range(accum):
-            ex = [data[i] for i in mine[m * args.micro_batch_size:(m + 1) * args.micro_batch_size]]
-            b = {k: v.to(device) for k, v in enc.batch(ex, tokenizer.pad_token_id).items()}
+        # Encode the rank's whole step first: the loss is a per-kind token mean over the step
+        # (critique tokens and draft image tokens separately), so count the kinds up front.
+        batches = [enc.batch([data[i] for i in mine[m * args.micro_batch_size:(m + 1) * args.micro_batch_size]],
+                             tokenizer.pad_token_id) for m in range(accum)]
+        kinds = [b["pos_kind"][:, 1:][b["train_mask"][:, 1:]] for b in batches]   # aligned with lp
+        n_txt = sum(int((k == KIND_TXT).sum()) for k in kinds)
+        n_img = sum(int((k == KIND_IMG).sum()) for k in kinds)
+        tot = torch.zeros(4, dtype=torch.float64)          # lp_txt, n_txt, lp_img, n_img
+        for b, k in zip(batches, kinds):
+            b = {key: v.to(device) for key, v in b.items()}
             lp = masked_token_logprobs(model, b["input_ids"], b["attention_mask"], b["train_mask"],
                                        b["pos_kind"], enc.img_start, enc.img_end)
-            n_tok = int(b["train_mask"].sum())
-            # Token mean over the whole optimizer batch (all ranks): scale by the expected count.
-            loss = -lp.sum() / max(n_tok, 1) / accum
+            k = k.to(device)
+            lp_txt = lp[k == KIND_TXT].sum()
+            lp_img = lp[k == KIND_IMG].sum()
+            loss = -(lp_txt / max(n_txt, 1) + args.draft_loss_weight * lp_img / max(n_img, 1))
             loss.backward()
-            tot_lp += float(lp.sum())
-            tot_n += n_tok
+            tot += torch.tensor([float(lp_txt), float((k == KIND_TXT).sum()),
+                                 float(lp_img), float((k == KIND_IMG).sum())], dtype=torch.float64)
         if world > 1:
             for p in params:
                 if p.grad is None:
                     p.grad = torch.zeros_like(p)
                 dist.all_reduce(p.grad, op=dist.ReduceOp.SUM)
                 p.grad.div_(world)
-            t = torch.tensor([tot_lp, tot_n], device=device, dtype=torch.float64)
-            dist.all_reduce(t)
-            tot_lp, tot_n = float(t[0]), int(t[1])
+            tot = tot.to(device)
+            dist.all_reduce(tot)
+            tot = tot.cpu()
         gnorm = torch.nn.utils.clip_grad_norm_(params, args.max_grad_norm)
         optimizer.step()
         scheduler.step()
         optimizer.zero_grad(set_to_none=True)
-        stats = {"train/nll": -tot_lp / max(tot_n, 1), "train/grad_norm": float(gnorm),
+        stats = {"train/nll": -float(tot[0]) / max(float(tot[1]), 1.0), "train/grad_norm": float(gnorm),
                  "train/lr": scheduler.get_last_lr()[0]}
+        if tot[3] > 0:
+            stats["train/nll_img"] = -float(tot[2]) / float(tot[3])
+            stats["train/img_tok_frac"] = float(tot[3]) / (float(tot[1]) + float(tot[3]))
         if is_main():
             print(f"step={step}/{steps} " + json.dumps({k: round(v, 5) for k, v in stats.items()})
                   + f" {time.time() - t0:.0f}s", flush=True)

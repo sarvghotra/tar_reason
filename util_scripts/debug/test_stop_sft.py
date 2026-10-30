@@ -13,10 +13,10 @@ import torch
 from transformers import AutoTokenizer
 
 sys.path.insert(0, ".")
-from llava.train.rl.grpo import KIND_TXT  # noqa: E402
+from llava.train.rl.grpo import KIND_IMG, KIND_TXT  # noqa: E402
 from llava.train.rl.oracle_critique import NO_ISSUE_CRITIQUE  # noqa: E402
 from llava.train.rl.rollout import RolloutConfig, TreeRollout  # noqa: E402
-from llava.train.rl.stop_sft.build_data import balance, label  # noqa: E402
+from llava.train.rl.stop_sft.build_data import balance, draft_examples, label  # noqa: E402
 from llava.train.rl.stop_sft.train_stop_sft import Encoder  # noqa: E402
 
 TOK = sys.argv[1] if len(sys.argv) > 1 else "output_dir/slf_ref_edit_t21/checkpoint-17000"
@@ -47,7 +47,14 @@ def test_labels():
     ex = [{"passed": i < 3} for i in range(10)]
     out = balance(ex, seed=1)
     assert sum(e["passed"] for e in out) == 3 and len(out) == 6
-    print("labels + balance ok")
+    # draft replay: one unique draft per prompt (round-0 rows only), cycled once the pool runs out
+    rows = [label({**dump_line(FIX, [0.9, 0.1], rnd=r), "prompt": f"p{i}", "parent_codes": [i, r]})
+            for i in range(3) for r in (1, 2)]
+    d = draft_examples(rows, 7, seed=0)
+    assert len(d) == 7 and all(e["kind"] == "draft" and e["round"] == 0 and e["codes"][1] == 1 for e in d)
+    assert len({e["prompt"] for e in d[:3]}) == 3 and len({e["prompt"] for e in d}) == 3
+    assert draft_examples(rows, 0) == [] and rows[0]["kind"] == "critique"
+    print("labels + balance + draft replay ok")
 
 
 def test_layout(tok):
@@ -70,11 +77,12 @@ def test_layout(tok):
     enc = Encoder(tok)
     for k in range(3):
         ex = {"prompt": "a red cat", "codes": chain[k].codes, "target": FIX}
-        ctx, tgt = enc.encode(ex)
+        ctx, tgt, kind = enc.encode(ex)
+        assert kind == KIND_TXT
         assert ctx == seen[k], f"context of round-{k} image differs from the rollout's row"
         assert tgt[-len(enc.stop_fix):] == enc.stop_fix
         assert tok.decode(tgt[:-len(enc.stop_fix)]).strip() == FIX
-    ctx, tgt = enc.encode({"prompt": "a red cat", "codes": chain[0].codes, "target": NO_ISSUE_CRITIQUE})
+    ctx, tgt, _ = enc.encode({"prompt": "a red cat", "codes": chain[0].codes, "target": NO_ISSUE_CRITIQUE})
     assert tgt[-1] == tok.convert_tokens_to_ids("<|im_end|>")
     b = enc.batch([{"prompt": "a red cat", "codes": chain[0].codes, "target": NO_ISSUE_CRITIQUE},
                    {"prompt": "a red cat", "codes": chain[1].codes, "target": FIX}], tok.pad_token_id)
@@ -85,7 +93,19 @@ def test_layout(tok):
         assert not b["train_mask"][i][b["attention_mask"][i] == 0].any()
     n_img = int(((b["input_ids"][0] >= img0) & (b["input_ids"][0] < img0 + 65536)).sum())
     assert n_img == 729, n_img
-    print("layout ok (encoder context == rollout critic row, rounds 0-2)")
+    # draft replay: context = the rollout's prompt prefix (what the draft is sampled from), target = the image
+    root = chain[0]
+    ctx, tgt, kind = enc.encode({"prompt": "a red cat", "codes": root.codes, "kind": "draft", "target": ""})
+    assert kind == KIND_IMG and ctx == root.seq[:root.seg_start] and ctx + tgt == root.seq
+    assert len(tgt) == 729 and all(img0 <= t < img0 + 65536 for t in tgt)
+    b = enc.batch([{"prompt": "a red cat", "codes": root.codes, "kind": "draft", "target": ""},
+                   {"prompt": "a red cat", "codes": chain[1].codes, "target": FIX}], tok.pad_token_id)
+    assert int(b["train_mask"][0].sum()) == 729 and (b["pos_kind"][0][b["train_mask"][0]] == KIND_IMG).all()
+    assert (b["pos_kind"][1][b["train_mask"][1]] == KIND_TXT).all()
+    assert b["input_ids"][0][b["train_mask"][0]].tolist() == tgt
+    k = b["pos_kind"][:, 1:][b["train_mask"][:, 1:]]          # the trainer's per-kind split
+    assert int((k == KIND_IMG).sum()) == 729 and int((k == KIND_TXT).sum()) == int(b["train_mask"][1].sum())
+    print("layout ok (encoder context == rollout critic row, rounds 0-2; draft replay == root sequence)")
 
 
 if __name__ == "__main__":
