@@ -28,10 +28,20 @@
 #   BENCH=genai MODEL_NAME=darshan_agrpo_tar_380 N_ITERS=2 RUN_DIR=.../genai-bench-1600/iter_adhoc_MDP_n2_..._repeat1 sbatch ...
 #   SEEDS="13 17 91" (default: every seed_* in RUN_DIR), N_PAR (TIIF: concurrent judge clients per iteration, default 8).
 # Both are resumable: TIIF skips prompts whose result json exists, GenAI skips iterations whose .pt exists.
+# Nibi (same script; its #SBATCH account/log lines are TamIA's, override at submission):
+#   sbatch --account=rrg-bengioy-ad_gpu -o /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.out \
+#          -e /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.err scripts/eval/official_judges_tamia.sh
 set -u
-REPO=/scratch/d/dars11/git/tar_reason_pm
-BENCH_DIR=/scratch/d/dars11/benchmarks
-export HF_HOME=/scratch/d/dars11/hf_home
+case "$(hostname -f 2>/dev/null || hostname)" in
+  *nibi*)   # Nibi: /scratch/dars11, envs in ~/envs (clipt5_judge also serves the summaries + stats: pandas, openpyxl, matplotlib)
+    REPO=/scratch/dars11/git/tar_reason; BENCH_DIR=/scratch/dars11/benchmarks; export HF_HOME=/scratch/dars11/hf_home
+    VLLM_ENV=$HOME/envs/vllm_judge; CLIPT5_ENV=$HOME/envs/clipt5_judge; SUM_ENV=$HOME/envs/clipt5_judge; STATS_ENV=$HOME/envs/clipt5_judge
+    T2V_CLIPT5=/scratch/dars11/git/t2v_metrics_clipt5; T2V_FORK=/scratch/dars11/git/t2v_metrics_jeet ;;
+  *)        # TamIA
+    REPO=/scratch/d/dars11/git/tar_reason_pm; BENCH_DIR=/scratch/d/dars11/benchmarks; export HF_HOME=/scratch/d/dars11/hf_home
+    VLLM_ENV=/home/d/dars11/envs/vllm_judge; CLIPT5_ENV=/home/d/dars11/envs/clipt5_judge; SUM_ENV=/home/d/dars11/envs/qwen_judge; STATS_ENV=/home/d/dars11/envs/tar
+    T2V_CLIPT5=/scratch/d/dars11/git/t2v_metrics_clipt5; T2V_FORK=/scratch/d/dars11/git/t2v_metrics_jeet ;;
+esac
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 BENCH=${BENCH:?set BENCH=tiif|genai}
 MODEL_NAME=${MODEL_NAME:?set MODEL_NAME (the label used at generation time, e.g. darshan_agrpo_tar_380)}
@@ -44,14 +54,14 @@ if [ -n "${SEEDS:-}" ]; then read -r -a SEEDS <<< "$SEEDS"; else
 OUTPUT_DIR=$(dirname "$RUN_DIR")
 TMP=${SLURM_TMPDIR:-/tmp/${USER}_official_judges}; mkdir -p "$TMP"
 echo "BENCH=${BENCH} MODEL_NAME=${MODEL_NAME} N_ITERS=${N_ITERS} SEEDS=${SEEDS[*]} RUN_DIR=${RUN_DIR} job=${SLURM_JOB_ID:-local} host=$(hostname)"
-TAR_PY=/home/d/dars11/envs/tar/bin/python
+TAR_PY=${STATS_ENV}/bin/python
 ITERS=($(seq 1 ${N_ITERS}))
 
 # ================================================================ TIIF-Bench: Qwen2.5-VL-72B via vLLM
 tiif_official() {
   local TIIF_DIR=${BENCH_DIR}/TIIF-Bench EVAL_PROMPTS_DIR=${BENCH_DIR}/TIIF-Bench/data/testmini_eval_prompts
-  local VLLM=/home/d/dars11/envs/vllm_judge/bin/vllm CLIENT_PY=/home/d/dars11/envs/vllm_judge/bin/python
-  local SUM_PY=/home/d/dars11/envs/qwen_judge/bin/python      # pandas + openpyxl for the summary scripts
+  local VLLM=${VLLM_ENV}/bin/vllm CLIENT_PY=${VLLM_ENV}/bin/python
+  local SUM_PY=${SUM_ENV}/bin/python      # pandas + openpyxl for the summary scripts
   local JUDGE=$(ls -d ${HF_HOME}/hub/models--Qwen--Qwen2.5-VL-72B-Instruct/snapshots/*/ | head -1)
   [ -n "$JUDGE" ] || { echo "Qwen2.5-VL-72B-Instruct not in ${HF_HOME}/hub"; exit 1; }
   local SERVED=qwen2.5-vl-72b-instruct PORT=$((8100 + ${SLURM_JOB_ID:-0} % 800)) N_PAR=${N_PAR:-8}
@@ -119,8 +129,8 @@ tiif_official() {
 # ================================================================ GenAI-Bench: CLIP-FlanT5-XXL VQAScore
 genai_official() {
   local SCORE_MODEL=clip-flant5-xxl NUM_PROMPTS=1600 GENAI_ROOT=${BENCH_DIR}/GenAI-Bench
-  local CLIPT5_PY=/home/d/dars11/envs/clipt5_judge/bin/python
-  export T2V_CLIPT5_DIR=/scratch/d/dars11/git/t2v_metrics_clipt5 T2V_FORK_DIR=/scratch/d/dars11/git/t2v_metrics_jeet
+  local CLIPT5_PY=${CLIPT5_ENV}/bin/python
+  export T2V_CLIPT5_DIR=${T2V_CLIPT5} T2V_FORK_DIR=${T2V_FORK}
   local PT=${SCORE_MODEL}_${NUM_PROMPTS}_prompts.pt
   local SEED SEED_DIR GEN_MODEL RESULT_FILE ITER I PIDS PID STATUS ITER_LOG
   for SEED in "${SEEDS[@]}"; do
