@@ -65,6 +65,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-30 03:00: all 120 A100L GPUs on `long` busy for ~34 h (no starts). Smoke-tested BAGEL / Show-o2 / AlphaGRPO srr on L40S (48 GB; peaks 36-37 GB; images ~identical to A100 at same seed; ~1.1-1.2x slower), then moved the 31 queued GenEval2 + TIIF jobs in place (`scontrol update`) to 2x L40S, 16 CPU, 96 GB; the 15 GenAI jobs stay on 4x A100L (Qwen3.5-27B judge needs >48 GB) but shrunk to 16 CPU, 160 GB; Emu3 unchanged (51 GB at batch 4).
 - 2026-10-30 01:30: shared `models/tar/sft/darshan_agrpo_tar_merged380` read-only with jeet (`setfacl -R -m u:sarvjeet-singh.ghotra:rX`; revoke with `-x`).
 - 2026-10-27 17:45: two clients had the session open (tmux login-2 + VSCode login-4); login-4's copy resubmitted srr GenAI as 11414737 (2 GPUs, 48 GB; its first try 11414310 OOMed). Kept 11414737, cancelled my held 11414376.
 - 2026-10-27 00:10: AlphaGRPO-on-Tar evals submitted (Inbox from Fir + Rorqual; both lines removed, ACL pending in Now).

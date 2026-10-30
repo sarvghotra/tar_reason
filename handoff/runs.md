@@ -298,4 +298,6 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
     fair across models, not comparable to public leaderboards. (6) Compute is not matched: ours gets 4 correction rounds, most baselines
     one pass, so report our draft (image 1) as the like-for-like single-pass number next to the final; per-image cost ranges from ~7 s
     (BLIP3-o) to ~146 s (srr) on an A100. (7) 1 seed (no error bars): Qwen-Image, Emu3, AlphaGRPO srr; 3 seeds for the rest.
+    (8) GPU type: from 2026-10-30 the GenEval2 / TIIF generations of the queued unified-model baselines run on L40S (48 GB) instead of
+    A100-80GB (A100L full for days); same seeds give near-identical images (checked on BAGEL), so a model's seeds may mix GPU types.
 
