@@ -104,6 +104,9 @@ from the repo and checks their line numbers); republish `tools/walkthrough/out/t
   nodes. See `fir.md`.
 - **TamIA** (Alliance, user `dars11`, H100 4/node, account `aip-agrawal`; paths have an extra `d/` level). See `tamia.md`.
 - **Rorqual** (Alliance, user `dars11`, H100 4/node, account `rrg-bengioy-ad_gpu`; MFA on every ssh login). See `rorqual.md` (being set up).
+- **Nibi** (Alliance, user `dars11`, H100 8/node, account `rrg-bengioy-ad_gpu`; internet on the login node): no session of its
+  own, driven from Fir over an ssh ControlMaster like TamIA; notes in `fir.md`. Used for the official-judge re-scoring (2026-10-30).
+- **Trillium-GPU** (SciNet/Alliance, user `dars11`, H100 4/node, account `rrg-bengioy-ad_gpu`; SSH keys only, via CCDB). See `trillium.md`.
 - All: Python envs `~/envs/tar` (training: uv, Python 3.10, torch 2.1.2+cu121, transformers 4.50.0, flash-attn
   2.5.9.post1 prebuilt wheel, `setuptools<70`) and `~/envs/qwen_judge` (torch 2.6.0+cu124, transformers 4.57.6).
   RL needs 80 GB GPUs (peak ~42.5 GB/GPU). The user prefers uv over conda and is new to the Alliance clusters:
