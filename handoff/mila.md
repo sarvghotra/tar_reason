@@ -11,7 +11,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 - **Done** (`runs.md`): Show-o, BAGEL + CoT (3 seeds each); AlphaGRPO rt2i GenEval2 seed 13 = AM 75.9.
 - **AlphaGRPO-on-Tar** (`models/tar/sft/darshan_agrpo_tar_merged380`, Rorqual ckpt-380 on base Tar-7B; copy verified, 4 shards):
   single-pass official evals queued (`SINGLE_PASS=1 N_ITERS=2`, label `darshan_agrpo_tar_380`, 3 seeds × 3 benches, `agrpo_tar_jobs.txt`).
-  **Read-only ACL for jeet not yet set** (waiting for the user's OK).
+  Shared read-only with jeet 2026-10-30 (ACL, as E-450).
 - **Queued with `RESUME=1`** (resubmitted 10:30 after 7 preemptions on `long`; `30d3b79`): AlphaGRPO rt2i (3 seeds), srr (1 seed: GenEval2
   2213 / GenAI 13 / TIIF 17), plain BAGEL (3 seeds). Partial copies in `$SCRATCH/tar_reason/results_jeet_partial/`.
 - Not yet submitted: Show-o2, BLIP3-o (smokes OK), Emu3 (1 seed, split per bench), Uni-CoT (smoke pending). Use `RESUME=1` for all.
@@ -65,6 +65,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-10-30 01:30: shared `models/tar/sft/darshan_agrpo_tar_merged380` read-only with jeet (`setfacl -R -m u:sarvjeet-singh.ghotra:rX`; revoke with `-x`).
 - 2026-10-27 17:45: two clients had the session open (tmux login-2 + VSCode login-4); login-4's copy resubmitted srr GenAI as 11414737 (2 GPUs, 48 GB; its first try 11414310 OOMed). Kept 11414737, cancelled my held 11414376.
 - 2026-10-27 00:10: AlphaGRPO-on-Tar evals submitted (Inbox from Fir + Rorqual; both lines removed, ACL pending in Now).
 - 2026-10-26 10:30: RESUME=1 added and tested; AlphaGRPO + plain BAGEL jobs resubmitted with it. Show-o and BAGEL + CoT done.
