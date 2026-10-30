@@ -284,6 +284,8 @@ copy_retry() {   # copy_retry <src> <dst>: cp to scratch, retried (same BeeGFS e
 # RESUME=1: resume_begin <scratch dir> seeds the local copy of <scratch dir> from ${OUT_ROOT}_partial and syncs it
 # back every RESUME_EVERY s in the background; resume_end stops that and syncs once more. No-ops otherwise.
 PARTIAL_ROOT=${OUT_ROOT}_partial
+# rsync creates only the last path component: without the parents, every copy_to_scratch fails (TamIA 653114, 2026-10-30).
+mkdir -p "$OUT_ROOT" "$PARTIAL_ROOT"
 RESUME_PID=""
 resume_begin() {
   [ "${RESUME:-0}" = 1 ] || return 0
