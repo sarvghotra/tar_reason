@@ -93,10 +93,20 @@
 # the exact command for its run at the end.
 
 set -uo pipefail
-REPO=/scratch/d/dars11/git/tar_reason_pm
-MODELS=/scratch/d/dars11/models/tar
-BENCH_DIR=/scratch/d/dars11/benchmarks
-T2V_DIR=/scratch/d/dars11/git/t2v_metrics_jeet    # copy of jeet's t2v_metrics fork (code only)
+# Cluster paths (2026-10-30: the same script also runs on Nibi, driven from Fir; Nibi's #SBATCH overrides at submission:
+#   sbatch --account=rrg-bengioy-ad_gpu --mem=240G -o /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.out \
+#          -e /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.err scripts/eval/bench_jeet_tamia.sh
+# GEN_ONLY=1 stops after the images are generated (no judging / scoring): for the official-judge re-scoring
+# (official_judges_tamia.sh), which needs only the images.)
+case "$(hostname -f 2>/dev/null || hostname)" in
+  *nibi*) P_SCRATCH=/scratch/dars11; P_REPO=${P_SCRATCH}/git/tar_reason; P_ENVS=/home/dars11/envs ;;
+  *)      P_SCRATCH=/scratch/d/dars11; P_REPO=${P_SCRATCH}/git/tar_reason_pm; P_ENVS=/home/d/dars11/envs ;;
+esac
+GEN_ONLY=${GEN_ONLY:-0}
+REPO=${P_REPO}
+MODELS=${P_SCRATCH}/models/tar
+BENCH_DIR=${P_SCRATCH}/benchmarks
+T2V_DIR=${P_SCRATCH}/git/t2v_metrics_jeet    # copy of jeet's t2v_metrics fork (code only)
 MODEL_NAME=${MODEL_NAME:?set MODEL_NAME (label for the results folder)}
 BENCH=${BENCH:?set BENCH to geneval2, genai or tiif}
 MODEL_PATH=${MODEL_PATH:-${MODELS}/sft/slf_ref_edit_t21_ckpt17000}
@@ -106,7 +116,7 @@ MDP=${MDP:-1}
 N_ITERS=${N_ITERS:-5}   # official: draft + 4 corrections (user, 2026-10-21; jeet used 4)
 NUM_PROMPTS=${NUM_PROMPTS:-1600}   # full official GenAI-Bench (jeet used 800)
 SINGLE_PASS=${SINGLE_PASS:-0}
-OUT_ROOT=${OUT_ROOT:-/scratch/d/dars11/tar_reason/results_jeet}
+OUT_ROOT=${OUT_ROOT:-${P_SCRATCH}/tar_reason/results_jeet}
 REPEAT=1
 AR_RES=512
 GEN_FAMILY=${GEN_FAMILY:-tar}
@@ -147,11 +157,11 @@ else
   N_GPUS=$(nvidia-smi --list-gpus | wc -l)
 fi
 
-TAR_ENV=/home/d/dars11/envs/tar
+TAR_ENV=${P_ENVS}/tar
 TAR_PY=${TAR_ENV}/bin/python
-JUDGE_PY=/home/d/dars11/envs/qwen_judge/bin/python    # GenEval2 scorer (Qwen3-VL-8B), TIIF judge (Qwen2.5-VL-7B) + summaries
-GENAI_PY=/home/d/dars11/envs/genai_judge/bin/python   # t2v_metrics (Qwen3.5-27B); its bin/ has ffmpeg
-export HF_HOME=/scratch/d/dars11/hf_home            # all judge weights are in $HF_HOME/hub
+JUDGE_PY=${P_ENVS}/qwen_judge/bin/python    # GenEval2 scorer (Qwen3-VL-8B), TIIF judge (Qwen2.5-VL-7B) + summaries
+GENAI_PY=${P_ENVS}/genai_judge/bin/python   # t2v_metrics (Qwen3.5-27B); its bin/ has ffmpeg
+export HF_HOME=${P_SCRATCH}/hf_home            # all judge weights are in $HF_HOME/hub
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1    # TamIA compute nodes have no internet: fail fast on a missing weight
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
 TMP_DIR=${SLURM_TMPDIR:-/tmp}
@@ -227,14 +237,14 @@ GEN_COMMON=(--model "$MODEL_PATH" --n_iters "$N_ITERS" --repeat $REPEAT
 GEN_ENV=$TAR_ENV
 GEN_CUDA_MODULE=cuda/12.2
 if [ "$GEN_FAMILY" = janus ]; then
-  GEN_ENV=/home/d/dars11/envs/janus   # torch 2.5.1+cu121 wheel bundles its CUDA libs: no module
+  GEN_ENV=${P_ENVS}/janus   # torch 2.5.1+cu121 wheel bundles its CUDA libs: no module
   GEN_CUDA_MODULE=""
   read -r -a JANUS_EXTRA <<< "${JANUS_ARGS:-}"
   GEN_COMMON+=(--model_path "$JANUS_MODEL" --mode "$JANUS_MODE" --max_images "$JANUS_MAX_IMAGES" "${JANUS_EXTRA[@]}")
   echo "GEN_FAMILY=janus JANUS_MODE=${JANUS_MODE} JANUS_MODEL=${JANUS_MODEL} JANUS_MAX_IMAGES=${JANUS_MAX_IMAGES} (N_ITERS forced to 2; MODEL_PATH unused)"
 fi
 if [ "$GEN_FAMILY" = diffusers ]; then
-  GEN_ENV=${DIFF_ENV:-/home/d/dars11/envs/diffusers}   # torch 2.6+cu124 wheel bundles its CUDA libs: no module
+  GEN_ENV=${DIFF_ENV:-${P_ENVS}/diffusers}   # torch 2.6+cu124 wheel bundles its CUDA libs: no module
   GEN_CUDA_MODULE=""
   read -r -a DIFF_EXTRA <<< "${DIFF_ARGS:-}"
   GEN_COMMON+=(--diff_model "$DIFF_MODEL" --height "$DIFF_RES" --width "$DIFF_RES" "${DIFF_EXTRA[@]}")
@@ -242,7 +252,7 @@ if [ "$GEN_FAMILY" = diffusers ]; then
   echo "GEN_FAMILY=diffusers DIFF_MODEL=${DIFF_MODEL} DIFF_RES=${DIFF_RES} DIFF_ARGS=${DIFF_ARGS:-} (single pass, N_ITERS=${N_ITERS} copies; MODEL_PATH unused)"
 fi
 case $GEN_FAMILY in showo|showo2|bagel|blip3o|emu3|unicot|alphagrpo)
-  GEN_ENV=${UNI_ENV:-/home/d/dars11/envs/${GEN_FAMILY}}   # one uv env per family (bagel + unicot can share)
+  GEN_ENV=${UNI_ENV:-${P_ENVS}/${GEN_FAMILY}}   # one uv env per family (bagel + unicot can share)
   GEN_CUDA_MODULE=""
   read -r -a UNI_EXTRA <<< "${UNI_ARGS:-}"
   GEN_COMMON+=(--family "$GEN_FAMILY" "${UNI_EXTRA[@]}")
@@ -332,7 +342,7 @@ iters_have() {   # iters_have <dir> <relative file>: true if <dir>/<k>/<file> ex
 GENEVAL2_SCORER=evaluation_optz.py
 # The scorer hardcodes the hub id of its Qwen3-VL-8B judge; TamIA compute nodes have no internet, so the TamIA copy of
 # evaluation_optz.py reads MODEL_ID from GENEVAL2_JUDGE_PATH (patched 2026-10-30; original kept as evaluation_optz.py.orig).
-export GENEVAL2_JUDGE_PATH=${GENEVAL2_JUDGE_PATH:-/scratch/d/dars11/models/vlm/Qwen3-VL-8B-Instruct}   # sibling of $MODELS, not under it
+export GENEVAL2_JUDGE_PATH=${GENEVAL2_JUDGE_PATH:-${P_SCRATCH}/models/vlm/Qwen3-VL-8B-Instruct}   # sibling of $MODELS, not under it
 if [ "$BENCH" = geneval2 ] && [ ! -f ${BENCH_DIR}/GenEval2/${GENEVAL2_SCORER} ]; then
   echo "missing ${BENCH_DIR}/GenEval2/${GENEVAL2_SCORER}: copy it from Mila (\$SCRATCH/benchmarks/GenEval2/)"; exit 1
 fi
@@ -430,6 +440,7 @@ genai_seed() {
       && touch "$SEED_DIR/.gen_done" \
       || { echo "GenAI-Bench generation failed (seed ${SEED})"; exit 1; }
   fi
+  [ "$GEN_ONLY" = 1 ] && { echo "seed ${SEED}: GEN_ONLY=1, images done, skipping the VQAScore stage"; return 0; }
   echo "$(date +%H:%M:%S) seed ${SEED}: VQAScore ${SCORE_MODEL}, ${NUM_PROMPTS} prompts, one iteration per GPU (${N_GPUS} at a time)"
   # His fork's genai_bench/evaluate.py (accepts --num_prompts 800), run from the fork's folder so its
   # t2v_metrics / dataset.py shadow the env's editable upstream install; no tar_reason on PYTHONPATH
@@ -502,6 +513,7 @@ tiif_seed() {
       || { echo "TIIF generation failed (seed ${SEED})"; exit 1; }
   fi
   mkdir -p "$RESULT_DIR"
+  [ "$GEN_ONLY" = 1 ] && { echo "seed ${SEED}: GEN_ONLY=1, images done, skipping the judge"; return 0; }
   # The judge writes one folder per (dimension, register, iteration): judge into a local copy (seeded with any
   # results already on scratch, so it stays resumable) and rsync back, for the same scratch mkdir errors as above.
   local JUDGE_DIR=${LOCAL_ROOT}/tiif_judge_seed_${SEED}
