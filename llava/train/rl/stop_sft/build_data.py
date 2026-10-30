@@ -26,6 +26,14 @@ learns the critique (critique-only CE drifted the draft am_0 from 0.80 to 0.21 o
 are sampled from the unique round-0 images (with replacement once they run out), every draft regardless
 of its judge score, so the drafting distribution is held where it was rather than pushed.
 
+``--examples images`` (jeet, 2026-10-30: "generate the rollouts with the oracle itself, don't involve policy
+critiques at all"): the dump comes from oracle-driven chains (``train_grpo.py --eval_oracle --no-eval_own
+--val_dump_codes``: every round the oracle critique drives the refinement, a chain ends when its image passes every
+question). Each *image* in the dump (the round-0 draft line and every child line) becomes one example labelled from
+its own per-question scores: the oracle critique if a question fails, ``NO_ISSUE_CRITIQUE`` if none does. Implies
+``--targets oracle``; the policy's critic is never run. Round-0 drafts feed ``--draft_replay`` as before.
+(Default ``--examples parents`` = the original scheme: the parent image of every critiqued node.)
+
     python -m llava.train.rl.stop_sft.build_data --dumps <dir> [<dir> ...] --out data.jsonl
 """
 
@@ -59,6 +67,20 @@ def label(line, threshold=0.5, targets="mixed"):
                           (oracle_critique(vqa_list, line["skills"], pq, threshold), "oracle"))
     return {"prompt": line["prompt"], "round": line["round"] - 1, "codes": codes, "kind": "critique",
             "target": target, "passed": passed, "source": source, "own_looks_good": own_lg}
+
+
+def label_image(line, threshold=0.5):
+    """One dump line -> example for the *child* image of that line (``codes`` / ``per_question``; for a
+    round-0 line written by the dump's ``codes`` mode, the draft itself). Oracle targets only."""
+    codes, pq = line.get("codes"), line.get("per_question")
+    if codes is None or pq is None:
+        return None
+    vqa_list = list(zip(line["questions"], line["answers"]))
+    passed = all(p >= threshold for p in pq)
+    target, source = ((NO_ISSUE_CRITIQUE, "template") if passed else
+                      (oracle_critique(vqa_list, line["skills"], pq, threshold), "oracle"))
+    return {"prompt": line["prompt"], "round": line["round"], "codes": codes, "kind": "critique",
+            "target": target, "passed": passed, "source": source, "own_looks_good": False}
 
 
 def draft_examples(examples, n, seed=0):
@@ -124,6 +146,9 @@ def main():
     p.add_argument("--ratio", type=float, default=1.0, help="larger class / smaller class after balancing (0 = no balancing)")
     p.add_argument("--targets", choices=["mixed", "oracle"], default="mixed",
                    help="mixed: the policy's own critique where right (task 3a); oracle: judge-derived critique for every image")
+    p.add_argument("--examples", choices=["parents", "images"], default="parents",
+                   help="parents: the parent image of every critiqued node (policy-driven chains); "
+                        "images: every image in the dump, incl. round-0 drafts, labelled by its own scores (oracle chains)")
     p.add_argument("--draft_replay", type=float, default=0.0,
                    help="also emit this many draft-replay examples per critique example (0 = none)")
     p.add_argument("--seed", type=int, default=0)
@@ -131,7 +156,8 @@ def main():
 
     seen, examples = set(), []
     for line in read_dumps(args.dumps):
-        ex = label(line, args.threshold, args.targets)
+        ex = (label_image(line, args.threshold) if args.examples == "images"
+              else label(line, args.threshold, args.targets))
         if ex is None:
             continue
         key = (ex["prompt"], ex["round"])   # a re-run shard must not add a chain twice

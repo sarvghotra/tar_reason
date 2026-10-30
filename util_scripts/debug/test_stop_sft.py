@@ -16,7 +16,7 @@ sys.path.insert(0, ".")
 from llava.train.rl.grpo import KIND_IMG, KIND_TXT  # noqa: E402
 from llava.train.rl.oracle_critique import NO_ISSUE_CRITIQUE  # noqa: E402
 from llava.train.rl.rollout import RolloutConfig, TreeRollout  # noqa: E402
-from llava.train.rl.stop_sft.build_data import balance, draft_examples, label  # noqa: E402
+from llava.train.rl.stop_sft.build_data import balance, draft_examples, label, label_image  # noqa: E402
 from llava.train.rl.stop_sft.train_stop_sft import Encoder  # noqa: E402
 
 TOK = sys.argv[1] if len(sys.argv) > 1 else "output_dir/slf_ref_edit_t21/checkpoint-17000"
@@ -54,6 +54,14 @@ def test_labels():
     assert len(d) == 7 and all(e["kind"] == "draft" and e["round"] == 0 and e["codes"][1] == 1 for e in d)
     assert len({e["prompt"] for e in d[:3]}) == 3 and len({e["prompt"] for e in d}) == 3
     assert draft_examples(rows, 0) == [] and rows[0]["kind"] == "critique"
+    # oracle-driven chains (--examples images): the line's own image, labelled from its own scores
+    e = label_image({**dump_line(FIX, [0.9, 0.1], rnd=2), "per_question": [0.9, 0.2]})
+    assert e["round"] == 2 and e["codes"] == [4, 5, 6] and not e["passed"] and e["source"] == "oracle"
+    assert "red" in e["target"] and "\nCorrection: " in e["target"]
+    e = label_image({**dump_line("", [0.9, 0.1], rnd=0), "parent_codes": None, "parent_per_question": None,
+                     "per_question": [0.9, 0.8]})
+    assert e["round"] == 0 and e["passed"] and e["target"] == NO_ISSUE_CRITIQUE and e["source"] == "template"
+    assert label_image({**dump_line(FIX, [0.9, 0.1]), "per_question": None}) is None
     print("labels + balance + draft replay ok")
 
 

@@ -222,6 +222,9 @@ def parse_args():
                         "(val_sampled/*), next to the greedy val/*: what the training signal "
                         "sees vs what the benchmark deploys. The two diverging (greedy "
                         "looks_good far above sampled) is the early sign of a stop collapse.")
+    p.add_argument("--eval_own", action=argparse.BooleanOptionalAction, default=True,
+                   help="Run the deployed-loop validation pass (policy critic). --no-eval_own with --eval_oracle "
+                        "evaluates / dumps oracle-driven chains only (run-2 data generation, 2026-10-30).")
     p.add_argument("--eval_oracle", action=argparse.BooleanOptionalAction, default=False,
                    help="Also validate with oracle critiques (val_oracle/*): the refiner's "
                         "fix/break rates under a correct critique, independent of the critic.")
@@ -915,11 +918,25 @@ def dump_validation_nodes(batch: RolloutBatch, out_dir: str, prefix: str, step: 
                           codes: bool = False):
     """Append one JSON line per refinement node (round >= 1) of a validation batch:
     the prompt, its questions/skills, the critique text and the per-question scores of
-    the parent and of this node. Read by scripts/rl_ft/critic_diagnostic.py."""
+    the parent and of this node. Read by scripts/rl_ft/critic_diagnostic.py.
+
+    With ``codes`` (stop-SFT data), round-0 drafts are written too (``round`` 0, no critique,
+    ``parent_*`` None): under oracle critiques a draft that passes every question gets no child,
+    so this is the only line that carries it (build_data ``--examples images``)."""
     rank = dist.get_rank() if dist.is_initialized() else 0
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, f"{prefix.strip('/')}_step{step}_rank{rank}.jsonl")
     with open(path, "a") as f:
+        if codes:
+            for n in batch.nodes_by_round[0]:
+                p = batch.prompts[n.prompt_idx]
+                f.write(json.dumps({
+                    "step": step, "prefix": prefix, "round": 0, "prompt": p["prompt"],
+                    "questions": [q for q, _ in p["vqa_list"]], "answers": [a for _, a in p["vqa_list"]],
+                    "skills": p["skills"], "critique": "", "critique_source": "", "looks_good": False,
+                    "forced_refine": False, "parent_am": None, "parent_per_question": None,
+                    "am": n.am, "per_question": n.per_question, "parent_codes": None, "codes": n.codes,
+                }) + "\n")
         for level in batch.nodes_by_round[1:]:
             for n in level:
                 p = batch.prompts[n.prompt_idx]
@@ -1247,8 +1264,9 @@ def main():
         out = {}
         for name, rows in val_sets.items():
             tag = "" if len(val_sets) == 1 or name == "val" else f"_{name}"
-            out.update(run_validation(model, rollout, reward, rows, args, device, step, decoder,
-                                      prefix=f"val{tag}/"))
+            if args.eval_own:
+                out.update(run_validation(model, rollout, reward, rows, args, device, step, decoder,
+                                          prefix=f"val{tag}/"))
             if args.eval_sampled:
                 out.update(run_validation(model, rollout, reward, rows, args, device, step, None,
                                           prefix=f"val_sampled{tag}/", sample_critic=True))
