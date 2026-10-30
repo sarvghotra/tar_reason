@@ -31,6 +31,7 @@ RUNS = {
     "T2I OOD": "/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/tiif-bench-testmini_eval/iter_adhoc_MDP_n4_sslf_ref_edit_t21_17K_greedy_slf_ref_draft_S0_512px_repeat1_bl_rl_t2i_t1_200",
 }
 out_dir = "/network/scratch/s/sarvjeet-singh.ghotra/git/tar_reason/results/tiif-bench-testmini_eval/figures"
+results_subdir = "eval_results"   # per-seed judge folder (eval_results_qwen72b for the official 72B judge)
 # the summary holds accuracies in [0, 1]; the figures show them in percent
 PLOT_SCALE = 100
 
@@ -135,7 +136,7 @@ def load_run(input_dir):
 
     runs = {}
     for seed_dir in seed_dirs:
-        results = seed_dir / "eval_results"
+        results = seed_dir / results_subdir
         summary = results / "result_summary_dimension.txt"
         if not summary.exists():
             print(f"[skip] missing {summary}")
@@ -281,6 +282,9 @@ def parse_args():
              "same axes). Default: the RUNS dict in this file.")
     parser.add_argument("--out_dir", default=out_dir,
                         help="Where the figures go (default: %(default)s).")
+    parser.add_argument("--results_subdir", default=results_subdir,
+                        help="Per-seed folder holding result_summary_dimension.txt (default: %(default)s; "
+                             "eval_results_qwen72b = the official Qwen2.5-VL-72B judge, 2026-10-30).")
     args = parser.parse_args()
     if args.run:
         bad = [r for r in args.run if "=" not in r]
@@ -293,9 +297,10 @@ def parse_args():
 
 
 def main():
-    global out_dir
+    global out_dir, results_subdir
     args = parse_args()
     out_dir = args.out_dir
+    results_subdir = args.results_subdir
     loaded = {}
     for label, input_dir in args.runs.items():
         if not input_dir:  # placeholder entry in RUNS

@@ -72,6 +72,9 @@ from llava.train.rl.reward import ANSWER_SUFFIXES, answer_variants
 JUDGE_PROFILES = {
     "gemma4": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
                    prefix_share=False),
+    # Gemma 4 12B / 31B (dense "unified" checkpoints, Gemma4UnifiedForConditionalGeneration): same prompt handling.
+    "gemma4_unified": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
+                           prefix_share=False),
     "qwen3_vl": dict(template_kwargs={}, soft_tokens=False, prefix_share=True),
 }
 DEFAULT_PROFILE = dict(template_kwargs={}, soft_tokens=False, prefix_share=False)
@@ -132,8 +135,15 @@ class Judge:
         # Scores are read at the last position, so every row's final real token
         # must sit at index -1.
         self.processor.tokenizer.padding_side = "left"
-        self.model = AutoModelForImageTextToText.from_pretrained(
-            model_path, dtype=torch.bfloat16, attn_implementation=attn_implementation)
+        try:
+            self.model = AutoModelForImageTextToText.from_pretrained(
+                model_path, dtype=torch.bfloat16, attn_implementation=attn_implementation)
+        except ValueError:
+            # transformers >= 5 registers the unified Gemma 4 checkpoints (image + audio) only under
+            # AutoModelForMultimodalLM; the forward signature used here (input_ids, pixel_values, ...) is the same.
+            from transformers import AutoModelForMultimodalLM
+            self.model = AutoModelForMultimodalLM.from_pretrained(
+                model_path, dtype=torch.bfloat16, attn_implementation=attn_implementation)
         self.model.to(device).eval()
         for p in self.model.parameters():
             p.requires_grad_(False)

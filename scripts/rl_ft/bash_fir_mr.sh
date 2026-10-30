@@ -31,17 +31,35 @@ MODELS=/home/dars11/scratch/models/tar
 DATA=/home/dars11/scratch/data/geneval2_50K_v2
 TRAIN_JSONL=${TRAIN_JSONL:-${DATA}/evaluation_metadata_shuf_train.jsonl}
 VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val800.jsonl}
-JUDGE_MODEL=/home/dars11/scratch/models/vlm/Qwen3-VL-8B-Instruct
-JUDGE_PY=/home/dars11/envs/qwen_judge/bin/python
+# Pixel judge (reward + oracle critiques). qwen = Qwen3-VL-8B-Instruct, GenEval2's own judge scored the benchmark's way
+# (--answer_id_mode geneval2). gemma = Gemma 4 12B it (2026-10-30, user: a reward model that is not the test judge):
+# strict answer ids, 280 visual soft tokens, thinking off (jeet's settings for the 26B A4B judge); needs the gemma_judge
+# env (python 3.12, transformers 5.x) and its own staging archive (see STAGE_LOCAL below).
+PIXEL_JUDGE=${PIXEL_JUDGE:-qwen}
+case ${PIXEL_JUDGE} in
+  qwen)
+    JUDGE_MODEL=/home/dars11/scratch/models/vlm/Qwen3-VL-8B-Instruct
+    JUDGE_ENV=qwen_judge; JUDGE_UV_PY_DIR=cpython-3.10.22-linux-x86_64-gnu; JUDGE_PYBIN=python3.10
+    JUDGE_ARGS="--answer_id_mode geneval2"
+    ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst ;;
+  gemma)
+    JUDGE_MODEL=/home/dars11/scratch/models/vlm/gemma-4-12B-it
+    JUDGE_ENV=gemma_judge; JUDGE_UV_PY_DIR=cpython-3.12.15-linux-x86_64-gnu; JUDGE_PYBIN=python3.12
+    JUDGE_ARGS="--answer_id_mode strict --image_soft_tokens ${REWARD_SOFT_TOKENS:-280}"
+    ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_gemmajudge.tar.zst ;;
+  *) echo "PIXEL_JUDGE must be qwen or gemma (got '${PIXEL_JUDGE}')" >&2; exit 1 ;;
+esac
+JUDGE_PY=/home/dars11/envs/${JUDGE_ENV}/bin/python
 # Node-local staging (default on): Fir's Lustre /home and /scratch have killed jobs with SIGBUS (memory-mapped
 # pages that became unreadable: t7 step 41, t11 judge step 13, t11 trainer step 123). With STAGE_LOCAL=1 every
-# node unpacks both Python envs (+ uv's base Python) from one archive and copies the policy, judge and
+# node unpacks both Python envs (+ uv's base Pythons) from one archive and copies the policy, judge and
 # (de-)tokenizer weights to $SLURM_TMPDIR, then runs everything from there. Rebuild the archive after any env change:
 #   cd /home/dars11 && tar -cf - --transform 's,^\.local/share/uv/python/,uvpy/,' envs/tar envs/qwen_judge \
 #     .local/share/uv/python/cpython-3.10.22-linux-x86_64-gnu | zstd -T16 -3 -o ~/scratch/stage/envs_tar_qwenjudge.tar.zst
+#   (gemma: envs/gemma_judge + .local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu as well -> envs_tar_gemmajudge.tar.zst)
 STAGE_LOCAL=${STAGE_LOCAL:-1}
-ENV_ARCHIVE=/home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst
-UV_PY_DIR=cpython-3.10.22-linux-x86_64-gnu
+ENV_ARCHIVE=${ENV_ARCHIVE:-${ENV_ARCHIVE_DEFAULT}}
+UV_PY_DIR=cpython-3.10.22-linux-x86_64-gnu     # the training env's Python
 
 RUN_NAME=${RUN_NAME:-darshan_mr_fir}
 LOCAL_DIR="output_dir/${RUN_NAME}"
@@ -135,6 +153,7 @@ REWARD_PORT=$((8000 + ${SLURM_JOB_ID:-0} % 1000))
 REWARD_URL="http://127.0.0.1:${REWARD_PORT}"
 
 echo "RUN_NAME=${RUN_NAME} job=${SLURM_JOB_ID} nodes=${N_NODES} resume_from=${LAST:-none} DATASET_SEED=${DATASET_SEED} EXTRA_ARGS=${EXTRA_ARGS}"
+echo "pixel judge: ${PIXEL_JUDGE} ${JUDGE_MODEL} (${JUDGE_ARGS}) env ${JUDGE_ENV}"
 echo "multi-round: critique_source=${CRITIQUE_SOURCE} branch=${BRANCH} chain_siblings=${CHAIN_SIBLINGS} context=${CONTEXT_MODE} draft_reward=${DRAFT_REWARD} lr=${LR} eval_branch=${EVAL_BRANCH} base=${PREV_STAGE_CHECKPOINT}"
 echo "train ranks ${WORLD_SIZE_GPUS} (${N_TRAIN_GPUS}/node), judge GPU ${JUDGE_GPU} per node; prompts/step $((WORLD_SIZE_GPUS * PROMPTS_PER_GPU)); master ${MASTER_ADDR}:${MASTER_PORT}"
 
@@ -143,7 +162,8 @@ export WANDB_NAME=$RUN_NAME WANDB_RUN_ID=${WANDB_RUN_ID:-$RUN_NAME}
 export WANDB_PROJECT="tar_reasoning" WANDB_ENTITY="darshan-singh"
 export WANDB_MODE="${WANDB_MODE:-offline}"
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
-export STAGE_LOCAL ENV_ARCHIVE UV_PY_DIR RUN_NAME REPO MODELS LOCAL_DIR DATA_PATH VAL_DATA_PATH PREV_STAGE_CHECKPOINT JUDGE_MODEL JUDGE_PY
+export STAGE_LOCAL ENV_ARCHIVE UV_PY_DIR RUN_NAME REPO MODELS LOCAL_DIR DATA_PATH VAL_DATA_PATH PREV_STAGE_CHECKPOINT
+export PIXEL_JUDGE JUDGE_MODEL JUDGE_PY JUDGE_ENV JUDGE_UV_PY_DIR JUDGE_PYBIN JUDGE_ARGS
 export N_NODES N_TRAIN_GPUS TRAIN_GPUS JUDGE_GPU MASTER_ADDR MASTER_PORT REWARD_PORT REWARD_URL
 export REWARD_QUESTION_BATCH REWARD_IMAGES_PER_REQ REWARD_DECODE_BATCH REWARD_LOAD_TIMEOUT
 export PROMPTS_PER_GPU BRANCH CHAIN_SIBLINGS CONTEXT_MODE IMAGES_PER_CRITIQUE TRAIN_DRAFTS TRAIN_IMAGES IMAGE_ADV_SCALE EVAL_BRANCH GEN_BATCH_SIZE TRAIN_MICRO_BATCH
@@ -172,11 +192,11 @@ if [ "${STAGE_LOCAL}" = "1" ]; then
     cp -r ${JUDGE_MODEL} $S/models/judge &
     cp ${MODELS}/ar_dtok_lp_512px.pth ${MODELS}/vq_ds16_t2i.pt ${MODELS}/ta_tok.pth $S/models/ &
     wait
-    for e in tar qwen_judge; do
-        ln -sfn $S/uvpy/${UV_PY_DIR}/bin/python3.10 $S/envs/$e/bin/python
-        sed -i "s,^home = .*,home = $S/uvpy/${UV_PY_DIR}/bin," $S/envs/$e/pyvenv.cfg
-    done
-    TRAIN_PY=$S/envs/tar/bin/python; JUDGE_PY=$S/envs/qwen_judge/bin/python; JUDGE_MODEL=$S/models/judge
+    ln -sfn $S/uvpy/${UV_PY_DIR}/bin/python3.10 $S/envs/tar/bin/python
+    sed -i "s,^home = .*,home = $S/uvpy/${UV_PY_DIR}/bin," $S/envs/tar/pyvenv.cfg
+    ln -sfn $S/uvpy/${JUDGE_UV_PY_DIR}/bin/${JUDGE_PYBIN} $S/envs/${JUDGE_ENV}/bin/python
+    sed -i "s,^home = .*,home = $S/uvpy/${JUDGE_UV_PY_DIR}/bin," $S/envs/${JUDGE_ENV}/pyvenv.cfg
+    TRAIN_PY=$S/envs/tar/bin/python; JUDGE_PY=$S/envs/${JUDGE_ENV}/bin/python; JUDGE_MODEL=$S/models/judge
     POLICY=$S/models/policy; AR_PATH=$S/models/ar_dtok_lp_512px.pth; DEC_PATH=$S/models/vq_ds16_t2i.pt
     cp $S/models/ta_tok.pth ${TMP_DIR}/ta_tok.pth
     ${TRAIN_PY} -c "import sys, torch; assert sys.prefix.startswith(\"$S\"), sys.prefix" \
@@ -193,7 +213,7 @@ rm -f "${READY_FILE}"
 CUDA_VISIBLE_DEVICES=${JUDGE_GPU} ${JUDGE_PY} llava/train/rl/pixel_reward_server.py \
     --model "${JUDGE_MODEL}" --host 127.0.0.1 --port ${REWARD_PORT} \
     --batch_size ${REWARD_QUESTION_BATCH} --answer_suffix ${ANSWER_SUFFIX} \
-    --answer_id_mode geneval2 --attn_implementation sdpa \
+    ${JUDGE_ARGS} --attn_implementation sdpa \
     --ready_file "${READY_FILE}" > "${REWARD_LOG}" 2>&1 &
 REWARD_PID=$!
 trap "kill ${REWARD_PID} 2>/dev/null" EXIT INT TERM
