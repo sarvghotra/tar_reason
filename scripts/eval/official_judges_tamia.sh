@@ -37,10 +37,10 @@ case "$(hostname -f 2>/dev/null || hostname)" in
     REPO=/scratch/dars11/git/tar_reason; BENCH_DIR=/scratch/dars11/benchmarks; export HF_HOME=/scratch/dars11/hf_home
     VLLM_ENV=$HOME/envs/vllm_judge; CLIPT5_ENV=$HOME/envs/clipt5_judge; SUM_ENV=$HOME/envs/vllm_judge; STATS_ENV=$HOME/envs/vllm_judge   # vllm_judge also has pandas/openpyxl/matplotlib
     T2V_CLIPT5=/scratch/dars11/git/t2v_metrics_clipt5; T2V_FORK=/scratch/dars11/git/t2v_metrics_jeet ;;
-  *)        # TamIA (flashinfer's JIT fails there even with cuda/13.2: missing python arch headers -> vLLM eager)
-    VLLM_EAGER=1
+  *)        # TamIA: vllm_judge2 = vLLM on uv's managed Python 3.12.15 (the first env sat on the system python3.12, whose dev
+            # headers are incomplete, so every kernel vLLM compiles at startup failed; 656650 / 656860)
     REPO=/scratch/d/dars11/git/tar_reason_pm; BENCH_DIR=/scratch/d/dars11/benchmarks; export HF_HOME=/scratch/d/dars11/hf_home
-    VLLM_ENV=/home/d/dars11/envs/vllm_judge; CLIPT5_ENV=/home/d/dars11/envs/clipt5_judge; SUM_ENV=/home/d/dars11/envs/qwen_judge; STATS_ENV=/home/d/dars11/envs/tar
+    VLLM_ENV=/home/d/dars11/envs/vllm_judge2; CLIPT5_ENV=/home/d/dars11/envs/clipt5_judge; SUM_ENV=/home/d/dars11/envs/qwen_judge; STATS_ENV=/home/d/dars11/envs/tar
     T2V_CLIPT5=/scratch/d/dars11/git/t2v_metrics_clipt5; T2V_FORK=/scratch/d/dars11/git/t2v_metrics_jeet ;;
 esac
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
