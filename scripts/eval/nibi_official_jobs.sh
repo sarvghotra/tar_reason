@@ -25,9 +25,11 @@ case ${1:?e450 | tar7b_gen | tar7b} in
         sbatch --export=ALL "${ACC[@]}" "${LOGS[@]}" --mem=240G -J gen_${B}_tar7b scripts/eval/bench_official_tamia.sh
     done ;;
   tar7b)
+    # bench_official_tamia.sh wrote n5 folders (N_ITERS default 5); with SINGLE_PASS every iteration is the same image
+    # (md5-identical, checked 2026-10-31), so only iteration 1 is judged.
     for B in tiif genai; do
       case $B in tiif) S=tiif-bench-testmini_eval ;; genai) S=genai-bench-1600 ;; esac
-      BENCH=$B MODEL_NAME=7B N_ITERS=2 RUN_DIR=$R/$S/iter_adhoc_MDP_n2_7B_512px_repeat1 \
+      BENCH=$B MODEL_NAME=7B N_ITERS=1 RUN_DIR=$R/$S/iter_adhoc_MDP_n5_7B_512px_repeat1 \
         sbatch --export=ALL "${ACC[@]}" "${LOGS[@]}" -J official_${B}_tar7b scripts/eval/official_judges_tamia.sh
     done ;;
 esac
