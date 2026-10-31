@@ -74,10 +74,12 @@ tiif_official() {
   # custom all-reduce / flashinfer sampler off so as little as possible is compiled.
   # Without a CUDA 13 toolkit (TamIA has only 12.x modules) nvcc cannot build kernels for torch cu130: run without CUDA graphs
   # (--enforce-eager, ~20-30 % slower), which skips the all-reduce kernel compilation that killed the engine.
+  # Even with cuda/13.2 loaded the JIT fails (TamIA 656643: flashinfer compiles a Python extension against
+  # /usr/include/python3.12, whose arch headers are missing): run eager (no CUDA graphs, so no all-reduce kernel build) with
+  # vLLM's prebuilt FlashAttention backend and no flashinfer sampler. ~20-30 % slower, no compilation at runtime.
   local CUDA_MOD EAGER=(--enforce-eager)
-  for CUDA_MOD in cuda/13.2 cuda/13.0; do module load ${CUDA_MOD} 2>/dev/null && { echo "loaded ${CUDA_MOD} for vLLM JIT"; EAGER=(); break; }; done
-  [ ${#EAGER[@]} -gt 0 ] && echo "no CUDA 13 toolkit module: vLLM runs with --enforce-eager"
-  export VLLM_USE_FLASHINFER_SAMPLER=0
+  for CUDA_MOD in cuda/13.2 cuda/13.0; do module load ${CUDA_MOD} 2>/dev/null && { echo "loaded ${CUDA_MOD}"; break; }; done
+  export VLLM_USE_FLASHINFER_SAMPLER=0 VLLM_ATTENTION_BACKEND=FLASH_ATTN
   env -u PYTHONPATH ${VLLM} serve "${JUDGE}" --served-model-name ${SERVED} --tensor-parallel-size ${N_GPUS} \
       --dtype bfloat16 --max-model-len 8192 --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization 0.92 \
       --disable-custom-all-reduce "${EAGER[@]}" --host 127.0.0.1 --port ${PORT} > "${SERVER_LOG}" 2>&1 &
