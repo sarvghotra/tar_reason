@@ -35,7 +35,7 @@ set -u
 case "$(hostname -f 2>/dev/null || hostname)" in
   *nibi*)   # Nibi: /scratch/dars11, envs in ~/envs (clipt5_judge also serves the summaries + stats: pandas, openpyxl, matplotlib)
     REPO=/scratch/dars11/git/tar_reason; BENCH_DIR=/scratch/dars11/benchmarks; export HF_HOME=/scratch/dars11/hf_home
-    VLLM_ENV=$HOME/envs/vllm_judge; CLIPT5_ENV=$HOME/envs/clipt5_judge; SUM_ENV=$HOME/envs/clipt5_judge; STATS_ENV=$HOME/envs/clipt5_judge
+    VLLM_ENV=$HOME/envs/vllm_judge; CLIPT5_ENV=$HOME/envs/clipt5_judge; SUM_ENV=$HOME/envs/vllm_judge; STATS_ENV=$HOME/envs/vllm_judge   # vllm_judge also has pandas/openpyxl/matplotlib
     T2V_CLIPT5=/scratch/dars11/git/t2v_metrics_clipt5; T2V_FORK=/scratch/dars11/git/t2v_metrics_jeet ;;
   *)        # TamIA (flashinfer's JIT fails there even with cuda/13.2: missing python arch headers -> vLLM eager)
     VLLM_EAGER=1
