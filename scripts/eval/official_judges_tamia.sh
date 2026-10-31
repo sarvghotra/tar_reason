@@ -37,7 +37,8 @@ case "$(hostname -f 2>/dev/null || hostname)" in
     REPO=/scratch/dars11/git/tar_reason; BENCH_DIR=/scratch/dars11/benchmarks; export HF_HOME=/scratch/dars11/hf_home
     VLLM_ENV=$HOME/envs/vllm_judge; CLIPT5_ENV=$HOME/envs/clipt5_judge; SUM_ENV=$HOME/envs/clipt5_judge; STATS_ENV=$HOME/envs/clipt5_judge
     T2V_CLIPT5=/scratch/dars11/git/t2v_metrics_clipt5; T2V_FORK=/scratch/dars11/git/t2v_metrics_jeet ;;
-  *)        # TamIA
+  *)        # TamIA (flashinfer's JIT fails there even with cuda/13.2: missing python arch headers -> vLLM eager)
+    VLLM_EAGER=1
     REPO=/scratch/d/dars11/git/tar_reason_pm; BENCH_DIR=/scratch/d/dars11/benchmarks; export HF_HOME=/scratch/d/dars11/hf_home
     VLLM_ENV=/home/d/dars11/envs/vllm_judge; CLIPT5_ENV=/home/d/dars11/envs/clipt5_judge; SUM_ENV=/home/d/dars11/envs/qwen_judge; STATS_ENV=/home/d/dars11/envs/tar
     T2V_CLIPT5=/scratch/d/dars11/git/t2v_metrics_clipt5; T2V_FORK=/scratch/d/dars11/git/t2v_metrics_jeet ;;
@@ -77,8 +78,11 @@ tiif_official() {
   # Even with cuda/13.2 loaded the JIT fails (TamIA 656643: flashinfer compiles a Python extension against
   # /usr/include/python3.12, whose arch headers are missing): run eager (no CUDA graphs, so no all-reduce kernel build) with
   # vLLM's prebuilt FlashAttention backend and no flashinfer sampler. ~20-30 % slower, no compilation at runtime.
-  local CUDA_MOD EAGER=(--enforce-eager)
+  # Nibi's cuda/13.2 module builds them fine (25514413: CUDA graphs captured), so eager only where VLLM_EAGER=1 (TamIA).
+  local CUDA_MOD EAGER=()
+  [ "${VLLM_EAGER:-0}" = 1 ] && EAGER=(--enforce-eager)
   for CUDA_MOD in cuda/13.2 cuda/13.0; do module load ${CUDA_MOD} 2>/dev/null && { echo "loaded ${CUDA_MOD}"; break; }; done
+  echo "vLLM eager: ${VLLM_EAGER:-0}"
   export VLLM_USE_FLASHINFER_SAMPLER=0 VLLM_ATTENTION_BACKEND=FLASH_ATTN
   env -u PYTHONPATH ${VLLM} serve "${JUDGE}" --served-model-name ${SERVED} --tensor-parallel-size ${N_GPUS} \
       --dtype bfloat16 --max-model-len 8192 --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization 0.92 \
