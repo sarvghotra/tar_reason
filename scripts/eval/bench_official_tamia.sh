@@ -95,7 +95,7 @@
 set -uo pipefail
 # Cluster paths (2026-10-30: the same script also runs on Nibi, driven from Fir; Nibi's #SBATCH overrides at submission:
 #   sbatch --account=rrg-bengioy-ad_gpu --mem=240G -o /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.out \
-#          -e /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.err scripts/eval/bench_jeet_tamia.sh
+#          -e /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.err scripts/eval/bench_official_tamia.sh
 # GEN_ONLY=1 stops after the images are generated (no judging / scoring): for the official-judge re-scoring
 # (official_judges_tamia.sh), which needs only the images.)
 case "$(hostname -f 2>/dev/null || hostname)" in

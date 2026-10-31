@@ -22,7 +22,7 @@ case ${1:?e450 | tar7b_gen | tar7b} in
   tar7b_gen)
     for B in tiif genai; do
       MODEL_NAME=7B MODEL_PATH=/scratch/dars11/models/tar/Tar-7B SINGLE_PASS=1 GEN_ONLY=1 BENCH=$B \
-        sbatch --export=ALL "${ACC[@]}" "${LOGS[@]}" --mem=240G -J gen_${B}_tar7b scripts/eval/bench_jeet_tamia.sh
+        sbatch --export=ALL "${ACC[@]}" "${LOGS[@]}" --mem=240G -J gen_${B}_tar7b scripts/eval/bench_official_tamia.sh
     done ;;
   tar7b)
     for B in tiif genai; do

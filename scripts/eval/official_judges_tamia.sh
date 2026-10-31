@@ -15,7 +15,7 @@
 #                (OpenAI-compatible API, temperature 1.0, 3 prompt variants) + its summary scripts;
 #   GenAI-Bench: VQAScore with CLIP-FlanT5-XXL (eval/genai_bench_clipt5.py = his genai_bench/evaluate.py on the
 #                old t2v_metrics CLIP-FlanT5 code).
-# No generation happens here: RUN_DIR must hold the seed_<S>/ folders written by bench_jeet_tamia.sh (or copied
+# No generation happens here: RUN_DIR must hold the seed_<S>/ folders written by bench_official_tamia.sh (or copied
 # from Mila). Results go next to the existing ones, never overwriting them:
 #   tiif : seed_<S>/eval_results_qwen72b/{<MODEL_NAME>_iter<k>/..., result_summary.xlsx, result_summary_dimension.txt},
 #          seed_<S>/tiif_bench_log_qwen72b.txt;  aggregate: eval/stats/tiff_bench.py --results_subdir eval_results_qwen72b

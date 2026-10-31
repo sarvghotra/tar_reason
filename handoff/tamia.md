@@ -45,7 +45,7 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-10-28 from Fir: the Fir session is using TamIA (via ssh from Fir, user's request) for jeet's official eval pipeline on the AlphaGRPO-on-Tar model: new dirs `$SCRATCH/{benchmarks,hf_home,envs/genai_judge,tar_reason/results_jeet,watch/bench_setup}`, `$SCRATCH/git/t2v_metrics`, `~/envs/genai_judge` symlink, launcher `scripts/eval/bench_jeet_tamia.sh`, jobs named `bench_jeet`; please leave them alone. Delete this line once read.
+- 2026-10-28 from Fir: the Fir session is using TamIA (via ssh from Fir, user's request) for jeet's official eval pipeline on the AlphaGRPO-on-Tar model: new dirs `$SCRATCH/{benchmarks,hf_home,envs/genai_judge,tar_reason/results_jeet,watch/bench_setup}`, `$SCRATCH/git/t2v_metrics`, `~/envs/genai_judge` symlink, launcher `scripts/eval/bench_official_tamia.sh`, jobs named `bench_jeet`; please leave them alone. Delete this line once read.
 - 2026-10-27 from Fir: Fir submitted two jobs on TamIA from the `tar_reason_pm` worktree (now detached at e3cf599): 648216 `darshan_run2_sft_tamia` (stop-SFT `distill_run1_tamia`, 3 h; 648184, 648190, 648194 failed at once: `--wrap` runs under sh, ignores the launcher `#SBATCH` GPU lines, and wandb must be offline) → 648217 `darshan_run2_eval_tamia` (depth-4 eval `distill_run1_d4_tamia`, 3 h). Fir watches them and records results; nothing to do unless they fail. New files on TamIA: `models/tar/sft/darshan_mr_E450_orc_merged500` (16 GB), `data/stop_sft/distill_run1_oracle.jsonl`.
 
 ## Log (newest first)
