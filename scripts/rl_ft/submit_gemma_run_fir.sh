@@ -12,8 +12,11 @@ for f in output_dir/${RUN_NAME}/data.yaml output_dir/${RUN_NAME}/val.yaml /home/
          /home/dars11/scratch/models/vlm/gemma-4-12B-it/model.safetensors /home/dars11/scratch/models/tar/sft/darshan_pm1_E_merged450/config.json; do
   [ -s "$f" ] || { echo "missing $f" >&2; exit 1; }
 done
-COMMON=(--exclude=fc10212 -J darshan_mrE450gemma_fir
-        --export=ALL,PIXEL_JUDGE=gemma,CRITIQUE_SOURCE=oracle,RUN_NAME=${RUN_NAME},MAX_STEPS=${MAX_STEPS:-500},EVAL_STEPS=100,SAVE_STEPS=10,PREV_STAGE_CHECKPOINT=/home/dars11/scratch/models/tar/sft/darshan_pm1_E_merged450,TRAIN_JSONL=/home/dars11/scratch/data/promptmix/train_17K.jsonl)
+# Settings through the environment + --export=ALL (an --export list splits values at commas, see submit_distill_data_orc_fir.sh).
+export PIXEL_JUDGE=gemma CRITIQUE_SOURCE=oracle RUN_NAME MAX_STEPS=${MAX_STEPS:-500} EVAL_STEPS=100 SAVE_STEPS=10
+export PREV_STAGE_CHECKPOINT=/home/dars11/scratch/models/tar/sft/darshan_pm1_E_merged450
+export TRAIN_JSONL=/home/dars11/scratch/data/promptmix/train_17K.jsonl
+COMMON=(--export=ALL --exclude=fc10212 -J darshan_mrE450gemma_fir)
 J1=$(sbatch --parsable "${COMMON[@]}" scripts/rl_ft/bash_fir_mr.sh)
 J2=$(sbatch --parsable "${COMMON[@]}" --dependency=afterany:${J1} scripts/rl_ft/bash_fir_mr.sh)
 echo "submitted ${J1} -> ${J2} (${RUN_NAME}, PIXEL_JUDGE=gemma, oracle critiques, 500 steps)"
