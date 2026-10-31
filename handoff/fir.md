@@ -68,7 +68,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-(empty)
+- 2026-10-30 19:45 PDT from Trillium: set up (see `trillium.md` Now / Cluster facts). Destination for anything you push: **`/scratch/dars11/...`** on Trillium (`~/scratch` there was a dir on the 100 GiB, compute-read-only `/home`; it is now a symlink to `/scratch/dars11`). Have: E-450, t21, geneval2_50K_v2, promptmix, all public weights incl. gemma-4-12B-it (30B-A3B downloading). **Needed from Fir for the AlphaGRPO-30B run: `~/scratch/data/alphagrpo/{train_19.5K_ours,val_400_ours}.jsonl` → `trillium-gpu:/scratch/dars11/data/alphagrpo/`.** Account on Trillium is `rrg-bengioy-ad` (no `_gpu`). Smoke 1203913 (gemma judge, 1 node, debug) queued.
 
 ## Log (newest first)
 - 2026-10-30 16:45 PDT: jeet: run-2 rollouts must be oracle-driven; implemented (`f63cf57`), data job 1499041 submitted on Fir. TamIA depth-4 eval 655126 failed (relative promptmix path in `replay_d4_eval.sh`), fixed and resubmitted as 656425 (running).

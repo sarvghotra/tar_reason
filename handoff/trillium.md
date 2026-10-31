@@ -2,20 +2,46 @@
 
 Owned by the Trillium session (to be opened by the user; until then the Fir session writes the Inbox). Trillium-GPU:
 SciNet / Alliance, user `dars11`, login `trillium-gpu.scinet.utoronto.ca` (**SSH keys only**, uploaded through CCDB; no
-passwords), H100 nodes (4 per node, 80 GB), account `rrg-bengioy-ad_gpu` (check with `sacctmgr show assoc user=$USER`).
-Compute nodes are assumed to have no internet (Alliance norm): download on the login node.
+passwords), H100 nodes (4 per node, 80 GB), account **`rrg-bengioy-ad`** (no `_gpu` suffix; also `def-bengioy`, `def-agrawal`).
+Compute nodes have no internet; the login node `trig-login01` has internet and 4 H100s (short tests only).
 
 ## Now
-- Not set up yet (2026-10-30). Fill in after the Inbox setup task: node layout, partitions, quotas, where things live.
+- **2026-10-30 22:45 EDT: set up (Inbox steps 1–5), 1-node smoke `mr_smoke_trillium` = job 1203913 on `debug` (est. start
+  22:57).** Smoke = `bash_trillium_mr.sh` with `PIXEL_JUDGE=gemma CRITIQUE_SOURCE=oracle`, E-450, promptmix train_17K.
+- Next (Inbox): AlphaGRPO on base Tar-7B with the Qwen3-VL-30B-A3B judge (`bash_trillium_alphagrpo.sh`, written, not run).
+  Waiting on: the 30B download (running on the login node) and **`data/alphagrpo/{train_19.5K_ours,val_400_ours}.jsonl` from
+  Fir** (not here yet). Then `test_pixel_judge.py` on the 30B, a smoke, the full run.
+- Have here: envs `~/envs/{tar,qwen_judge,gemma_judge}` + archives `/scratch/dars11/stage/envs_tar_{qwen,gemma}judge.tar.zst`;
+  models `Tar-7B, ta_tok, ar_dtok_lp_512px, vq_ds16_t2i, siglip2, vlm/{Qwen3-VL-8B-Instruct, gemma-4-12B-it}`,
+  `sft/{darshan_pm1_E_merged450, slf_ref_edit_t21_ckpt17000}` (not `darshan_mr_E450_orc_merged500`); data `geneval2_50K_v2`
+  (md5s match), `promptmix/`.
+
+## Cluster facts (2026-10-30)
+- **`~/scratch` was a plain directory on `/home`** (100 GiB quota, **read-only on compute nodes**). Everything now lives in the
+  real scratch `$SCRATCH=/scratch/dars11` (25 TiB, 10M files) and `~/scratch -> /scratch/dars11` is a symlink, so Fir-style
+  paths still resolve. Launchers use `/scratch/dars11/...` directly (sbatch rejects `-o` under `/home`). Transfers: send to
+  `/scratch/dars11/...`. `/project/rrg-bengioy-ad/dars11` also exists. `/scratch/dars11/sage/` is another project: leave it.
+- GPU nodes `trig[0002-0061]`: 4× H100 80GB, 96 CPUs, 755 GB RAM. Partitions are picked from the request: **never pass
+  `-p compute` or `--mem`** (rejected); a 4-GPU job lands in `compute_full_node` (770 GB, 24 h max). `-p debug`: 187.5 GB,
+  2 h max wall but **QOS `debug` caps a job at 180 GPU-minutes (4 GPUs → 45 min)**, 1 job/user. QOS `normal`: max 100 GPUs/job.
+  Also: `compute_s4h` (1-GPU nodes), `compute_h200` (1 node), `compute_b200` (52 × 8 B200).
+- `$SLURM_TMPDIR` = `/dev/shm/slurm.<user>.<job>` (tmpfs, 566 GB, RAM-backed: staged files count as job memory).
+- Modules: none loaded by default; `module load StdEnv/2023 gcc/12.3 cuda/12.2`. Driver 580 (CUDA 13.0).
+- Envs: uv in `~/.local/bin`, Pythons `cpython-3.10.22` / `3.12.15` in `~/.local/share/uv/python`, `UV_CACHE_DIR=~/scratch/.uv_cache`.
+  `tar` from `fir_requirements.txt` (+ flash-attn wheel, `setuptools<70`), `qwen_judge` torch 2.6.0+cu124 / tf 4.57.6,
+  `gemma_judge` torch 2.15.0+cu132 / tf 5.22.1 (works on the 13.0 driver: matmul checked). deepspeed import needs the cuda module.
+- `vq_ds16_t2i.pt` is not in `csuhan/TA-Tok`: it comes from `peizesun/llamagen_t2i`.
 
 ## Setup
-- Session: (record the Claude Code session id, login node and tmux name here)
+- Session: `e02f49ad-0196-4b16-b3af-aa1d35c8ca0d` on `trig-login01`, tmux `claude`
+  (`cd ~/scratch/git && claude --resume e02f49ad-0196-4b16-b3af-aa1d35c8ca0d`).
 - Repo: clone `git@github.com:sarvghotra/tar_reason.git` to `~/scratch/git/tar_reason`, branch `darshan-rl-test`; symlink
   `~/scratch/git/CLAUDE.md -> tar_reason/handoff/CLAUDE.md`.
 
 ## Inbox
 - 2026-10-30 from Fir (user): **first RL job once set up — AlphaGRPO on base Tar-7B with the paper's own reward model** (our existing `darshan_agrpo_tar_rorqual` used our Qwen3-VL-8B judge for the DVReward probabilities; the user wants the faithful variant to check whether the baseline is understated). Recipe = `scripts/rl_ft/bash_rorqual_alphagrpo.sh` ported to Trillium (same as the Rorqual run: GRPO, BRANCH=14, 36 prompts/step, 380 steps, KL 0, LoRA r32/α64, LR 1e-4, plain prompt, data `~/scratch/data/alphagrpo/{train_19.5K_ours,val_400_ours}.jsonl` from Fir, evals every 50 on val800 + alphagrpo val_400), **with `JUDGE_MODEL` = `Qwen/Qwen3-VL-30B-A3B-Instruct`** (flat copy under `models/vlm/`, 62 GB bf16, fits the judge GPU alone; `pixel_reward_server.py` has the `qwen3_vl_moe` profile; keep `--answer_id_mode geneval2`; lower `REWARD_QUESTION_BATCH` to 16–32 and check the judge log for OOM; run `util_scripts/debug/test_pixel_judge.py <model>` on one GPU first). RUN_NAME `darshan_agrpo_tar_rm30b_trillium`, own `--dataset_seed` (default from RUN_NAME). Then merge the last checkpoint onto Tar-7B and run the single-pass official evals (`bench_official_tamia.sh` ported, `SINGLE_PASS=1 N_ITERS=2`, 3 seeds) and report next to `bench_tamia darshan_agrpo_tar_380` in runs.md. **Ask the user before changing any setting of this recipe.**
-- 2026-10-30 from Fir (user): **set Trillium up as the second RL cluster**, then report in **Now** and in Fir's Inbox. Steps:
+- 2026-10-30 from Fir (user): **set Trillium up as the second RL cluster** — DONE 2026-10-30 (see Now / Cluster facts); kept
+  until the smoke passes. Steps:
   1. Cluster facts: `sinfo -o "%P %D %G %l"`, `sacctmgr show assoc user=$USER format=account`, `diskusage_report`, CPU
      count per GPU node, local disk (`$SLURM_TMPDIR`) size, whether `module load cuda/12.2` exists, MFA / key policy.
   2. Envs with uv (same recipe as the other clusters, `CLAUDE.md` → Clusters): `~/envs/tar` (Python 3.10, torch 2.1.2+cu121,
@@ -41,4 +67,6 @@ Compute nodes are assumed to have no internet (Alliance norm): download on the l
   push only `darshan-rl-test`.
 
 ## Log (newest first)
+- 2026-10-30 22:45 EDT: setup: envs + archives built, public weights downloaded, `~/scratch` moved to `/scratch/dars11` (home
+  quota hit by a VLM rsync; the VLMs were already downloaded from HF), launchers `bash_trillium_{mr,alphagrpo}.sh`, smoke 1203913.
 - 2026-10-30: file created by the Fir session (user's request: Trillium gets an Inbox and a session of its own).
