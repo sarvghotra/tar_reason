@@ -15,7 +15,10 @@ RUN_NAME=pm_run1_distill_data_orc_fir
 mkdir -p output_dir/${RUN_NAME}
 # train_17K as the single validation set (logname val -> the oracle pass dumps as val_oracle_*)
 [ -s output_dir/${RUN_NAME}/val.yaml ] || printf 'datasets:\n    - json_path:\n      - /home/dars11/scratch/data/promptmix/train_17K.jsonl\n      logname: val\n      ratio: 1\n' > output_dir/${RUN_NAME}/val.yaml
-J=$(sbatch --parsable --exclude=fc10212 --time=06:00:00 -J darshan_run1_distdata_orc \
-    --export=ALL,RUN_NAME=${RUN_NAME},MAX_STEPS=0,EVAL_BRANCH=1\,1\,1\,1\,1,CONTEXT_MODE=mdp,PREV_STAGE_CHECKPOINT=/home/dars11/scratch/models/tar/sft/darshan_mr_E450_orc_merged500,EXTRA_ARGS="--no-eval_own --val_dump_codes" \
-    scripts/rl_ft/bash_fir_promptmix.sh)
+# Settings go through the environment (--export=ALL): a comma inside --export's list is a separator even when
+# escaped, which turned EVAL_BRANCH=1,1,1,1,1 into "1" (job 1499041, 2026-10-30: drafts only, 27 min).
+J=$(RUN_NAME=${RUN_NAME} MAX_STEPS=0 EVAL_BRANCH=1,1,1,1,1 CONTEXT_MODE=mdp \
+    PREV_STAGE_CHECKPOINT=/home/dars11/scratch/models/tar/sft/darshan_mr_E450_orc_merged500 \
+    EXTRA_ARGS="--no-eval_own --val_dump_codes" \
+    sbatch --parsable --export=ALL --exclude=fc10212 --time=06:00:00 -J darshan_run1_distdata_orc scripts/rl_ft/bash_fir_promptmix.sh)
 echo "submitted ${J} (${RUN_NAME}: oracle-driven depth-4 chains on train_17K, dump with codes)"
