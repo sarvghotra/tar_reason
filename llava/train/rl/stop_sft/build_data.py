@@ -35,6 +35,7 @@ its own per-question scores: the oracle critique if a question fails, ``NO_ISSUE
 (Default ``--examples parents`` = the original scheme: the parent image of every critiqued node.)
 
     python -m llava.train.rl.stop_sft.build_data --dumps <dir> [<dir> ...] --out data.jsonl
+    python -m llava.train.rl.stop_sft.build_data --dumps <dir> --prefix val_oracle --examples images --ratio 0 --draft_replay 1.0 --out data.jsonl
 """
 
 import argparse
@@ -146,6 +147,8 @@ def main():
     p.add_argument("--ratio", type=float, default=1.0, help="larger class / smaller class after balancing (0 = no balancing)")
     p.add_argument("--targets", choices=["mixed", "oracle"], default="mixed",
                    help="mixed: the policy's own critique where right (task 3a); oracle: judge-derived critique for every image")
+    p.add_argument("--prefix", default="val",
+                   help="dump file prefix: val (policy-driven chains, val_step*_rank*.jsonl) | val_oracle (oracle-driven chains)")
     p.add_argument("--examples", choices=["parents", "images"], default="parents",
                    help="parents: the parent image of every critiqued node (policy-driven chains); "
                         "images: every image in the dump, incl. round-0 drafts, labelled by its own scores (oracle chains)")
@@ -155,7 +158,7 @@ def main():
     args = p.parse_args()
 
     seen, examples = set(), []
-    for line in read_dumps(args.dumps):
+    for line in read_dumps(args.dumps, args.prefix):
         ex = (label_image(line, args.threshold) if args.examples == "images"
               else label(line, args.threshold, args.targets))
         if ex is None:
