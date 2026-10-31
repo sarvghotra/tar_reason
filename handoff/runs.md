@@ -289,6 +289,14 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   |---|---|---|---|---|---|---|
   | Show-o (showlab/show-o-512x512, 1.3B) | 512 | 3 | 63.9 ± 0.1 (18.6 / 11.4%) | 32.3 ± 0.3 | 64.5 ± 0.3 | 61.7 ± 0.6 |
   | **BAGEL-7B-MoT + CoT** (`--think`: BAGEL's self-CoT plan, then the image) | 1024 | 3 | 72.0 ± 0.1 (25.7 / 16.4%) | **56.7 ± 0.3** | 70.2 ± 0.5 | 71.7 ± 0.4 |
+  | BAGEL-7B-MoT (plain) | 1024 | 3 | 69.7 ± 0.2 (22.3 / 14.9%) | pending | 73.5 ± 0.5 | 74.2 ± 0.4 |
+  | Show-o2-7B | 432 | 3 | 64.1 ± 0.2 (16.1 / 8.7%) | pending | 68.3 ± 0.6 | 67.1 ± 0.4 |
+  | BLIP3-o-8B | 1024 | 3 | 59.7 ± 0.2 (13.8 / 7.6%) | pending | 62.7 ± 0.7 | 62.1 ± 1.3 |
+  | **AlphaGRPO rt2i** (BAGEL + released LoRA, plan -> image) | 1024 | 3 | **75.9 ± 0.0** (31.6 / 20.5%) | pending | 72.8 ± 0.4 | 73.2 ± 0.5 |
+  | **AlphaGRPO srr** (plan -> image -> 1 reflection -> image; first -> final) | 1024 | **1** | 72.6 -> **76.1** (26.1 -> 31.5 / 17.0 -> 20.1%) | 53.0 -> **61.0** | 71.3 -> **75.6** | 73.5 -> **75.0** |
+  AlphaGRPO-on-Tar (our RL reproduction on Tar-7B, single pass): see `bench_tamia darshan_agrpo_tar_380` (TamIA; Mila GenEval2 74.4 ± 0.1 agrees).
+  srr's single reflection round gains +3.5 GenEval2 / +8.0 GenAI / +4.2 / +1.5 TIIF (1 seed; reflection applied to every image, see deviations);
+  ours after 4 corrections: E-450 +3.2 / +3.0 / +3.1 / +1.3. Plain BAGEL vs + CoT: CoT helps GenEval2 (+2.3), hurts TIIF (-3.3 / -2.5).
   BAGEL + CoT: GenAI-1600 56.7 is above every model of ours (E-450 46.0) and FLUX / SD3.5 (47.7 / 49.7), below Qwen-Image (63.0);
   GenEval2 72.0 is below ours (F-800 80.1 after 4 corrections). Running / queued: AlphaGRPO rt2i (3 seeds) / srr (1 seed) and plain BAGEL; then
   Show-o2, BLIP3-o, Emu3 (1 seed), Uni-CoT. Smoke speeds and setup in `mila.md`.

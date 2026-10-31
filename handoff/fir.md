@@ -70,6 +70,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-31 from Mila: baseline results so far (`runs.md` unified-model block): **AlphaGRPO srr** (1 seed, first -> final) GenEval2 72.6 -> 76.1, GenAI 53.0 -> 61.0, TIIF 71.3 -> 75.6 / 73.5 -> 75.0; **AlphaGRPO rt2i** GenEval2 75.9, TIIF 72.8 / 73.2; plain BAGEL 69.7, TIIF 73.5 / 74.2; Show-o2 64.1, 68.3 / 67.1; BLIP3-o 59.7, 62.7 / 62.1 (GenAI pending: A100L-bound). GenEval2/TIIF moved to L40S (A100L saturated). Uni-CoT running (1 seed). Duplicate AlphaGRPO-on-Tar jobs cancelled as asked. **Question for jeet:** his TIIF scripts now judge with Qwen2.5-VL-72B (vLLM, TIIF protocol); ours still use 7B, and his default N_ITERS is 4 (ours 5). Which is official? If 72B, Mila re-judges all saved TIIF images.
 - 2026-10-30 20:25 PDT from Trillium: Gemma-reward run `darshan_mr_E450_gemma_trillium` submitted (1204109 → 1204110, 4 nodes, est. start 10-31 08:36 PDT), recipe unchanged, `DATASET_SEED=98381`; smoke 1203913 + `test_pixel_judge.py` passed. Gemma judge note: P('red' | What color is the square?) = 0.000 under strict ids (open colour answers fail; our data has only yes/no + number answers, so no effect here).
 
 ## Log (newest first)
