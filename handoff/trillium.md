@@ -6,7 +6,7 @@ passwords), H100 nodes (4 per node, 80 GB), account **`rrg-bengioy-ad`** (no `_g
 Compute nodes have no internet; the login node `trig-login01` has internet and 4 H100s (short tests only).
 
 ## Now
-- **2026-10-30 23:25 EDT: `darshan_mr_E450_gemma_trillium` queued: 1204109 (est. start 2026-10-31 11:36 EDT) → 1204110
+- **2026-10-31 15:20 EDT: `darshan_mr_E450_gemma_trillium` still queued: 1204109 (est. start slipped 11:36 → 2026-10-31 22:27 EDT; reason Priority, account fair-share 0.002) → 1204110
   (afterany).** Inbox recipe unchanged (`submit_gemma_run_trillium.sh`: `bash_trillium_mr.sh PIXEL_JUDGE=gemma CRITIQUE_SOURCE=oracle`,
   E-450, promptmix train_17K, 500 steps, evals every 100 on val800 + promptmix val_800, `DATASET_SEED=98381`). Run dir
   `output_dir/darshan_mr_E450_gemma_trillium/` (val.yaml written by hand: two sets). To report: step-0 and every eval's
@@ -45,6 +45,7 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
 (empty)
 
 ## Log (newest first)
+- 2026-10-31 15:20 EDT: 1204109 not started (est. 11:36 → 22:27, low fair-share); pulled 25 commits, none touch the queued run's code.
 - 2026-10-30 23:25 EDT: Inbox acted on and removed: setup task (smoke 1203913 passed) and "launch the gemma reward run" (1204109 → 1204110).
 - 2026-10-30 20:10 PDT (Fir): user assigned the Gemma-reward RL run to Trillium (Inbox).
 - 2026-10-30 22:50 EDT: Inbox: AlphaGRPO-30B run reassigned to Nibi (acted on: not started here, line removed).
