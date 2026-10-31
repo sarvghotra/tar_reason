@@ -39,7 +39,7 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
   `~/scratch/git/CLAUDE.md -> tar_reason/handoff/CLAUDE.md`.
 
 ## Inbox
-- 2026-10-30 from Fir (user): **first RL job once set up — AlphaGRPO on base Tar-7B with the paper's own reward model** (our existing `darshan_agrpo_tar_rorqual` used our Qwen3-VL-8B judge for the DVReward probabilities; the user wants the faithful variant to check whether the baseline is understated). Recipe = `scripts/rl_ft/bash_rorqual_alphagrpo.sh` ported to Trillium (same as the Rorqual run: GRPO, BRANCH=14, 36 prompts/step, 380 steps, KL 0, LoRA r32/α64, LR 1e-4, plain prompt, data `~/scratch/data/alphagrpo/{train_19.5K_ours,val_400_ours}.jsonl` from Fir, evals every 50 on val800 + alphagrpo val_400), **with `JUDGE_MODEL` = `Qwen/Qwen3-VL-30B-A3B-Instruct`** (flat copy under `models/vlm/`, 62 GB bf16, fits the judge GPU alone; `pixel_reward_server.py` has the `qwen3_vl_moe` profile; keep `--answer_id_mode geneval2`; lower `REWARD_QUESTION_BATCH` to 16–32 and check the judge log for OOM; run `util_scripts/debug/test_pixel_judge.py <model>` on one GPU first). RUN_NAME `darshan_agrpo_tar_rm30b_trillium`, own `--dataset_seed` (default from RUN_NAME). Then merge the last checkpoint onto Tar-7B and run the single-pass official evals (`bench_official_tamia.sh` ported, `SINGLE_PASS=1 N_ITERS=2`, 3 seeds) and report next to `bench_tamia darshan_agrpo_tar_380` in runs.md. **Ask the user before changing any setting of this recipe.**
+- 2026-10-30 from Fir (user): **the AlphaGRPO-on-Tar run with the paper's reward model (Qwen3-VL-30B-A3B) was reassigned to Nibi** (user, 18:25 PDT, "run it on priority in nibi"; `scripts/rl_ft/bash_nibi_alphagrpo.sh`, RUN_NAME `darshan_agrpo_tar_rm30b_nibi`, see `fir.md`). **Do not start it here.** Trillium's job: complete the setup task below and report; the first training job is assigned by the user afterwards (candidates: the seed twin of Fir's Gemma-4-12B-reward run, or the run-2 replay-SFT ablations). Ask the user before launching anything that trains.
 - 2026-10-30 from Fir (user): **set Trillium up as the second RL cluster** — DONE 2026-10-30 (see Now / Cluster facts); kept
   until the smoke passes. Steps:
   1. Cluster facts: `sinfo -o "%P %D %G %l"`, `sacctmgr show assoc user=$USER format=account`, `diskusage_report`, CPU
@@ -67,6 +67,7 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
   push only `darshan-rl-test`.
 
 ## Log (newest first)
+- 2026-10-30 20:00 PDT (Fir): the AlphaGRPO-with-30B-reward task moved to Nibi; Trillium keeps the setup task only, first job to be assigned by the user.
 - 2026-10-30 22:45 EDT: setup: envs + archives built, public weights downloaded, `~/scratch` moved to `/scratch/dars11` (home
   quota hit by a VLM rsync; the VLMs were already downloaded from HF), launchers `bash_trillium_{mr,alphagrpo}.sh`, smoke 1203913.
 - 2026-10-30: file created by the Fir session (user's request: Trillium gets an Inbox and a session of its own).
