@@ -8,9 +8,9 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
 ## Now
 - **2026-10-30 22:45 EDT: set up (Inbox steps 1–5), 1-node smoke `mr_smoke_trillium` = job 1203913 on `debug` (est. start
   22:57).** Smoke = `bash_trillium_mr.sh` with `PIXEL_JUDGE=gemma CRITIQUE_SOURCE=oracle`, E-450, promptmix train_17K.
-- Next (Inbox): AlphaGRPO on base Tar-7B with the Qwen3-VL-30B-A3B judge (`bash_trillium_alphagrpo.sh`, written, not run).
-  Waiting on: the 30B download (running on the login node) and **`data/alphagrpo/{train_19.5K_ours,val_400_ours}.jsonl` from
-  Fir** (not here yet). Then `test_pixel_judge.py` on the 30B, a smoke, the full run.
+- After the smoke: **idle until the user assigns the first training job** (candidates: seed twin of Fir's Gemma-reward run, or
+  the run-2 replay-SFT ablations). Ask the user before launching anything that trains. The AlphaGRPO-30B run went to Nibi;
+  `bash_trillium_alphagrpo.sh` (30B judge default) stays as an unrun port, `vlm/Qwen3-VL-30B-A3B-Instruct` is downloaded here too.
 - Have here: envs `~/envs/{tar,qwen_judge,gemma_judge}` + archives `/scratch/dars11/stage/envs_tar_{qwen,gemma}judge.tar.zst`;
   models `Tar-7B, ta_tok, ar_dtok_lp_512px, vq_ds16_t2i, siglip2, vlm/{Qwen3-VL-8B-Instruct, gemma-4-12B-it}`,
   `sft/{darshan_pm1_E_merged450, slf_ref_edit_t21_ckpt17000}` (not `darshan_mr_E450_orc_merged500`); data `geneval2_50K_v2`
@@ -39,7 +39,6 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
   `~/scratch/git/CLAUDE.md -> tar_reason/handoff/CLAUDE.md`.
 
 ## Inbox
-- 2026-10-30 from Fir (user): **the AlphaGRPO-on-Tar run with the paper's reward model (Qwen3-VL-30B-A3B) was reassigned to Nibi** (user, 18:25 PDT, "run it on priority in nibi"; `scripts/rl_ft/bash_nibi_alphagrpo.sh`, RUN_NAME `darshan_agrpo_tar_rm30b_nibi`, see `fir.md`). **Do not start it here.** Trillium's job: complete the setup task below and report; the first training job is assigned by the user afterwards (candidates: the seed twin of Fir's Gemma-4-12B-reward run, or the run-2 replay-SFT ablations). Ask the user before launching anything that trains.
 - 2026-10-30 from Fir (user): **set Trillium up as the second RL cluster** — DONE 2026-10-30 (see Now / Cluster facts); kept
   until the smoke passes. Steps:
   1. Cluster facts: `sinfo -o "%P %D %G %l"`, `sacctmgr show assoc user=$USER format=account`, `diskusage_report`, CPU
@@ -67,6 +66,7 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
   push only `darshan-rl-test`.
 
 ## Log (newest first)
+- 2026-10-30 22:50 EDT: Inbox: AlphaGRPO-30B run reassigned to Nibi (acted on: not started here, line removed).
 - 2026-10-30 20:00 PDT (Fir): the AlphaGRPO-with-30B-reward task moved to Nibi; Trillium keeps the setup task only, first job to be assigned by the user.
 - 2026-10-30 22:45 EDT: setup: envs + archives built, public weights downloaded, `~/scratch` moved to `/scratch/dars11` (home
   quota hit by a VLM rsync; the VLMs were already downloaded from HF), launchers `bash_trillium_{mr,alphagrpo}.sh`, smoke 1203913.
