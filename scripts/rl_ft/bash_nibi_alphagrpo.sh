@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --time=23:59:00
-#SBATCH --nodes=4
+#SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=h100:4
-#SBATCH --cpus-per-task=48
-#SBATCH --mem=400G
+#SBATCH --gpus-per-node=h100:8
+#SBATCH --cpus-per-task=96
+#SBATCH --mem=0
 #SBATCH --account=rrg-bengioy-ad_gpu
 #SBATCH --open-mode=append
 #SBATCH -J darshan_agrpo_nibi
@@ -24,8 +24,9 @@
 #   smoke:   MAX_STEPS=2 EVAL_STEPS=2 SAVE_STEPS=2 EVAL_MAX_PROMPTS=24 RUN_NAME=agrpo_smoke_nibi \
 #              sbatch --nodes=1 --time=01:30:00 scripts/rl_ft/bash_nibi_alphagrpo.sh
 #   full:    RUN_NAME=darshan_agrpo_tar_rm30b_nibi sbatch scripts/rl_ft/bash_nibi_alphagrpo.sh  (+ an afterany spare)
-# Nibi port of bash_rorqual_alphagrpo.sh (2026-10-30): /scratch/dars11 paths, 4 of the 8 GPUs of a node (--mem=400G instead of
-# a whole node), and the judge = Qwen3-VL-30B-A3B-Instruct, the AlphaGRPO paper's reward model (our other runs used our
+# Nibi port of bash_rorqual_alphagrpo.sh (2026-10-30): /scratch/dars11 paths; 2 whole 8-GPU nodes = 6 train ranks + 1 judge per node
+# (GPU 6 idle), i.e. the same 12 ranks x 3 prompts = 36 prompts/step as the 4 x (3+1) layout (a 4-node half-node request sat in
+# gpubase_bygpu with a 5-day estimate); and the judge = Qwen3-VL-30B-A3B-Instruct, the AlphaGRPO paper's reward model (our other runs used our
 # Qwen3-VL-8B judge; the user asked for the faithful variant). Everything else is the Rorqual run's recipe.
 #   eval:    jeet's pipeline on Mila with SINGLE_PASS=1 on the merged model (base Tar + this LoRA).
 
@@ -53,11 +54,11 @@ DATA_PATH="output_dir/${RUN_NAME}/data.yaml"
 VAL_DATA_PATH="output_dir/${RUN_NAME}/val.yaml"
 
 # ===================== Config params (task F: t8 recipe + chain mode) ========================
-N_GPUS=4
+N_GPUS=8
 N_NODES=${SLURM_NNODES:-1}
-JUDGE_GPU=3
-N_TRAIN_GPUS=3
-TRAIN_GPUS=0,1,2
+JUDGE_GPU=7
+N_TRAIN_GPUS=6
+TRAIN_GPUS=0,1,2,3,4,5
 WORLD_SIZE_GPUS=$((N_TRAIN_GPUS * N_NODES))
 
 PREV_STAGE_CHECKPOINT=${PREV_STAGE_CHECKPOINT:-${MODELS}/Tar-7B}   # base Tar-7B; fresh LoRA
