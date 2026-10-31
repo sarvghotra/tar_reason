@@ -69,9 +69,14 @@ tiif_official() {
   # Server: TP over the 4 GPUs (146 GB of bf16 weights), one image per request.
   local SERVER_LOG=${RUN_DIR}/vllm_qwen72b_${SLURM_JOB_ID:-local}.log
   echo "$(date +%H:%M:%S) starting vLLM ${SERVED} on :${PORT} (TP=${N_GPUS}); log ${SERVER_LOG}"
+  # vLLM 0.32 JIT-compiles flashinfer kernels (TP all-reduce, sampler) with nvcc at startup: without a CUDA toolkit on the
+  # node the engine dies in cudagraph capture (Nibi 25505694). Load a toolkit matching torch's CUDA (cu130) and keep the
+  # custom all-reduce / flashinfer sampler off so as little as possible is compiled.
+  local CUDA_MOD; for CUDA_MOD in cuda/13.2 cuda/13.0 cuda/12.9 cuda/12.6 cuda/12.2; do module load ${CUDA_MOD} 2>/dev/null && { echo "loaded ${CUDA_MOD} for vLLM JIT"; break; }; done
+  export VLLM_USE_FLASHINFER_SAMPLER=0
   env -u PYTHONPATH ${VLLM} serve "${JUDGE}" --served-model-name ${SERVED} --tensor-parallel-size ${N_GPUS} \
       --dtype bfloat16 --max-model-len 8192 --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization 0.92 \
-      --host 127.0.0.1 --port ${PORT} > "${SERVER_LOG}" 2>&1 &
+      --disable-custom-all-reduce --host 127.0.0.1 --port ${PORT} > "${SERVER_LOG}" 2>&1 &
   local SERVER_PID=$!
   trap "kill ${SERVER_PID} 2>/dev/null" EXIT INT TERM
   local waited=0
