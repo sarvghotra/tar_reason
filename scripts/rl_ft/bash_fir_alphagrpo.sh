@@ -32,7 +32,7 @@ DATA=/home/dars11/scratch/data/geneval2_50K_v2
 TRAIN_JSONL=${TRAIN_JSONL:-/home/dars11/scratch/data/alphagrpo/train_19.5K_ours.jsonl}
 VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val800.jsonl}
 VAL_PM_JSONL=${VAL_PM_JSONL:-/home/dars11/scratch/data/alphagrpo/val_400_ours.jsonl}
-JUDGE_MODEL=/home/dars11/scratch/models/vlm/Qwen3-VL-8B-Instruct
+JUDGE_MODEL=${JUDGE_MODEL:-/home/dars11/scratch/models/vlm/Qwen3-VL-8B-Instruct}   # override: models/vlm/Qwen3-VL-30B-A3B-Instruct = the paper's reward model (with REWARD_QUESTION_BATCH=16)
 JUDGE_PY=/home/dars11/envs/qwen_judge/bin/python
 # Node-local staging (default on): Fir's Lustre /home and /scratch have killed jobs with SIGBUS (memory-mapped
 # pages that became unreadable: t7 step 41, t11 judge step 13, t11 trainer step 123). With STAGE_LOCAL=1 every
