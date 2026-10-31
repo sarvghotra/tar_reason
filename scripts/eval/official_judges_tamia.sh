@@ -145,7 +145,7 @@ genai_official() {
   for SEED in "${SEEDS[@]}"; do
     SEED_DIR=${RUN_DIR}/seed_${SEED}; GEN_MODEL=${RUN_DIR#${OUTPUT_DIR}/}/seed_${SEED}
     RESULT_FILE=${SEED_DIR}/${SCORE_MODEL}_log.txt
-    if [ "$(grep -c '^Tag Group: overall' "$RESULT_FILE" 2>/dev/null)" -ge "$N_ITERS" ]; then echo "seed ${SEED}: done, skipping"; continue; fi
+    if [ "$(grep -c '^Tag Group: overall' "$RESULT_FILE" 2>/dev/null || echo 0)" -ge "$N_ITERS" ] 2>/dev/null; then echo "seed ${SEED}: done, skipping"; continue; fi
     echo "$(date +%H:%M:%S) seed ${SEED}: VQAScore ${SCORE_MODEL}, ${NUM_PROMPTS} prompts, one iteration per GPU"
     PIDS=(); STATUS=0
     for I in "${!ITERS[@]}"; do
