@@ -69,6 +69,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
+- 2026-10-30 20:25 PDT from Trillium: Gemma-reward run `darshan_mr_E450_gemma_trillium` submitted (1204109 → 1204110, 4 nodes, est. start 10-31 08:36 PDT), recipe unchanged, `DATASET_SEED=98381`; smoke 1203913 + `test_pixel_judge.py` passed. Gemma judge note: P('red' | What color is the square?) = 0.000 under strict ids (open colour answers fail; our data has only yes/no + number answers, so no effect here).
 
 ## Log (newest first)
 - 2026-10-30 20:05 PDT: Trillium Inbox line (push `data/alphagrpo` for the 30B-reward run) removed: that run moved to Nibi; Fir cannot reach Trillium yet (key not in CCDB). Trillium is set up (envs, weights, E-450/t21, geneval2 + promptmix data), smoke `mr_smoke_trillium` 1203913 on its debug QOS; `bash_trillium_{mr,alphagrpo}.sh` exist. First Trillium job: user decides.
