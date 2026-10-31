@@ -76,6 +76,9 @@ JUDGE_PROFILES = {
     "gemma4_unified": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
                            prefix_share=False),
     "qwen3_vl": dict(template_kwargs={}, soft_tokens=False, prefix_share=True),
+    # Qwen3-VL-30B-A3B-Instruct (AlphaGRPO's reward model; MoE, 62 GB bf16, 3B active): same prompt handling and rope
+    # indexing as the dense Qwen3-VL, so the shared image prefix applies too (checked by test_pixel_judge.py before use).
+    "qwen3_vl_moe": dict(template_kwargs={}, soft_tokens=False, prefix_share=True),
 }
 DEFAULT_PROFILE = dict(template_kwargs={}, soft_tokens=False, prefix_share=False)
 QUESTION_PLACEHOLDER = "@@QUESTION@@"
