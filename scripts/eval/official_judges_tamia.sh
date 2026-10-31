@@ -128,7 +128,9 @@ tiif_official() {
     [ $STATUS -eq 0 ] || { echo "ERROR: judgments incomplete for seed ${SEED}; resubmit (judged prompts are kept)"; exit 1; }
     rm -f ${RESULT_DIR}/client_iter*_g*.log
     # TIIF-Bench's own summaries (summary_dimension_results.py exits non-zero even on success: check the report).
-    (cd ${TIIF_DIR} && env -u PYTHONPATH ${SUM_PY} eval/summary_results.py --input_dir ${RESULT_DIR}) | tee ${LOG}
+    # pandas < 3 required (summary_results.py uses DataFrame.applymap; Nibi 25518043 with pandas 3.1 wrote no xlsx)
+    (cd ${TIIF_DIR} && env -u PYTHONPATH ${SUM_PY} eval/summary_results.py --input_dir ${RESULT_DIR}) 2>&1 | tee ${LOG}
+    [ -s ${RESULT_DIR}/result_summary.xlsx ] || { echo "ERROR: summary_results.py wrote no result_summary.xlsx for seed ${SEED}"; exit 1; }
     rm -f ${RESULT_DIR}/result_summary_dimension.txt
     (cd ${TIIF_DIR} && env -u PYTHONPATH ${SUM_PY} eval/summary_dimension_results.py \
         --input_excel ${RESULT_DIR}/result_summary.xlsx --output_txt ${RESULT_DIR}/result_summary_dimension.txt) 2>&1 | tee -a ${LOG} || true
