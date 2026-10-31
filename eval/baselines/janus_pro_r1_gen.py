@@ -53,6 +53,7 @@ CPU check of arguments / layout without loading a model (dummy 384 px images):
 """
 
 import argparse
+import datetime
 import glob
 import json
 import math
@@ -246,7 +247,9 @@ def init_distributed(args):
             device = torch.device("cpu")
         else:
             local_rank = int(os.environ["LOCAL_RANK"])
-            dist.init_process_group("nccl")
+            # Long timeout: ranks finish their shards at very different times (resumed jobs, self-correction loops
+            # with variable rounds), and the final gather must not hit NCCL's 10-minute watchdog.
+            dist.init_process_group("nccl", timeout=datetime.timedelta(hours=48))
             device = torch.device(f"cuda:{local_rank}")
             torch.cuda.set_device(device)
     else:
