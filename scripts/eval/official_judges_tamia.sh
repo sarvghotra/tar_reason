@@ -83,7 +83,9 @@ tiif_official() {
   [ "${VLLM_EAGER:-0}" = 1 ] && EAGER=(--enforce-eager)
   for CUDA_MOD in cuda/13.2 cuda/13.0; do module load ${CUDA_MOD} 2>/dev/null && { echo "loaded ${CUDA_MOD}"; break; }; done
   echo "vLLM eager: ${VLLM_EAGER:-0}"
-  export VLLM_USE_FLASHINFER_SAMPLER=0 VLLM_ATTENTION_BACKEND=FLASH_ATTN
+  # The TP all-reduce defaults to a flashinfer kernel that is JIT-compiled (TamIA 656650 died there even in eager mode: its
+  # vllm env was built on the system python3.12 whose dev headers are incomplete): use NCCL for all-reduce instead.
+  export VLLM_USE_FLASHINFER_SAMPLER=0 VLLM_ATTENTION_BACKEND=FLASH_ATTN VLLM_ALLREDUCE_USE_FLASHINFER=0 VLLM_ALLREDUCE_USE_FLASHINFER_PCIE_IPC=0
   env -u PYTHONPATH ${VLLM} serve "${JUDGE}" --served-model-name ${SERVED} --tensor-parallel-size ${N_GPUS} \
       --dtype bfloat16 --max-model-len 8192 --limit-mm-per-prompt '{"image":1}' --gpu-memory-utilization 0.92 \
       --disable-custom-all-reduce "${EAGER[@]}" --host 127.0.0.1 --port ${PORT} > "${SERVER_LOG}" 2>&1 &
