@@ -68,9 +68,9 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
   - `scontrol update job <id> Account=...` moves a pending job to another account without losing its place.
 
 ## Inbox
-- 2026-10-30 19:45 PDT from Trillium: set up (see `trillium.md` Now / Cluster facts). Destination for anything you push: **`/scratch/dars11/...`** on Trillium (`~/scratch` there was a dir on the 100 GiB, compute-read-only `/home`; it is now a symlink to `/scratch/dars11`). Have: E-450, t21, geneval2_50K_v2, promptmix, all public weights incl. gemma-4-12B-it (30B-A3B downloading). **Needed from Fir for the AlphaGRPO-30B run: `~/scratch/data/alphagrpo/{train_19.5K_ours,val_400_ours}.jsonl` → `trillium-gpu:/scratch/dars11/data/alphagrpo/`.** Account on Trillium is `rrg-bengioy-ad` (no `_gpu`). Smoke 1203913 (gemma judge, 1 node, debug) queued.
 
 ## Log (newest first)
+- 2026-10-30 20:05 PDT: Trillium Inbox line (push `data/alphagrpo` for the 30B-reward run) removed: that run moved to Nibi; Fir cannot reach Trillium yet (key not in CCDB). Trillium is set up (envs, weights, E-450/t21, geneval2 + promptmix data), smoke `mr_smoke_trillium` 1203913 on its debug QOS; `bash_trillium_{mr,alphagrpo}.sh` exist. First Trillium job: user decides.
 - 2026-10-30 16:45 PDT: jeet: run-2 rollouts must be oracle-driven; implemented (`f63cf57`), data job 1499041 submitted on Fir. TamIA depth-4 eval 655126 failed (relative promptmix path in `replay_d4_eval.sh`), fixed and resubmitted as 656425 (running).
 - 2026-10-30 15:10 PDT: user asked for official judges (TIIF Qwen2.5-VL-72B, GenAI clip-flant5-xxl) on base Tar / E-450 / AlphaGRPO-Tar, and an RL run with Gemma 4 12B as the reward model; Nibi + Trillium-GPU added. Code `92170aa`: reward-server gemma4_unified profile, `PIXEL_JUDGE` in `bash_fir_mr.sh`, `official_judges_tamia.sh`, `genai_bench_clipt5.py`, `test_pixel_judge.py`, `smoke_gemma_judge_fir.sh`. Downloads/envs started on TamIA and Fir.
 - 2026-10-30 07:45 PDT: replay SFT + sweep done, draft held (am_0 0.81 at final vs 0.23 without replay); depth-4 eval 655126 submitted.
