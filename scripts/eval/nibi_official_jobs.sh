@@ -23,13 +23,22 @@ case ${1:?e450 | tar7b_gen | tar7b | baselines} in
       for d in $(ls -d $R/$S/*_n[0-9]*_repeat1 2>/dev/null); do
         run=$(basename $d)
         case $run in iter_adhoc_*) continue ;; esac          # ours (E-450, base Tar, AlphaGRPO-Tar): other cases above
-        n=$(echo $run | sed -E 's/^[a-z0-9]+_n([0-9]+)_.*/\1/'); name=$(echo $run | sed -E 's/^[a-z0-9]+_n[0-9]+_(.*)_[0-9]+px_repeat1$/\1/')
+        # <family>_n<N>_<MODEL_NAME>_<res>px_repeat1; the family may contain underscores (janus_r1_loop_n2_...)
+        n=$(echo $run | sed -E 's/^.*_n([0-9]+)_.*_[0-9]+px_repeat1$/\1/'); name=$(echo $run | sed -E 's/^.*_n[0-9]+_(.*)_[0-9]+px_repeat1$/\1/')
+        [[ "$n" =~ ^[0-9]+$ ]] || { echo "skip  $run: cannot parse"; continue; }
+        squeue -h -u dars11 -n official_${B}_${name} -o %i | grep -q . && { echo "queued $run already"; continue; }
         seeds=$(ls -d $d/seed_* 2>/dev/null | wc -l); [ $seeds -gt 0 ] || { echo "skip $run: no seeds"; continue; }
         case $B in
           tiif)  done_n=$(ls $d/seed_*/eval_results_qwen72b/result_summary_dimension.txt 2>/dev/null | wc -l) ;;
           genai) done_n=$(for f in $d/seed_*/clip-flant5-xxl_log.txt; do [ "$(grep -c '^Tag Group: overall' $f 2>/dev/null)" -ge $n ] && echo 1; done | wc -l) ;;
         esac
         [ $done_n -ge $seeds ] && { echo "done  $run ($seeds seeds)"; continue; }
+        # still generating / partially copied? (TIIF: 554 images per iteration; GenAI: 1600 per iteration folder)
+        short=0; for s in $d/seed_*; do case $B in
+          tiif)  [ "$(find $s/images -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' \) | wc -l)" -ge $((554 * n)) ] || short=1 ;;
+          genai) for k in $(seq 1 $n); do [ "$(ls $s/$k 2>/dev/null | grep -c -E 'jpe?g$|png$')" -ge 1600 ] || short=1; done ;;
+        esac; done
+        [ $short -eq 0 ] || { echo "skip  $run: a seed is incomplete"; continue; }
         echo "judge $run: MODEL_NAME=$name N_ITERS=$n seeds=$seeds"
         BENCH=$B MODEL_NAME=$name N_ITERS=$n RUN_DIR=$d \
           sbatch --export=ALL "${ACC[@]}" "${LOGS[@]}" -J official_${B}_${name} scripts/eval/official_judges_tamia.sh
