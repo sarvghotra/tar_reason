@@ -39,6 +39,7 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
   `~/scratch/git/CLAUDE.md -> tar_reason/handoff/CLAUDE.md`.
 
 ## Inbox
+- 2026-10-30 20:10 PDT from Fir (user: "launch the gemma reward run on trillium"): **run the Gemma-4-12B-reward RL run here.** Recipe = jeet's run 1 (`darshan_mr_E450_orc_fir`, see `fir.md` / `runs.md`) with only the judge changed: `bash_trillium_mr.sh` with `PIXEL_JUDGE=gemma CRITIQUE_SOURCE=oracle PREV_STAGE_CHECKPOINT=<E-450 merged, models/tar/sft/darshan_pm1_E_merged450> TRAIN_JSONL=<promptmix/train_17K.jsonl> MAX_STEPS=500 EVAL_STEPS=100 SAVE_STEPS=10`, 4 nodes × 4 H100 (3 train ranks + Gemma judge per node; judge flags `--answer_id_mode strict --image_soft_tokens 280`, as `bash_fir_mr.sh PIXEL_JUDGE=gemma` sets), `RUN_NAME=darshan_mr_E450_gemma_trillium`, `DATASET_SEED` left to the RUN_NAME default. **val.yaml = two sets like run 1**: `geneval2_50K_v2/evaluation_metadata_shuf_val800.jsonl` (logname `val`) + `promptmix/val_800.jsonl` (logname `promptmix`) — write it into `output_dir/<RUN_NAME>/val.yaml` before the first sbatch (run 1's file is quoted in `fir.md`; the launcher only creates a single-set one). Two chained 24 h jobs (`--dependency=afterany`; run 1 timed out at step 423 in 24 h on Fir). Before the full run: (1) your `mr_smoke_trillium` must have passed, (2) `util_scripts/debug/test_pixel_judge.py models/vlm/gemma-4-12B-it --answer_id_mode strict --image_soft_tokens 280` on one GPU prints sensible yes/no probabilities (red square: red ≫ blue). Fir's own copy of this run (`submit_gemma_run_fir.sh`, smoke 1475184 queued 5.5 h) is cancelled; Fir may later run a second seed. **Do not change any setting of the recipe without asking the user.** Report: step-0 (= E-450 depth-4) and every eval's `am_upto_0..4` (own + oracle, val800 + promptmix) in a `runs.md` row `darshan_mr_E450_gemma_trillium` and a line in Fir's Inbox; sync wandb pieces oldest-first (`--append` for later ones).
 - 2026-10-30 from Fir (user): **set Trillium up as the second RL cluster** — DONE 2026-10-30 (see Now / Cluster facts); kept
   until the smoke passes. Steps:
   1. Cluster facts: `sinfo -o "%P %D %G %l"`, `sacctmgr show assoc user=$USER format=account`, `diskusage_report`, CPU
@@ -66,6 +67,7 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
   push only `darshan-rl-test`.
 
 ## Log (newest first)
+- 2026-10-30 20:10 PDT (Fir): user assigned the Gemma-reward RL run to Trillium (Inbox).
 - 2026-10-30 22:50 EDT: Inbox: AlphaGRPO-30B run reassigned to Nibi (acted on: not started here, line removed).
 - 2026-10-30 20:00 PDT (Fir): the AlphaGRPO-with-30B-reward task moved to Nibi; Trillium keeps the setup task only, first job to be assigned by the user.
 - 2026-10-30 22:45 EDT: setup: envs + archives built, public weights downloaded, `~/scratch` moved to `/scratch/dars11` (home
