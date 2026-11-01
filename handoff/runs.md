@@ -298,6 +298,7 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   | BLIP3-o-8B | 1024 | 3 | 59.7 ± 0.2 (13.8 / 7.6%) | pending | 62.7 ± 0.7 | 62.1 ± 1.3 |
   | **AlphaGRPO rt2i** (BAGEL + released LoRA, plan -> image) | 1024 | 3 | **75.9 ± 0.0** (31.6 / 20.5%) | pending | 72.8 ± 0.4 | 73.2 ± 0.5 |
   | **AlphaGRPO srr** (plan -> image -> 1 reflection -> image; first -> final) | 1024 | **1** | 72.6 -> **76.1** (26.1 -> 31.5 / 17.0 -> 20.1%) | 53.0 -> **61.0** | 71.3 -> **75.6** | 73.5 -> **75.0** |
+  | **Uni-CoT-7B-MoT** (own loop: plan -> image -> self-reflect -> regenerate, up to 4 rounds; images 1 -> 5) | 1024 | **1** | 73.9 -> **78.0** (28.3 -> 37.7 / 19.1 -> 24.3%; 484/800 regenerated) | pending | 70.4 -> **76.4** | 69.1 -> **73.8** (260/554 regenerated) |
   AlphaGRPO-on-Tar (our RL reproduction on Tar-7B, single pass): see `bench_tamia darshan_agrpo_tar_380` (TamIA; Mila GenEval2 74.4 ± 0.1 agrees).
   srr's single reflection round gains +3.5 GenEval2 / +8.0 GenAI / +4.2 / +1.5 TIIF (1 seed; reflection applied to every image, see deviations);
   ours after 4 corrections: E-450 +3.2 / +3.0 / +3.1 / +1.3. Plain BAGEL vs + CoT: CoT helps GenEval2 (+2.3), hurts TIIF (-3.3 / -2.5).
