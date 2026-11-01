@@ -67,6 +67,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-11-01 10:10: Show-o2 GenAI (4 ranks) SIGKILLed by CPU OOM at 160 GB (fp32 load per rank); resubmitted 13/17 at 320 GB (11482760/1), all queued GenAI raised to 320 GB. Use >= 320 GB for 4-rank unified-model GenAI jobs.
 - 2026-10-30 17:20 PDT (Fir): withdrew the Inbox request to push the E-450 images to Nibi; the user is rsyncing them from Mila directly.
 - 2026-10-30 12:20: cancelled Mila's 6 remaining AlphaGRPO-on-Tar jobs (Inbox from Fir: done on TamIA); GenEval2 had finished here (74.4 ± 0.1, = TamIA 74.3).
 - 2026-10-30 03:45: Tar-generator TIIF OOMs on L40S (decode_codes / k_cache at TIIF batch size, 44.6 GB): AlphaGRPO-on-Tar TIIF moved back to A100L (17, 91 resubmitted as 11453244/11453245; 13 = 11408855). Tar GenEval2 fits on L40S (seed 2213: AM 74.2). Unified-model baselines are fine on L40S.
