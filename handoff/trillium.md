@@ -6,11 +6,12 @@ passwords), H100 nodes (4 per node, 80 GB), account **`rrg-bengioy-ad`** (no `_g
 Compute nodes have no internet; the login node `trig-login01` has internet and 4 H100s (short tests only).
 
 ## Now
-- **2026-10-31 15:20 EDT: `darshan_mr_E450_gemma_trillium` still queued: 1204109 (est. start slipped 11:36 → 2026-10-31 22:27 EDT; reason Priority, account fair-share 0.002) → 1204110
-  (afterany).** Inbox recipe unchanged (`submit_gemma_run_trillium.sh`: `bash_trillium_mr.sh PIXEL_JUDGE=gemma CRITIQUE_SOURCE=oracle`,
-  E-450, promptmix train_17K, 500 steps, evals every 100 on val800 + promptmix val_800, `DATASET_SEED=98381`). Run dir
-  `output_dir/darshan_mr_E450_gemma_trillium/` (val.yaml written by hand: two sets). To report: step-0 and every eval's
-  `am_upto_0..4` (own + oracle, both sets) in `runs.md` + Fir's Inbox; wandb sync oldest first (`--append` later).
+- **2026-11-01 16:05 EST: `darshan_mr_E450_gemma_trillium` running: 1204109 since 06:39 EST (trig0029/30/42/58), step 100 done,
+  step-100 eval running; → 1204110 (afterany).** ~4.6 min/step + ~1 h per eval → ~43 h for 500 steps (2 × 24 h should do).
+  Step 0 in `runs.md`. **Caveat: in-training val is scored by Gemma** (one judge server for reward and val), so val curves are
+  not comparable with run 1 (Qwen3-VL-8B) and cannot show reward hacking → after the run, re-evaluate the checkpoints with the
+  Qwen3-VL-8B judge (depth-4 mdp, val800 + promptmix val_800) before comparing. Recipe: `submit_gemma_run_trillium.sh`
+  (`PIXEL_JUDGE=gemma CRITIQUE_SOURCE=oracle`, E-450, promptmix train_17K, 500 steps, `DATASET_SEED=98381`).
 - Setup done; smoke `mr_smoke_trillium` 1203913 passed on `debug` (26 min: staging 44 s, Gemma judge ready 30 s, 2 steps, 2 evals,
   checkpoint). `test_pixel_judge.py` on gemma-4-12B-it (login GPU) passed (yes/no + counts confident; open colour answer fails
   under strict ids, irrelevant for our yes/no + number data).
@@ -45,6 +46,7 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
 (empty)
 
 ## Log (newest first)
+- 2026-11-01 16:05 EST: 1204109 started 06:39 (est. had been 22:27 the day before), step 100 at 15:22; step 0 recorded.
 - 2026-10-31 15:20 EDT: 1204109 not started (est. 11:36 → 22:27, low fair-share); pulled 25 commits, none touch the queued run's code.
 - 2026-10-30 23:25 EDT: Inbox acted on and removed: setup task (smoke 1203913 passed) and "launch the gemma reward run" (1204109 → 1204110).
 - 2026-10-30 20:10 PDT (Fir): user assigned the Gemma-reward RL run to Trillium (Inbox).
