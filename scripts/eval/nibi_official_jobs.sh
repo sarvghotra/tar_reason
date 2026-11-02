@@ -30,7 +30,7 @@ case ${1:?e450 | tar7b_gen | tar7b | baselines} in
         seeds=$(ls -d $d/seed_* 2>/dev/null | wc -l); [ $seeds -gt 0 ] || { echo "skip $run: no seeds"; continue; }
         case $B in
           tiif)  done_n=$(ls $d/seed_*/eval_results_qwen72b/result_summary_dimension.txt 2>/dev/null | wc -l) ;;
-          genai) done_n=$(for f in $d/seed_*/clip-flant5-xxl_log.txt; do [ "$(grep -c '^Tag Group: overall' $f 2>/dev/null)" -ge $n ] && echo 1; done | wc -l) ;;
+          genai) done_n=$(for f in $d/seed_*/clip-flant5-xxl_log.txt; do [ "$(grep -c '^Tag Group: overall' $f 2>/dev/null || echo 0)" -ge $n ] && echo 1; done | wc -l) ;;
         esac
         [ $done_n -ge $seeds ] && { echo "done  $run ($seeds seeds)"; continue; }
         # still generating / partially copied? (TIIF: 554 images per iteration; GenAI: 1600 per iteration folder)
