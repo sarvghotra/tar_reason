@@ -36,20 +36,39 @@ VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val800.jsonl}
 # strict answer ids, 280 visual soft tokens, thinking off (jeet's settings for the 26B A4B judge); needs the gemma_judge
 # env (python 3.12, transformers 5.x) and its own staging archive (see STAGE_LOCAL below).
 PIXEL_JUDGE=${PIXEL_JUDGE:-qwen}
-case ${PIXEL_JUDGE} in
-  qwen)
-    JUDGE_MODEL=/scratch/d/dars11/models/vlm/Qwen3-VL-8B-Instruct
-    JUDGE_ENV=qwen_judge; JUDGE_UV_PY_DIR=cpython-3.10.22-linux-x86_64-gnu; JUDGE_PYBIN=python3.10
-    JUDGE_ARGS="--answer_id_mode geneval2"
-    ENV_ARCHIVE_DEFAULT=/scratch/d/dars11/stage/envs_tar_qwenjudge.tar.zst ;;
-  gemma)
-    JUDGE_MODEL=/scratch/d/dars11/models/vlm/gemma-4-12B-it
-    JUDGE_ENV=gemma_judge; JUDGE_UV_PY_DIR=cpython-3.12.15-linux-x86_64-gnu; JUDGE_PYBIN=python3.12
-    JUDGE_ARGS="--answer_id_mode strict --image_soft_tokens ${REWARD_SOFT_TOKENS:-280}"
-    ENV_ARCHIVE_DEFAULT=/scratch/d/dars11/stage/envs_tar_gemmajudge.tar.zst ;;
-  *) echo "PIXEL_JUDGE must be qwen or gemma (got '${PIXEL_JUDGE}')" >&2; exit 1 ;;
-esac
+# VAL_JUDGE (2026-11-03, user: "I only asked to change the reward model and not the eval judge"): the judge that scores
+# the validation passes and writes their oracle critiques. Default = the reward judge; set VAL_JUDGE=qwen with
+# PIXEL_JUDGE=gemma to keep val curves on the usual Qwen3-VL-8B scale. A second server then shares the judge GPU
+# (Gemma 12B ~24 GB + Qwen 8B ~17 GB) and the staging archive must hold both envs (envs_tar_bothjudges.tar.zst).
+VAL_JUDGE=${VAL_JUDGE:-${PIXEL_JUDGE}}
+judge_settings() {   # $1 = qwen | gemma -> sets J_MODEL J_ENV J_UV_PY_DIR J_PYBIN J_ARGS
+  case $1 in
+    qwen)
+      J_MODEL=/scratch/d/dars11/models/vlm/Qwen3-VL-8B-Instruct
+      J_ENV=qwen_judge; J_UV_PY_DIR=cpython-3.10.22-linux-x86_64-gnu; J_PYBIN=python3.10
+      J_ARGS="--answer_id_mode geneval2" ;;
+    gemma)
+      J_MODEL=/scratch/d/dars11/models/vlm/gemma-4-12B-it
+      J_ENV=gemma_judge; J_UV_PY_DIR=cpython-3.12.15-linux-x86_64-gnu; J_PYBIN=python3.12
+      J_ARGS="--answer_id_mode strict --image_soft_tokens ${REWARD_SOFT_TOKENS:-280}" ;;
+    *) echo "judge must be qwen or gemma (got '$1')" >&2; exit 1 ;;
+  esac
+}
+judge_settings ${PIXEL_JUDGE}
+JUDGE_MODEL=$J_MODEL; JUDGE_ENV=$J_ENV; JUDGE_UV_PY_DIR=$J_UV_PY_DIR; JUDGE_PYBIN=$J_PYBIN; JUDGE_ARGS=$J_ARGS
+if [ "${VAL_JUDGE}" != "${PIXEL_JUDGE}" ]; then
+  judge_settings ${VAL_JUDGE}
+  VAL_JUDGE_MODEL=$J_MODEL; VAL_JUDGE_ENV=$J_ENV; VAL_JUDGE_UV_PY_DIR=$J_UV_PY_DIR; VAL_JUDGE_PYBIN=$J_PYBIN; VAL_JUDGE_ARGS=$J_ARGS
+  ENV_ARCHIVE_DEFAULT=/scratch/d/dars11/stage/envs_tar_bothjudges.tar.zst
+else
+  VAL_JUDGE_MODEL=; VAL_JUDGE_ENV=; VAL_JUDGE_UV_PY_DIR=; VAL_JUDGE_PYBIN=; VAL_JUDGE_ARGS=
+  case ${PIXEL_JUDGE} in
+    qwen)  ENV_ARCHIVE_DEFAULT=/scratch/d/dars11/stage/envs_tar_qwenjudge.tar.zst ;;
+    gemma) ENV_ARCHIVE_DEFAULT=/scratch/d/dars11/stage/envs_tar_gemmajudge.tar.zst ;;
+  esac
+fi
 JUDGE_PY=/home/d/dars11/envs/${JUDGE_ENV}/bin/python
+VAL_JUDGE_PY=${VAL_JUDGE_ENV:+/home/d/dars11/envs/${VAL_JUDGE_ENV}/bin/python}
 # Node-local staging (default on): Fir's Lustre /home and /scratch have killed jobs with SIGBUS (memory-mapped
 # pages that became unreadable: t7 step 41, t11 judge step 13, t11 trainer step 123). With STAGE_LOCAL=1 every
 # node unpacks both Python envs (+ uv's base Pythons) from one archive and copies the policy, judge and
@@ -137,6 +156,7 @@ cd ${REPO}
 mkdir -p output_dir/slurm_logs
 [ -f "${VAL_JSONL}" ] || { echo "Validation file not found: ${VAL_JSONL}" >&2; exit 1; }
 [ -x "${JUDGE_PY}" ] || { echo "Judge env not found: ${JUDGE_PY}" >&2; exit 1; }
+[ -z "${VAL_JUDGE_PY}" ] || [ -x "${VAL_JUDGE_PY}" ] || { echo "Validation judge env not found: ${VAL_JUDGE_PY}" >&2; exit 1; }
 mkdir -p "$LOCAL_DIR"
 [ -f "$DATA_PATH" ] || printf 'datasets:\n    - json_path:\n      - %s\n      ratio: 1\n' "${TRAIN_JSONL}" > "$DATA_PATH"
 [ -f "$VAL_DATA_PATH" ] || printf 'datasets:\n    - json_path:\n      - %s\n      ratio: 1\n' "${VAL_JSONL}" > "$VAL_DATA_PATH"
@@ -151,9 +171,12 @@ MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n1)
 MASTER_PORT=29507
 REWARD_PORT=$((8000 + ${SLURM_JOB_ID:-0} % 1000))
 REWARD_URL="http://127.0.0.1:${REWARD_PORT}"
+VAL_REWARD_PORT=$((REWARD_PORT + 1))
+VAL_REWARD_URL=${VAL_JUDGE_ENV:+http://127.0.0.1:${VAL_REWARD_PORT}}   # empty = validation uses the reward judge
 
 echo "RUN_NAME=${RUN_NAME} job=${SLURM_JOB_ID} nodes=${N_NODES} resume_from=${LAST:-none} DATASET_SEED=${DATASET_SEED} EXTRA_ARGS=${EXTRA_ARGS}"
 echo "pixel judge: ${PIXEL_JUDGE} ${JUDGE_MODEL} (${JUDGE_ARGS}) env ${JUDGE_ENV}"
+echo "validation judge: ${VAL_JUDGE} ${VAL_JUDGE_MODEL:-(same server as the reward)} ${VAL_JUDGE_ARGS}"
 echo "multi-round: critique_source=${CRITIQUE_SOURCE} branch=${BRANCH} chain_siblings=${CHAIN_SIBLINGS} context=${CONTEXT_MODE} draft_reward=${DRAFT_REWARD} lr=${LR} eval_branch=${EVAL_BRANCH} base=${PREV_STAGE_CHECKPOINT}"
 echo "train ranks ${WORLD_SIZE_GPUS} (${N_TRAIN_GPUS}/node), judge GPU ${JUDGE_GPU} per node; prompts/step $((WORLD_SIZE_GPUS * PROMPTS_PER_GPU)); master ${MASTER_ADDR}:${MASTER_PORT}"
 
@@ -164,6 +187,7 @@ export WANDB_MODE="${WANDB_MODE:-offline}"
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
 export STAGE_LOCAL ENV_ARCHIVE UV_PY_DIR RUN_NAME REPO MODELS LOCAL_DIR DATA_PATH VAL_DATA_PATH PREV_STAGE_CHECKPOINT
 export PIXEL_JUDGE JUDGE_MODEL JUDGE_PY JUDGE_ENV JUDGE_UV_PY_DIR JUDGE_PYBIN JUDGE_ARGS
+export VAL_JUDGE VAL_JUDGE_MODEL VAL_JUDGE_PY VAL_JUDGE_ENV VAL_JUDGE_UV_PY_DIR VAL_JUDGE_PYBIN VAL_JUDGE_ARGS VAL_REWARD_PORT VAL_REWARD_URL
 export N_NODES N_TRAIN_GPUS TRAIN_GPUS JUDGE_GPU MASTER_ADDR MASTER_PORT REWARD_PORT REWARD_URL
 export REWARD_QUESTION_BATCH REWARD_IMAGES_PER_REQ REWARD_DECODE_BATCH REWARD_LOAD_TIMEOUT
 export PROMPTS_PER_GPU BRANCH CHAIN_SIBLINGS CONTEXT_MODE IMAGES_PER_CRITIQUE TRAIN_DRAFTS TRAIN_IMAGES IMAGE_ADV_SCALE EVAL_BRANCH GEN_BATCH_SIZE TRAIN_MICRO_BATCH
@@ -190,12 +214,18 @@ if [ "${STAGE_LOCAL}" = "1" ]; then
     zstd -dc ${ENV_ARCHIVE} | tar -xf - -C $S &
     cp -r ${PREV_STAGE_CHECKPOINT} $S/models/policy &
     cp -r ${JUDGE_MODEL} $S/models/judge &
+    [ -z "${VAL_JUDGE_MODEL}" ] || cp -r ${VAL_JUDGE_MODEL} $S/models/val_judge &
     cp ${MODELS}/ar_dtok_lp_512px.pth ${MODELS}/vq_ds16_t2i.pt ${MODELS}/ta_tok.pth $S/models/ &
     wait
     ln -sfn $S/uvpy/${UV_PY_DIR}/bin/python3.10 $S/envs/tar/bin/python
     sed -i "s,^home = .*,home = $S/uvpy/${UV_PY_DIR}/bin," $S/envs/tar/pyvenv.cfg
     ln -sfn $S/uvpy/${JUDGE_UV_PY_DIR}/bin/${JUDGE_PYBIN} $S/envs/${JUDGE_ENV}/bin/python
     sed -i "s,^home = .*,home = $S/uvpy/${JUDGE_UV_PY_DIR}/bin," $S/envs/${JUDGE_ENV}/pyvenv.cfg
+    if [ -n "${VAL_JUDGE_ENV}" ]; then
+        ln -sfn $S/uvpy/${VAL_JUDGE_UV_PY_DIR}/bin/${VAL_JUDGE_PYBIN} $S/envs/${VAL_JUDGE_ENV}/bin/python
+        sed -i "s,^home = .*,home = $S/uvpy/${VAL_JUDGE_UV_PY_DIR}/bin," $S/envs/${VAL_JUDGE_ENV}/pyvenv.cfg
+        VAL_JUDGE_PY=$S/envs/${VAL_JUDGE_ENV}/bin/python; VAL_JUDGE_MODEL=$S/models/val_judge
+    fi
     TRAIN_PY=$S/envs/tar/bin/python; JUDGE_PY=$S/envs/${JUDGE_ENV}/bin/python; JUDGE_MODEL=$S/models/judge
     POLICY=$S/models/policy; AR_PATH=$S/models/ar_dtok_lp_512px.pth; DEC_PATH=$S/models/vq_ds16_t2i.pt
     cp $S/models/ta_tok.pth ${TMP_DIR}/ta_tok.pth
@@ -228,6 +258,29 @@ until [ -f "${READY_FILE}" ]; do
     sleep 10; waited=$((waited + 10))
 done
 echo "[node ${SLURM_NODEID}] $(hostname) judge ready after ${waited}s"
+if [ -n "${VAL_REWARD_URL}" ]; then
+    VAL_LOG="${LOCAL_DIR}/val_judge_server_${SLURM_JOB_ID}_n${SLURM_NODEID}.log"
+    VAL_READY="${LOCAL_DIR}/.val_judge_ready_${SLURM_JOB_ID}_n${SLURM_NODEID}"
+    rm -f "${VAL_READY}"
+    CUDA_VISIBLE_DEVICES=${JUDGE_GPU} ${VAL_JUDGE_PY} llava/train/rl/pixel_reward_server.py \
+        --model "${VAL_JUDGE_MODEL}" --host 127.0.0.1 --port ${VAL_REWARD_PORT} \
+        --batch_size ${REWARD_QUESTION_BATCH} --answer_suffix ${ANSWER_SUFFIX} \
+        ${VAL_JUDGE_ARGS} --attn_implementation sdpa \
+        --ready_file "${VAL_READY}" > "${VAL_LOG}" 2>&1 &
+    VAL_PID=$!
+    trap "kill ${REWARD_PID} ${VAL_PID} 2>/dev/null" EXIT INT TERM
+    waited=0
+    until [ -f "${VAL_READY}" ]; do
+        if ! kill -0 ${VAL_PID} 2>/dev/null; then
+            echo "[node ${SLURM_NODEID}] validation judge died while loading:" >&2; tail -40 "${VAL_LOG}" >&2; exit 1
+        fi
+        if [ ${waited} -ge ${REWARD_LOAD_TIMEOUT} ]; then
+            echo "[node ${SLURM_NODEID}] validation judge not ready after ${REWARD_LOAD_TIMEOUT}s:" >&2; tail -40 "${VAL_LOG}" >&2; exit 1
+        fi
+        sleep 10; waited=$((waited + 10))
+    done
+    echo "[node ${SLURM_NODEID}] $(hostname) validation judge ready after ${waited}s"
+fi
 
 export VIRTUAL_ENV=$(dirname $(dirname ${TRAIN_PY})); export PATH=${VIRTUAL_ENV}/bin:$PATH
 module load cuda/12.2
@@ -254,7 +307,7 @@ ${TRAIN_PY} -m torch.distributed.run --nproc_per_node=${N_TRAIN_GPUS} --nnodes=$
     --reflect_top_k 0 --reflect_top_p 0.95 \
     --gen_batch_size ${GEN_BATCH_SIZE} \
     --alpha ${ALPHA} --answer_suffix ${ANSWER_SUFFIX} --reward_batch_size 16 \
-    --reward_kind pixel --reward_server_url ${REWARD_URL} \
+    --reward_kind pixel --reward_server_url ${REWARD_URL} ${VAL_REWARD_URL:+--val_reward_server_url ${VAL_REWARD_URL}} \
     --reward_images_per_request ${REWARD_IMAGES_PER_REQ} --reward_decode_batch ${REWARD_DECODE_BATCH} \
     --draft_reward ${DRAFT_REWARD} --stop_penalty ${STOP_PENALTY} --stop_threshold ${STOP_THRESHOLD} \
     --min_refines ${MIN_REFINES} --refine_resample_tries ${REFINE_RESAMPLE_TRIES} \

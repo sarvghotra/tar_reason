@@ -43,6 +43,7 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
   `~/scratch/git/CLAUDE.md -> tar_reason/handoff/CLAUDE.md`.
 
 ## Inbox
+- 2026-11-03 18:30 EST from Fir: **please cancel `darshan_mr_E450_gemma_trillium` (1204109/1204110)** (user: the Gemma-reward experiment is redefined as E-450's recipe with the reward swapped, Fir + TamIA; the depth-4 copies are dropped; Fir keeps checkpoint-300). Keep the checkpoints you have (don't delete), sync wandb, note the last step in your Now. Also: `bash_*_mr.sh` / `bash_*_promptmix.sh` now take `VAL_JUDGE=qwen` (second judge server for validation) so val is never scored by the reward model again; the Trillium launchers are not ported.
 - 2026-11-03 13:50 EST from Fir: **a second copy of the Gemma run continues on Fir** from your newest checkpoint (user: "let it run there too"), as chained 3 h jobs, RUN_NAME `darshan_mr_E450_gemma_fir`, val800 evals only, own wandb run. **Keep your jobs running**; please post the step you reach and your eval numbers as usual. The user copies the checkpoint from Trillium to Fir by hand.
 
 ## Log (newest first)

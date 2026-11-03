@@ -115,6 +115,10 @@ def parse_args():
                         "served by llava/train/rl/pixel_reward_server.py.")
     p.add_argument("--reward_server_url", default=None,
                    help="Base URL of the pixel reward server (--reward_kind pixel).")
+    p.add_argument("--val_reward_server_url", default=None,
+                   help="Pixel judge used for validation (scores and oracle critiques of the "
+                        "val passes) when it differs from the reward judge, e.g. a Gemma reward "
+                        "model with the usual Qwen3-VL-8B validation judge. Default: the reward judge.")
     p.add_argument("--reward_images_per_request", type=int, default=8,
                    help="Decoded images per POST to the reward server.")
     p.add_argument("--reward_decode_batch", type=int, default=8,
@@ -1208,6 +1212,21 @@ def main():
     else:
         reward = build_latent_reward(args, model, base, tokenizer, image_start_id,
                                      num_image_tokens, device)
+    # Validation judge: the reward judge unless --val_reward_server_url names another
+    # served VLM (reward model != test judge, 2026-11-03). Only the val passes and their
+    # oracle critiques use it; training rewards and critiques stay with ``reward``.
+    val_reward = reward
+    if args.val_reward_server_url and args.val_reward_server_url != args.reward_server_url:
+        assert args.reward_kind == "pixel", "--val_reward_server_url needs --reward_kind pixel"
+        val_reward = PixelVQAReward(
+            decoder.decode_pils, args.val_reward_server_url,
+            RewardConfig(batch_size=args.reward_batch_size, answer_suffix=args.answer_suffix,
+                         scale=args.scale, alpha=args.alpha, combine=args.reward_combine),
+            images_per_request=args.reward_images_per_request,
+            decode_chunk=args.reward_decode_batch)
+        vinfo = val_reward.health()
+        rank0_print(f"validation judge: {vinfo.get('model')} at {args.val_reward_server_url} "
+                    f"(answer_suffix={vinfo.get('answer_suffix')})")
     gcfg = GRPOConfig(clip_eps=args.clip_eps, kl_coef=args.kl_coef, adv_norm=args.adv_norm,
                       adv_std_floor=args.adv_std_floor,
                       reflect_token_weight=args.reflect_token_weight)
@@ -1250,6 +1269,8 @@ def main():
     oracle_fn = None
     if args.critique_source != "policy" or args.eval_oracle:
         oracle_fn = make_critique_fn(reward, args.oracle_fail_threshold, "oracle")
+    val_oracle_fn = oracle_fn if val_reward is reward else (
+        make_critique_fn(val_reward, args.oracle_fail_threshold, "oracle") if args.eval_oracle else None)
     train_critique_fn = None
     if args.critique_source == "oracle":
         train_critique_fn = oracle_fn
@@ -1265,14 +1286,14 @@ def main():
         for name, rows in val_sets.items():
             tag = "" if len(val_sets) == 1 or name == "val" else f"_{name}"
             if args.eval_own:
-                out.update(run_validation(model, rollout, reward, rows, args, device, step, decoder,
+                out.update(run_validation(model, rollout, val_reward, rows, args, device, step, decoder,
                                           prefix=f"val{tag}/"))
             if args.eval_sampled:
-                out.update(run_validation(model, rollout, reward, rows, args, device, step, None,
+                out.update(run_validation(model, rollout, val_reward, rows, args, device, step, None,
                                           prefix=f"val_sampled{tag}/", sample_critic=True))
             if args.eval_oracle:
-                out.update(run_validation(model, rollout, reward, rows, args, device, step, None,
-                                          critique_fn=oracle_fn, prefix=f"val_oracle{tag}/"))
+                out.update(run_validation(model, rollout, val_reward, rows, args, device, step, None,
+                                          critique_fn=val_oracle_fn, prefix=f"val_oracle{tag}/"))
         return out
 
     # A marker per finished validation, so a job killed mid-validation (e.g. at a
