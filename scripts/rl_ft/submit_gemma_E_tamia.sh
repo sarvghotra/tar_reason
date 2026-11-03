@@ -21,9 +21,9 @@ for f in output_dir/${RUN_NAME}/val.yaml /scratch/d/dars11/stage/envs_tar_qwenju
 done
 grep -q promptmix output_dir/${RUN_NAME}/val.yaml && { echo "val.yaml lists promptmix: IID (val800) only" >&2; exit 1; }
 # User 2026-11-03: no time for intermediate evals: IID (val800) evals only at steps 450 and 500, no step-0 eval; checkpoints
-# every 10 steps, all kept (--save_total_limit via EXTRA_ARGS overrides the launcher's 5).
-export PIXEL_JUDGE=gemma VAL_JUDGE=qwen BRANCH=8,4 RUN_NAME DATASET_SEED SAVE_STEPS=10
-export EXTRA_ARGS="--no-eval_on_start --save_total_limit 60"
+# every 5 steps (a 3 h limit then loses < 25 min at ~5 min/step), all kept (--save_total_limit via EXTRA_ARGS overrides the launcher's 5).
+export PIXEL_JUDGE=gemma VAL_JUDGE=qwen BRANCH=8,4 RUN_NAME DATASET_SEED SAVE_STEPS=5
+export EXTRA_ARGS="--no-eval_on_start --save_total_limit 120"
 export PREV_STAGE_CHECKPOINT=/scratch/d/dars11/models/tar/sft/slf_ref_edit_t21_ckpt17000
 export TRAIN_JSONL=/scratch/d/dars11/data/promptmix/train_17K.jsonl
 COMMON=(--export=ALL --time=02:59:00 -J darshan_pm1Egemma_tamia)
