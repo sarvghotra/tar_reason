@@ -5,8 +5,8 @@
 # order continues Trillium's), as a chain of N_JOBS 3-hour jobs (partition gpubase_bynode_b1, 4 nodes x (3 ranks + judge)):
 # each job resumes from the newest output_dir/${RUN_NAME}/checkpoint-*, SAVE_STEPS=5 bounds the loss at a time limit to 4 steps,
 # and a job that finds checkpoint >= MAX_STEPS exits at once. Evals every 100 steps on val800 only (val.yaml here has one set;
-# Trillium's steps 0-200 also had promptmix val_800). wandb: WANDB_RUN_ID = the Trillium run id, so the pieces append to one run
-# Trillium keeps running too (user, 13:50 EST): two copies from the same checkpoint, separate wandb runs (RUN_NAME each).
+# Trillium's steps 0-200 also had promptmix val_800). Trillium keeps running too (user 2026-11-03): two copies from one checkpoint,
+# separate wandb runs (WANDB_RUN_ID defaults to RUN_NAME); sync each job's folder oldest first, later ones with `wandb sync --append`.
 # Prerequisite: the Trillium checkpoint copied to output_dir/${RUN_NAME}/checkpoint-<N>/ (adapter + optimizer.pt + scheduler.pt + state.json).
 #   bash scripts/rl_ft/submit_gemma_resume_fir.sh            # N_JOBS=10 by default
 set -eu
