@@ -66,21 +66,29 @@ from llava.train.rl.reward import ANSWER_SUFFIXES, answer_variants
 #   template_kwargs: extra kwargs for apply_chat_template
 #   soft_tokens:     whether the processor takes a visual token budget
 #   prefix_share:    the image prefix can be run once per image and its KV
-#                    cache reused for every question (Judge.score_shared);
-#                    needs a model whose text positions after the image are
-#                    plain consecutive ids (Qwen3-VL's get_rope_index)
+#                    cache reused for every question (Judge.score_shared)
+#   prefix_end:      the special token that closes the image block; the row is
+#                    split right after it ([prefix | suffix])
+#   mrope:           Qwen3-VL's 3-axis M-RoPE (suffix positions from
+#                    get_rope_index); False = plain 1-D positions P, P+1, ...
 JUDGE_PROFILES = {
     "gemma4": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
-                   prefix_share=False),
+                   prefix_share=False, prefix_end="<image|>", mrope=False),
     # Gemma 4 12B / 31B (dense "unified" checkpoints, Gemma4UnifiedForConditionalGeneration): same prompt handling.
+    # prefix_share (2026-11-03, user: "implement the optimization fix that jeet did"): the image block
+    # <|image>...<|image|>x256...<image|> is run once per image (bidirectional image attention, 1-D RoPE, KV
+    # sharing in the last layers, sliding window 1024 > any row here) and every question continues from its
+    # KV cache; set True only once util_scripts/debug/test_prefix_share.py shows score_shared == score_rows.
     "gemma4_unified": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
-                           prefix_share=False),
-    "qwen3_vl": dict(template_kwargs={}, soft_tokens=False, prefix_share=True),
+                           prefix_share=False, prefix_end="<image|>", mrope=False),
+    "qwen3_vl": dict(template_kwargs={}, soft_tokens=False, prefix_share=True,
+                     prefix_end="<|vision_end|>", mrope=True),
     # Qwen3-VL-30B-A3B-Instruct (AlphaGRPO's reward model; MoE, 62 GB bf16, 3B active): same prompt handling and rope
     # indexing as the dense Qwen3-VL, so the shared image prefix applies too (checked by test_pixel_judge.py before use).
-    "qwen3_vl_moe": dict(template_kwargs={}, soft_tokens=False, prefix_share=True),
+    "qwen3_vl_moe": dict(template_kwargs={}, soft_tokens=False, prefix_share=True,
+                         prefix_end="<|vision_end|>", mrope=True),
 }
-DEFAULT_PROFILE = dict(template_kwargs={}, soft_tokens=False, prefix_share=False)
+DEFAULT_PROFILE = dict(template_kwargs={}, soft_tokens=False, prefix_share=False, prefix_end=None, mrope=False)
 QUESTION_PLACEHOLDER = "@@QUESTION@@"
 
 
@@ -248,8 +256,8 @@ class Judge:
         ]}]
         text = self.processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True, **self.profile["template_kwargs"])
-        end = "<|vision_end|>"
-        assert text.count(end) == 1 and text.count(QUESTION_PLACEHOLDER) == 1, text
+        end = self.profile["prefix_end"]
+        assert end and text.count(end) == 1 and text.count(QUESTION_PLACEHOLDER) == 1, text
         head, tail = text.split(end)
         return head + end, tail
 
@@ -257,13 +265,18 @@ class Judge:
     def score_shared(self, images, vqa_lists):
         """Image prefix once per image, then every question from its KV cache.
 
-        A row's tokens are [prefix | suffix] with the split right after
-        ``<|vision_end|>`` (a special token, so tokenising the halves apart
-        gives the same ids as the whole row; checked once against
-        ``score_rows``' tokenisation). Suffix positions are the prefix's last
-        text position + 1, + 2, ... in all three M-RoPE axes, exactly what
-        ``get_rope_index`` assigns to text after an image. Returns None (caller
-        falls back to ``score_rows``) when the images' prefixes differ in length.
+        A row's tokens are [prefix | suffix] with the split right after the
+        profile's ``prefix_end`` token (``<|vision_end|>`` for Qwen3-VL,
+        ``<image|>`` for Gemma 4; a special token, so tokenising the halves
+        apart gives the same ids as the whole row; checked once against
+        ``score_rows``' tokenisation). Suffix positions: with ``mrope`` the
+        prefix's last text position + 1, + 2, ... in all three M-RoPE axes,
+        exactly what ``get_rope_index`` assigns to text after an image;
+        otherwise plain P, P + 1, ... (what the model assigns itself from the
+        cache length). Every other processor output (pixel values, image grid /
+        position ids, token-type ids for Gemma's bidirectional image attention)
+        goes into the prefix pass unchanged. Returns None (caller falls back to
+        ``score_rows``) when the images' prefixes differ in length.
         """
         from transformers import DynamicCache
 
@@ -277,14 +290,16 @@ class Judge:
         prefix_ids = enc["input_ids"]
         G, P = prefix_ids.shape
         lm = self.model.model
-        out = lm(input_ids=prefix_ids, attention_mask=enc["attention_mask"],
-                 pixel_values=enc["pixel_values"], image_grid_thw=enc["image_grid_thw"],
-                 use_cache=True)
+        extra = {k: v for k, v in enc.items() if k not in ("input_ids", "attention_mask")}
+        out = lm(input_ids=prefix_ids, attention_mask=enc["attention_mask"], use_cache=True, **extra)
         prefix_cache = out.past_key_values
-        pos, _ = lm.get_rope_index(prefix_ids, enc["image_grid_thw"], None,
-                                   attention_mask=enc["attention_mask"])
-        lm.rope_deltas = None       # computed per call here; don't leak into score_rows
-        next_pos = pos.amax(dim=(0, 2)) + 1                     # (G,)
+        if self.profile["mrope"]:
+            pos, _ = lm.get_rope_index(prefix_ids, enc["image_grid_thw"], None,
+                                       attention_mask=enc["attention_mask"])
+            lm.rope_deltas = None       # computed per call here; don't leak into score_rows
+            next_pos = pos.amax(dim=(0, 2)) + 1                     # (G,)
+        else:
+            next_pos = torch.full((G,), P, dtype=torch.long, device=self.device)
 
         rows = []                    # (image idx, slot, suffix ids, answer ids)
         for i, vqa in enumerate(vqa_lists):
@@ -311,7 +326,8 @@ class Judge:
                 lens.append(len(sfx))
             ids, mask = ids.to(self.device), mask.to(self.device)
             position_ids = (next_pos[idx][:, None] + torch.arange(S, device=self.device))
-            position_ids = position_ids.unsqueeze(0).expand(3, -1, -1)
+            if self.profile["mrope"]:
+                position_ids = position_ids.unsqueeze(0).expand(3, -1, -1)
             cache = DynamicCache()
             for layer, kv in enumerate(prefix_cache.layers):
                 cache.update(kv.keys[idx], kv.values[idx], layer)
