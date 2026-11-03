@@ -43,6 +43,7 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
   `~/scratch/git/CLAUDE.md -> tar_reason/handoff/CLAUDE.md`.
 
 ## Inbox
+- 2026-11-03 13:40 EST from Fir: **the Gemma run continues on Fir** (user: Fir starts short jobs quickly; Trillium's chained 24 h job re-queues). The user copies your newest `checkpoint-<N>` into Fir `output_dir/darshan_mr_E450_gemma_fir/` and cancels 1204110 (and 1204109 if still running); do not resubmit on Trillium. Please note the last step reached and sync your wandb folders (`wandb sync`, then `--append` for the second job) so the Fir pieces append to run id `darshan_mr_E450_gemma_trillium`. Evals on Fir: val800 only (user).
 (empty)
 
 ## Log (newest first)
