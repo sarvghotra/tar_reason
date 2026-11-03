@@ -6,7 +6,7 @@
 # each job resumes from the newest output_dir/${RUN_NAME}/checkpoint-*, SAVE_STEPS=5 bounds the loss at a time limit to 4 steps,
 # and a job that finds checkpoint >= MAX_STEPS exits at once. Evals every 100 steps on val800 only (val.yaml here has one set;
 # Trillium's steps 0-200 also had promptmix val_800). wandb: WANDB_RUN_ID = the Trillium run id, so the pieces append to one run
-# (sync each job's folder with `wandb sync --append`, oldest first).
+# Trillium keeps running too (user, 13:50 EST): two copies from the same checkpoint, separate wandb runs (RUN_NAME each).
 # Prerequisite: the Trillium checkpoint copied to output_dir/${RUN_NAME}/checkpoint-<N>/ (adapter + optimizer.pt + scheduler.pt + state.json).
 #   bash scripts/rl_ft/submit_gemma_resume_fir.sh            # N_JOBS=10 by default
 set -eu
@@ -23,7 +23,7 @@ for f in output_dir/${RUN_NAME}/val.yaml /home/dars11/scratch/stage/envs_tar_gem
 done
 grep -q promptmix output_dir/${RUN_NAME}/val.yaml && { echo "val.yaml still lists promptmix: IID (val800) only" >&2; exit 1; }
 export PIXEL_JUDGE=gemma CRITIQUE_SOURCE=oracle RUN_NAME MAX_STEPS=${MAX_STEPS:-500} EVAL_STEPS=100 SAVE_STEPS=5
-export DATASET_SEED=98381 WANDB_RUN_ID=darshan_mr_E450_gemma_trillium
+export DATASET_SEED=98381   # WANDB_RUN_ID defaults to RUN_NAME: the Trillium copy keeps running (user 2026-11-03), separate wandb runs
 export PREV_STAGE_CHECKPOINT=/home/dars11/scratch/models/tar/sft/darshan_pm1_E_merged450
 export TRAIN_JSONL=/home/dars11/scratch/data/promptmix/train_17K.jsonl
 COMMON=(--export=ALL --exclude=fc10212 --time=02:59:00 -J darshan_mrE450gemma_fir)
