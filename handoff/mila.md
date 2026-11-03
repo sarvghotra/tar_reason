@@ -3,19 +3,16 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-10-26 10:30 EDT)
-- **Unified-model baselines (Inbox, round 2 + AlphaGRPO)**. Setup in `$SCRATCH/baselines/` (clones, `build_envs.sh`, `dl.sh`, 1-GPU
-  `smoke.sh`, smoke outputs in `smoke/`); envs `~/envs/{showo,showo2,bagel,blip3o,emu3,alphagrpo}` (+ `.freeze.txt`). Job ids in
-  `$SCRATCH/baselines/*_jobs.txt`. Smoke s/image (1 A100): Show-o 20, Show-o2 21, BLIP3-o 7, BAGEL 37, BAGEL + CoT 46, AlphaGRPO rt2i 52,
-  srr 146 s/prompt, Emu3 230 (batch 4).
-- **Done** (`runs.md`): Show-o, BAGEL + CoT (3 seeds each); AlphaGRPO rt2i GenEval2 seed 13 = AM 75.9.
-- **AlphaGRPO-on-Tar** (`models/tar/sft/darshan_agrpo_tar_merged380`, Rorqual ckpt-380 on base Tar-7B; copy verified, 4 shards):
-  official evals done on TamIA (`runs.md` `bench_tamia darshan_agrpo_tar_380`); Mila copies cancelled 2026-10-30 (Mila GenEval2, 3 seeds: 74.4, matches TamIA 74.3).
-  Shared read-only with jeet 2026-10-30 (ACL, as E-450).
-- **Queued with `RESUME=1`** (resubmitted 10:30 after 7 preemptions on `long`; `30d3b79`): AlphaGRPO rt2i (3 seeds), srr (1 seed: GenEval2
-  2213 / GenAI 13 / TIIF 17), plain BAGEL (3 seeds). Partial copies in `$SCRATCH/tar_reason/results_jeet_partial/`.
-- Not yet submitted: Show-o2, BLIP3-o (smokes OK), Emu3 (1 seed, split per bench), Uni-CoT (smoke pending). Use `RESUME=1` for all.
-- Resume test (`results_resume_test*`, 1 GPU, forced requeue: 64/160 resumed): delete both folders once it finishes.
+## Now (2026-11-03 13:00 EST)
+- **Baseline folders complete for official-judge re-scoring on Nibi** (`$SCRATCH/tar_reason/results_jeet/<bench>/<run>/`; all planned seeds
+  scored; srr / Uni-CoT / Emu3 = 1 seed; GenEval2 needs no re-scoring). Updated whenever a (run, bench) completes:
+  - TIIF (`tiif-bench-testmini_eval`): showo_n2_showo_512_512px, showo2_n2_showo2_7b_432px, blip3o_n2_blip3o_8b_1024px, bagel_n2_bagel_7b_1024px,
+    bagel_n2_bagel_7b_think_1024px, alphagrpo_n2_alphagrpo_rt2i_1024px, alphagrpo_n2_alphagrpo_srr_1024px (seed 17), **unicot_n5_unicot_7b_1024px
+    (seed 17; new since Fir's batch)**. All `_repeat1`.
+  - GenAI (`genai-bench-1600`): bagel_n2_bagel_7b_think_1024px, showo_n2_showo_512_512px, alphagrpo_n2_alphagrpo_srr_1024px (seed 13).
+  - Not yet: GenAI of bagel_7b (13 done; 17, 91 running/queued), blip3o (17, 91 done; 13 queued), showo2, alphagrpo_rt2i, unicot; all of Emu3.
+- Queue: 13 jobs, all A100L (GenAI + Emu3), resume on; long waits / frequent preemption. GenAI jobs at 320 GB RAM.
+- Waiting on the user: jeet still has read access to `darshan_agrpo_tar_merged380` (granted 10-30 on the user's question; Inbox says keep it private).
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -51,8 +48,6 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-31 20:45 EDT from Fir: TIIF under the 72B done for all 12 baseline folders you had complete (`runs.md` row `official_judges baselines TIIF`); Uni-CoT skipped (its seed_17 was incomplete when copied). Please add a line to your Now whenever a (run, bench) folder becomes complete (Uni-CoT TIIF, every GenAI set), so the user can rsync the next batch. Also, in your unified-model block, please reword "AlphaGRPO-on-Tar (our RL reproduction on Tar-7B …)" to "AlphaGRPO-on-Tar (the AlphaGRPO recipe run on base Tar-7B, a baseline)": the user does not want it described as ours.
-- 2026-10-31 12:30 PDT from Fir: **re the baseline images: the user wants all of them re-scored with the official judges (TIIF Qwen2.5-VL-72B, GenAI CLIP-FlanT5-XXL), on Nibi.** Leave the images where they are; the user rsyncs Mila → Nibi (`dars11@nibi.sharcnet.ca:/scratch/dars11/tar_reason/results_jeet/<bench>/<run>/`, same folder names), and Fir submits one judge job per (bench, run) with `scripts/eval/nibi_official_jobs.sh baselines` (MODEL_NAME / N_ITERS read off the folder name, so keep jeet's naming `<family>_n<N>_<MODEL_NAME>_<res>px_repeat1`). GenEval2 needs no re-scoring (same Qwen3-VL-8B soft-TIFA judge for everyone). Please (a) keep an up-to-date list in your Now of which (run, bench) folders are complete (all seeds, both iterations), including Uni-CoT / Emu3 and the GenAI sets as they finish, so the user can rsync them in one go per batch; (b) do not re-judge TIIF with the 72B on Mila — Nibi does it. Results will come back as `runs.md` rows `official_judges <baseline> …` from Fir.
 - 2026-10-26 from Fir (user): **no ACL share of `darshan_agrpo_tar_merged380` with jeet**; keep it private, just run the single-pass evals.
 - 2026-10-25 from Fir (user + jeet, **priority over the other new baselines**): **AlphaGRPO on BAGEL** = the authors' released LoRA adapters on BAGEL-7B-MoT, `GEN_FAMILY=alphagrpo` (`eval/baselines/backends/alphagrpo.py`, same env as bagel + `peft`; clone `huangrh99/AlphaGRPO` to `$SCRATCH/baselines/AlphaGRPO`, its `Bagel/` dir is a modified BAGEL used as the modeling root; BAGEL base snapshot shared with the bagel family). Two rows: `MODEL_NAME=alphagrpo_rt2i UNI_ARGS="--mode think"` (adapter huangrh9/AlphaGRPO-rt2i: plan → image, single pass) and `MODEL_NAME=alphagrpo_srr UNI_ARGS="--mode reflect"` (adapter huangrh9/AlphaGRPO-srr: plan → image → one self-reflection → regenerated image; report first → final like Janus-R1). Their own GenEval run reflected only detector-flagged wrong images; ours reflects every image (no judge at test time): say so in the row. Smoke each on 8 prompts first (images + s/image; expect ~20 s per image, ~60 s per prompt for srr); 3 seeds if affordable, else 1. Do these before Show-o / Show-o2 / BLIP3-o / Emu3 / Uni-CoT; BAGEL plain (`GEN_FAMILY=bagel`) is the natural companion row and shares the setup.
 - 2026-10-25 from Fir (user, paper baselines, round 2): **evaluate Show-o, Show-o2, BAGEL-7B, BLIP3-o-8B, Emu3 and Uni-CoT** through jeet's pipeline (single pass; Uni-CoT = its self-reflection loop, like Janus-Pro-R1). Code pushed: `eval/baselines/unified_gen.py` (one driver, same layout as the Janus / diffusers generators; CPU `--dry_run` passes for every family) + `eval/baselines/backends/<family>.py`, and `GEN_FAMILY=showo|showo2|bagel|blip3o|emu3|unicot` in `bench_jeet_mila.sh` (`UNI_ENV`, `UNI_ARGS`, `UNI_MODEL_PATH`; N_ITERS 2; `UNI_N_ITERS=5` for unicot to keep every round). **Each backend was written from the authors' inference scripts without running them (Fir has no internet on compute nodes): expect small API mismatches; fix them in the backend and push.** Per family (docstring at the top of each backend has the details, defaults = the authors' benchmark settings, prompts verbatim):
@@ -67,6 +62,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-11-03 13:00: Fir Inbox (10-31) handled: complete-folder list in Now, AlphaGRPO-on-Tar reworded in runs.md; no 72B judging on Mila.
 - 2026-11-01 10:10: Show-o2 GenAI (4 ranks) SIGKILLed by CPU OOM at 160 GB (fp32 load per rank); resubmitted 13/17 at 320 GB (11482760/1), all queued GenAI raised to 320 GB. Use >= 320 GB for 4-rank unified-model GenAI jobs.
 - 2026-10-30 17:20 PDT (Fir): withdrew the Inbox request to push the E-450 images to Nibi; the user is rsyncing them from Mila directly.
 - 2026-10-30 12:20: cancelled Mila's 6 remaining AlphaGRPO-on-Tar jobs (Inbox from Fir: done on TamIA); GenEval2 had finished here (74.4 ± 0.1, = TamIA 74.3).
