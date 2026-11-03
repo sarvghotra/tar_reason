@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=12:00:00
+#SBATCH --time=23:59:00
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=h100:4
@@ -8,26 +8,58 @@
 #SBATCH --account=aip-agrawal
 #SBATCH --open-mode=append
 #SBATCH -J darshan_mr_tamia
-#SBATCH -o /scratch/d/dars11/git/tar_reason_t11/output_dir/slurm_logs/%x_%j.out
-#SBATCH -e /scratch/d/dars11/git/tar_reason_t11/output_dir/slurm_logs/%x_%j.err
+#SBATCH -o /scratch/d/dars11/git/tar_reason_pm/output_dir/slurm_logs/%x_%j.out
+#SBATCH -e /scratch/d/dars11/git/tar_reason_pm/output_dir/slurm_logs/%x_%j.err
 
-# Task F/G of the 2026-10-12 plan on TamIA (aip-agrawal, 12 h jobs): multi-round (N=4) refiner training with t8's
-# recipe + chain-mode rollouts. Same training config as scripts/rl_ft/bash_fir_mr.sh (see its header); TamIA paths,
-# runs from the tar_reason_t11 worktree (git pull there first). F: default base = merged t8. G (from SFT): set
-# PREV_STAGE_CHECKPOINT=/scratch/d/dars11/models/tar/sft/slf_ref_edit_t21_ckpt17000 LR=1e-4 RUN_NAME=darshan_mr_sft_tamia.
+# Task F of the 2026-10-12 plan: multi-round (N=4) refiner training with t8's recipe. Image tokens trained
+# (drafts and refinements), hybrid frozen critiques (50% oracle / 50% policy, as t7/t8), t8's stabilisers
+# (1 PPO epoch, adv std floor 0.04, break weight 2). New: chain-mode rollouts (--chain_siblings): every draft
+# grows one chain of single refinements up to a random round k* in 1..4 and gets 4 siblings at k* (same
+# history and critique), so every depth gets clean groups at ~t8's cost (~13 images/prompt vs 10).
+# Context: CONTEXT_MODE (default mdp; full = whole chain). Start: the merged t8 (base + KL reference = t8, fresh LoRA),
+# LR 5e-5 (continuing from an RL'd model with deeper chains). Evals: depth-4 chains every 100 steps.
+# Open with jeet: DRAFT_REWARD children (t8) vs own for deep chains.
 #
-#   smoke:   MAX_STEPS=2 EVAL_STEPS=2 SAVE_STEPS=2 EVAL_MAX_PROMPTS=24 RUN_NAME=mr_smoke_tamia \
+#   smoke:   MAX_STEPS=2 EVAL_STEPS=2 SAVE_STEPS=2 EVAL_MAX_PROMPTS=24 RUN_NAME=mr_smoke_fir \
 #              sbatch --nodes=1 --time=01:00:00 scripts/rl_ft/bash_tamia_mr.sh
 #   resume:  resubmit the same command (or chain with --dependency=afterany:<jobid>).
+#   wandb:   offline; sync each job's folder oldest first, later ones with wandb sync --append.
 #   cancel:  scancel --name=darshan_mr_tamia --user=$USER
 
-REPO=/scratch/d/dars11/git/tar_reason_t11
+REPO=${REPO:-/scratch/d/dars11/git/tar_reason_pm}   # override to run from another checkout (e.g. the tar_reason_v2 worktree)
 MODELS=/scratch/d/dars11/models/tar
 DATA=/scratch/d/dars11/data/geneval2_50K_v2
 TRAIN_JSONL=${TRAIN_JSONL:-${DATA}/evaluation_metadata_shuf_train.jsonl}
 VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val800.jsonl}
-JUDGE_MODEL=/scratch/d/dars11/models/vlm/Qwen3-VL-8B-Instruct
-JUDGE_PY=/home/d/dars11/envs/qwen_judge/bin/python
+# Pixel judge (reward + oracle critiques). qwen = Qwen3-VL-8B-Instruct, GenEval2's own judge scored the benchmark's way
+# (--answer_id_mode geneval2). gemma = Gemma 4 12B it (2026-10-30, user: a reward model that is not the test judge):
+# strict answer ids, 280 visual soft tokens, thinking off (jeet's settings for the 26B A4B judge); needs the gemma_judge
+# env (python 3.12, transformers 5.x) and its own staging archive (see STAGE_LOCAL below).
+PIXEL_JUDGE=${PIXEL_JUDGE:-qwen}
+case ${PIXEL_JUDGE} in
+  qwen)
+    JUDGE_MODEL=/scratch/d/dars11/models/vlm/Qwen3-VL-8B-Instruct
+    JUDGE_ENV=qwen_judge; JUDGE_UV_PY_DIR=cpython-3.10.22-linux-x86_64-gnu; JUDGE_PYBIN=python3.10
+    JUDGE_ARGS="--answer_id_mode geneval2"
+    ENV_ARCHIVE_DEFAULT=/scratch/d/dars11/stage/envs_tar_qwenjudge.tar.zst ;;
+  gemma)
+    JUDGE_MODEL=/scratch/d/dars11/models/vlm/gemma-4-12B-it
+    JUDGE_ENV=gemma_judge; JUDGE_UV_PY_DIR=cpython-3.12.15-linux-x86_64-gnu; JUDGE_PYBIN=python3.12
+    JUDGE_ARGS="--answer_id_mode strict --image_soft_tokens ${REWARD_SOFT_TOKENS:-280}"
+    ENV_ARCHIVE_DEFAULT=/scratch/d/dars11/stage/envs_tar_gemmajudge.tar.zst ;;
+  *) echo "PIXEL_JUDGE must be qwen or gemma (got '${PIXEL_JUDGE}')" >&2; exit 1 ;;
+esac
+JUDGE_PY=/home/d/dars11/envs/${JUDGE_ENV}/bin/python
+# Node-local staging (default on): Fir's Lustre /home and /scratch have killed jobs with SIGBUS (memory-mapped
+# pages that became unreadable: t7 step 41, t11 judge step 13, t11 trainer step 123). With STAGE_LOCAL=1 every
+# node unpacks both Python envs (+ uv's base Pythons) from one archive and copies the policy, judge and
+# (de-)tokenizer weights to $SLURM_TMPDIR, then runs everything from there. Rebuild the archive after any env change:
+#   cd /home/dars11 && tar -cf - --transform 's,^\.local/share/uv/python/,uvpy/,' envs/tar envs/qwen_judge \
+#     .local/share/uv/python/cpython-3.10.22-linux-x86_64-gnu | zstd -T16 -3 -o ~/scratch/stage/envs_tar_qwenjudge.tar.zst
+#   (gemma: envs/gemma_judge + .local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu as well -> envs_tar_gemmajudge.tar.zst)
+STAGE_LOCAL=${STAGE_LOCAL:-1}
+ENV_ARCHIVE=${ENV_ARCHIVE:-${ENV_ARCHIVE_DEFAULT}}
+UV_PY_DIR=cpython-3.10.22-linux-x86_64-gnu     # the training env's Python
 
 RUN_NAME=${RUN_NAME:-darshan_mr_tamia}
 LOCAL_DIR="output_dir/${RUN_NAME}"
@@ -42,11 +74,11 @@ N_TRAIN_GPUS=3
 TRAIN_GPUS=0,1,2
 WORLD_SIZE_GPUS=$((N_TRAIN_GPUS * N_NODES))
 
-PREV_STAGE_CHECKPOINT=${PREV_STAGE_CHECKPOINT:-${MODELS}/sft/rl_ft_oracle_t8_merged500}   # base + KL reference; fresh LoRA (override for evals, e.g. the SFT model)
+PREV_STAGE_CHECKPOINT=${PREV_STAGE_CHECKPOINT:-${MODELS}/sft/rl_ft_oracle_t8_merged500}   # base + KL reference; fresh LoRA
 
-REWARD_QUESTION_BATCH=${REWARD_QUESTION_BATCH:-64}   # jeet 2026-10-20
+REWARD_QUESTION_BATCH=${REWARD_QUESTION_BATCH:-64}   # jeet 2026-10-20 (judge scores an image's questions from one shared prefix)
 REWARD_IMAGES_PER_REQ=8
-REWARD_DECODE_BATCH=${REWARD_DECODE_BATCH:-32}   # jeet 2026-10-20
+REWARD_DECODE_BATCH=${REWARD_DECODE_BATCH:-32}   # jeet's speed settings (2026-10-19, with his faster AR decoding)
 REWARD_LOAD_TIMEOUT=1800
 
 PROMPTS_PER_GPU=${PROMPTS_PER_GPU:-3}
@@ -58,8 +90,8 @@ TRAIN_DRAFTS=1
 TRAIN_IMAGES=1
 IMAGE_ADV_SCALE=1.0            # image tokens trained (t8 recipe)
 EVAL_BRANCH=${EVAL_BRANCH:-1,1,1,1,1}   # greedy depth-4 chains
-GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-48}   # jeet 2026-10-20
-TRAIN_MICRO_BATCH=${TRAIN_MICRO_BATCH:-2}   # rows reach ~3.8k tokens at round 4
+GEN_BATCH_SIZE=${GEN_BATCH_SIZE:-48}            # jeet's speed settings (was 16)
+TRAIN_MICRO_BATCH=${TRAIN_MICRO_BATCH:-2}   # jeet's settings 2026-10-20 (4 on 10-19, back to 2)
 
 LR=${LR:-5e-5}
 LORA_R=64
@@ -73,8 +105,8 @@ GROUP=parent
 ADV_NORM=std
 ADV_STD_FLOOR=0.04
 
-CRITIQUE_SOURCE=hybrid
-HYBRID_ORACLE_FRAC=0.5
+CRITIQUE_SOURCE=${CRITIQUE_SOURCE:-hybrid}   # oracle = refiner only (critique never sampled, so the critic is not trained)
+HYBRID_ORACLE_FRAC=${HYBRID_ORACLE_FRAC:-0.5}
 ORACLE_FAIL_THRESHOLD=0.5
 
 BREAK_WEIGHT=2.0
@@ -121,6 +153,7 @@ REWARD_PORT=$((8000 + ${SLURM_JOB_ID:-0} % 1000))
 REWARD_URL="http://127.0.0.1:${REWARD_PORT}"
 
 echo "RUN_NAME=${RUN_NAME} job=${SLURM_JOB_ID} nodes=${N_NODES} resume_from=${LAST:-none} DATASET_SEED=${DATASET_SEED} EXTRA_ARGS=${EXTRA_ARGS}"
+echo "pixel judge: ${PIXEL_JUDGE} ${JUDGE_MODEL} (${JUDGE_ARGS}) env ${JUDGE_ENV}"
 echo "multi-round: critique_source=${CRITIQUE_SOURCE} branch=${BRANCH} chain_siblings=${CHAIN_SIBLINGS} context=${CONTEXT_MODE} draft_reward=${DRAFT_REWARD} lr=${LR} eval_branch=${EVAL_BRANCH} base=${PREV_STAGE_CHECKPOINT}"
 echo "train ranks ${WORLD_SIZE_GPUS} (${N_TRAIN_GPUS}/node), judge GPU ${JUDGE_GPU} per node; prompts/step $((WORLD_SIZE_GPUS * PROMPTS_PER_GPU)); master ${MASTER_ADDR}:${MASTER_PORT}"
 
@@ -129,7 +162,8 @@ export WANDB_NAME=$RUN_NAME WANDB_RUN_ID=${WANDB_RUN_ID:-$RUN_NAME}
 export WANDB_PROJECT="tar_reasoning" WANDB_ENTITY="darshan-singh"
 export WANDB_MODE="${WANDB_MODE:-offline}"
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
-export RUN_NAME REPO MODELS LOCAL_DIR DATA_PATH VAL_DATA_PATH PREV_STAGE_CHECKPOINT JUDGE_MODEL JUDGE_PY
+export STAGE_LOCAL ENV_ARCHIVE UV_PY_DIR RUN_NAME REPO MODELS LOCAL_DIR DATA_PATH VAL_DATA_PATH PREV_STAGE_CHECKPOINT
+export PIXEL_JUDGE JUDGE_MODEL JUDGE_PY JUDGE_ENV JUDGE_UV_PY_DIR JUDGE_PYBIN JUDGE_ARGS
 export N_NODES N_TRAIN_GPUS TRAIN_GPUS JUDGE_GPU MASTER_ADDR MASTER_PORT REWARD_PORT REWARD_URL
 export REWARD_QUESTION_BATCH REWARD_IMAGES_PER_REQ REWARD_DECODE_BATCH REWARD_LOAD_TIMEOUT
 export PROMPTS_PER_GPU BRANCH CHAIN_SIBLINGS CONTEXT_MODE IMAGES_PER_CRITIQUE TRAIN_DRAFTS TRAIN_IMAGES IMAGE_ADV_SCALE EVAL_BRANCH GEN_BATCH_SIZE TRAIN_MICRO_BATCH
@@ -148,7 +182,29 @@ set -e
 cd ${REPO}
 export PYTHONPATH=$PYTHONPATH:${REPO}/
 TMP_DIR=${SLURM_TMPDIR:-/tmp}
-[ -f ${TMP_DIR}/ta_tok.pth ] || cp ${MODELS}/ta_tok.pth ${TMP_DIR}/
+TRAIN_PY=$HOME/envs/tar/bin/python
+POLICY=${PREV_STAGE_CHECKPOINT}; AR_PATH=${MODELS}/ar_dtok_lp_512px.pth; DEC_PATH=${MODELS}/vq_ds16_t2i.pt
+if [ "${STAGE_LOCAL}" = "1" ]; then
+    S=${TMP_DIR}/stage; mkdir -p $S/models
+    t0=$(date +%s)
+    zstd -dc ${ENV_ARCHIVE} | tar -xf - -C $S &
+    cp -r ${PREV_STAGE_CHECKPOINT} $S/models/policy &
+    cp -r ${JUDGE_MODEL} $S/models/judge &
+    cp ${MODELS}/ar_dtok_lp_512px.pth ${MODELS}/vq_ds16_t2i.pt ${MODELS}/ta_tok.pth $S/models/ &
+    wait
+    ln -sfn $S/uvpy/${UV_PY_DIR}/bin/python3.10 $S/envs/tar/bin/python
+    sed -i "s,^home = .*,home = $S/uvpy/${UV_PY_DIR}/bin," $S/envs/tar/pyvenv.cfg
+    ln -sfn $S/uvpy/${JUDGE_UV_PY_DIR}/bin/${JUDGE_PYBIN} $S/envs/${JUDGE_ENV}/bin/python
+    sed -i "s,^home = .*,home = $S/uvpy/${JUDGE_UV_PY_DIR}/bin," $S/envs/${JUDGE_ENV}/pyvenv.cfg
+    TRAIN_PY=$S/envs/tar/bin/python; JUDGE_PY=$S/envs/${JUDGE_ENV}/bin/python; JUDGE_MODEL=$S/models/judge
+    POLICY=$S/models/policy; AR_PATH=$S/models/ar_dtok_lp_512px.pth; DEC_PATH=$S/models/vq_ds16_t2i.pt
+    cp $S/models/ta_tok.pth ${TMP_DIR}/ta_tok.pth
+    ${TRAIN_PY} -c "import sys, torch; assert sys.prefix.startswith(\"$S\"), sys.prefix" \
+        || { echo "[node ${SLURM_NODEID}] staged training env broken" >&2; exit 1; }
+    echo "[node ${SLURM_NODEID}] $(hostname) staged envs + weights to $S in $(( $(date +%s) - t0 ))s"
+else
+    [ -f ${TMP_DIR}/ta_tok.pth ] || cp ${MODELS}/ta_tok.pth ${TMP_DIR}/
+fi
 
 # Judge first, before any CUDA module is loaded, so its own CUDA 12.4 libraries win.
 REWARD_LOG="${LOCAL_DIR}/reward_server_${SLURM_JOB_ID}_n${SLURM_NODEID}.log"
@@ -157,7 +213,7 @@ rm -f "${READY_FILE}"
 CUDA_VISIBLE_DEVICES=${JUDGE_GPU} ${JUDGE_PY} llava/train/rl/pixel_reward_server.py \
     --model "${JUDGE_MODEL}" --host 127.0.0.1 --port ${REWARD_PORT} \
     --batch_size ${REWARD_QUESTION_BATCH} --answer_suffix ${ANSWER_SUFFIX} \
-    --answer_id_mode geneval2 --attn_implementation sdpa \
+    ${JUDGE_ARGS} --attn_implementation sdpa \
     --ready_file "${READY_FILE}" > "${REWARD_LOG}" 2>&1 &
 REWARD_PID=$!
 trap "kill ${REWARD_PID} 2>/dev/null" EXIT INT TERM
@@ -173,7 +229,7 @@ until [ -f "${READY_FILE}" ]; do
 done
 echo "[node ${SLURM_NODEID}] $(hostname) judge ready after ${waited}s"
 
-source ~/envs/tar/bin/activate
+export VIRTUAL_ENV=$(dirname $(dirname ${TRAIN_PY})); export PATH=${VIRTUAL_ENV}/bin:$PATH
 module load cuda/12.2
 
 EVAL_ARGS=""
@@ -181,10 +237,10 @@ EVAL_ARGS=""
 
 # No --standalone: that would confine the job to one node.
 CUDA_VISIBLE_DEVICES=${TRAIN_GPUS} \
-torchrun --nproc_per_node=${N_TRAIN_GPUS} --nnodes=${N_NODES} --node_rank=${SLURM_NODEID} \
+${TRAIN_PY} -m torch.distributed.run --nproc_per_node=${N_TRAIN_GPUS} --nnodes=${N_NODES} --node_rank=${SLURM_NODEID} \
     --master_addr=${MASTER_ADDR} --master_port=${MASTER_PORT} \
     llava/train/rl/train_grpo.py \
-    --model_name_or_path ${PREV_STAGE_CHECKPOINT} \
+    --model_name_or_path ${POLICY} \
     --attn_implementation flash_attention_2 \
     --lora_r ${LORA_R} --lora_alpha ${LORA_ALPHA} \
     --data_path ${DATA_PATH} --eval_data_path ${VAL_DATA_PATH} \
@@ -216,6 +272,6 @@ torchrun --nproc_per_node=${N_TRAIN_GPUS} --nnodes=${N_NODES} --node_rank=${SLUR
     --report_to wandb --run_name ${RUN_NAME} \
     --seed ${SEED} --dataset_seed ${DATASET_SEED} \
     --log_images ${LOG_IMAGES} \
-    --ar_path ${MODELS}/ar_dtok_lp_512px.pth --encoder_path ${TMP_DIR}/ta_tok.pth \
-    --decoder_path ${MODELS}/vq_ds16_t2i.pt --cfg_scale 4.0 ${EXTRA_ARGS}
+    --ar_path ${AR_PATH} --encoder_path ${TMP_DIR}/ta_tok.pth \
+    --decoder_path ${DEC_PATH} --cfg_scale 4.0 ${EXTRA_ARGS}
 '
