@@ -59,7 +59,9 @@ JUDGE_MODEL=$J_MODEL; JUDGE_ENV=$J_ENV; JUDGE_UV_PY_DIR=$J_UV_PY_DIR; JUDGE_PYBI
 if [ "${VAL_JUDGE}" != "${PIXEL_JUDGE}" ]; then
   judge_settings ${VAL_JUDGE}
   VAL_JUDGE_MODEL=$J_MODEL; VAL_JUDGE_ENV=$J_ENV; VAL_JUDGE_UV_PY_DIR=$J_UV_PY_DIR; VAL_JUDGE_PYBIN=$J_PYBIN; VAL_JUDGE_ARGS=$J_ARGS
-  ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_bothjudges.tar.zst
+  # Two archives: the reward judge's (tar + its env + uv Pythons) plus the val judge's env pulled out of its own archive.
+  case ${PIXEL_JUDGE} in qwen) ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst ;; gemma) ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_gemmajudge.tar.zst ;; esac
+  case ${VAL_JUDGE} in qwen) ENV_ARCHIVE_EXTRA_DEFAULT=/home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst ;; gemma) ENV_ARCHIVE_EXTRA_DEFAULT=/home/dars11/scratch/stage/envs_tar_gemmajudge.tar.zst ;; esac
 else
   VAL_JUDGE_MODEL=; VAL_JUDGE_ENV=; VAL_JUDGE_UV_PY_DIR=; VAL_JUDGE_PYBIN=; VAL_JUDGE_ARGS=
   case ${PIXEL_JUDGE} in
@@ -78,6 +80,7 @@ VAL_JUDGE_PY=${VAL_JUDGE_ENV:+/home/dars11/envs/${VAL_JUDGE_ENV}/bin/python}
 #   (gemma: envs/gemma_judge + .local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu as well -> envs_tar_gemmajudge.tar.zst)
 STAGE_LOCAL=${STAGE_LOCAL:-1}
 ENV_ARCHIVE=${ENV_ARCHIVE:-${ENV_ARCHIVE_DEFAULT}}
+ENV_ARCHIVE_EXTRA=${ENV_ARCHIVE_EXTRA:-${ENV_ARCHIVE_EXTRA_DEFAULT:-}}   # only with a separate VAL_JUDGE
 UV_PY_DIR=cpython-3.10.22-linux-x86_64-gnu     # the training env's Python
 
 RUN_NAME=${RUN_NAME:-darshan_mr_fir}
@@ -185,6 +188,7 @@ export WANDB_NAME=$RUN_NAME WANDB_RUN_ID=${WANDB_RUN_ID:-$RUN_NAME}
 export WANDB_PROJECT="tar_reasoning" WANDB_ENTITY="darshan-singh"
 export WANDB_MODE="${WANDB_MODE:-offline}"
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
+export ENV_ARCHIVE_EXTRA
 export STAGE_LOCAL ENV_ARCHIVE UV_PY_DIR RUN_NAME REPO MODELS LOCAL_DIR DATA_PATH VAL_DATA_PATH PREV_STAGE_CHECKPOINT
 export PIXEL_JUDGE JUDGE_MODEL JUDGE_PY JUDGE_ENV JUDGE_UV_PY_DIR JUDGE_PYBIN JUDGE_ARGS
 export VAL_JUDGE VAL_JUDGE_MODEL VAL_JUDGE_PY VAL_JUDGE_ENV VAL_JUDGE_UV_PY_DIR VAL_JUDGE_PYBIN VAL_JUDGE_ARGS VAL_REWARD_PORT VAL_REWARD_URL
@@ -212,6 +216,7 @@ if [ "${STAGE_LOCAL}" = "1" ]; then
     S=${TMP_DIR}/stage; mkdir -p $S/models
     t0=$(date +%s)
     zstd -dc ${ENV_ARCHIVE} | tar -xf - -C $S &
+    [ -z "${ENV_ARCHIVE_EXTRA}" ] || { zstd -dc ${ENV_ARCHIVE_EXTRA} | tar -xf - -C $S envs/${VAL_JUDGE_ENV} ; } &
     cp -r ${PREV_STAGE_CHECKPOINT} $S/models/policy &
     cp -r ${JUDGE_MODEL} $S/models/judge &
     [ -z "${VAL_JUDGE_MODEL}" ] || cp -r ${VAL_JUDGE_MODEL} $S/models/val_judge &
