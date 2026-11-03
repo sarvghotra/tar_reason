@@ -14,6 +14,8 @@ RUN_NAME=${RUN_NAME:-darshan_pm1_E_gemma_fir}
 N1=${N1:-13}   # phase 1: to step 450 (eval at 450 only)
 N2=${N2:-3}    # phase 2: 450 -> 500 (eval at 500); extra jobs exit at once
 : "${DATASET_SEED:?set DATASET_SEED explicitly (E-450 used 421)}"
+mkdir -p output_dir/${RUN_NAME}
+[ -s output_dir/${RUN_NAME}/val.yaml ] || printf 'datasets:\n    - json_path:\n      - %s\n      logname: val\n      ratio: 1\n' /home/dars11/scratch/data/geneval2_50K_v2/evaluation_metadata_shuf_val800.jsonl > output_dir/${RUN_NAME}/val.yaml   # IID set only
 for f in output_dir/${RUN_NAME}/val.yaml /home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst /home/dars11/scratch/stage/envs_tar_gemmajudge.tar.zst \
          /home/dars11/scratch/models/vlm/gemma-4-12B-it/config.json /home/dars11/scratch/models/vlm/Qwen3-VL-8B-Instruct/config.json \
          /home/dars11/scratch/models/tar/sft/slf_ref_edit_t21_ckpt17000/config.json /home/dars11/scratch/data/promptmix/train_17K.jsonl; do
