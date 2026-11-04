@@ -67,20 +67,24 @@ from llava.train.rl.reward import ANSWER_SUFFIXES, answer_variants
 #   soft_tokens:     whether the processor takes a visual token budget
 #   prefix_share:    the image prefix can be run once per image and its KV
 #                    cache reused for every question (Judge.score_shared)
-#   prefix_end:      the special token that closes the image block; the row is
-#                    split right after it ([prefix | suffix])
+#   prefix_end:      the image token as it appears in the chat-template text; the
+#                    row is split right after it ([prefix | suffix]). Qwen3-VL's
+#                    template already holds the whole block (<|vision_start|>
+#                    <|image_pad|><|vision_end|>); Gemma 4's holds one <|image|>
+#                    placeholder that the processor expands into <|image> ...
+#                    <image|>, so the split is after the placeholder.
 #   mrope:           Qwen3-VL's 3-axis M-RoPE (suffix positions from
 #                    get_rope_index); False = plain 1-D positions P, P+1, ...
 JUDGE_PROFILES = {
     "gemma4": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
-                   prefix_share=False, prefix_end="<image|>", mrope=False),
+                   prefix_share=False, prefix_end="<|image|>", mrope=False),
     # Gemma 4 12B / 31B (dense "unified" checkpoints, Gemma4UnifiedForConditionalGeneration): same prompt handling.
     # prefix_share (2026-11-03, user: "implement the optimization fix that jeet did"): the image block
-    # <|image>...<|image|>x256...<image|> is run once per image (bidirectional image attention, 1-D RoPE, KV
+    # (template placeholder <|image|>, expanded by the processor to <|image> <|image|>x256 <image|>) is run once per image (bidirectional image attention, 1-D RoPE, KV
     # sharing in the last layers, sliding window 1024 > any row here) and every question continues from its
     # KV cache; set True only once util_scripts/debug/test_prefix_share.py shows score_shared == score_rows.
     "gemma4_unified": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
-                           prefix_share=False, prefix_end="<image|>", mrope=False),
+                           prefix_share=False, prefix_end="<|image|>", mrope=False),
     "qwen3_vl": dict(template_kwargs={}, soft_tokens=False, prefix_share=True,
                      prefix_end="<|vision_end|>", mrope=True),
     # Qwen3-VL-30B-A3B-Instruct (AlphaGRPO's reward model; MoE, 62 GB bf16, 3B active): same prompt handling and rope

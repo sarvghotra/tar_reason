@@ -87,7 +87,10 @@ def main():
     for i in range(min(2, len(images))):
         for (q, a), pr, ps in zip(vqas[i], rows[i], shared[i]):
             print(f"  img{i} {q!r:52} {a!r:8} rows {pr:.4f} shared {ps:.4f}")
-    print("PREFIX SHARE OK" if max(diffs) < 0.02 else "PREFIX SHARE MISMATCH", flush=True)
+    # bf16 reference: jeet's Qwen3-VL-8B shared path (what E-450 / run 1 trained with) gives mean 0.0015, max 0.034
+    # against score_rows on this test (Rorqual 2026-11-03), so accept that level of rounding noise.
+    ok = sum(diffs) / len(diffs) < 0.005 and max(diffs) < 0.06
+    print("PREFIX SHARE OK" if ok else "PREFIX SHARE MISMATCH", flush=True)
 
 
 if __name__ == "__main__":
