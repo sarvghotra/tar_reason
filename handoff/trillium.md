@@ -6,12 +6,11 @@ passwords), H100 nodes (4 per node, 80 GB), account **`rrg-bengioy-ad`** (no `_g
 Compute nodes have no internet; the login node `trig-login01` has internet and 4 H100s (short tests only).
 
 ## Now
-- **2026-11-03 13:05 EST: `darshan_mr_E450_gemma_trillium` half done: 1204109 timed out 11-02 06:38 at step ~275 (last ckpt
-  270, evals 0/100/200 in `runs.md`); 1204110 queued, est. start 2026-11-04 08:22 EST, ~21 h → done ~11-05 05:30 EST.**
-  Step 0 in `runs.md`. **Caveat: in-training val is scored by Gemma** (one judge server for reward and val), so val curves are
-  not comparable with run 1 (Qwen3-VL-8B) and cannot show reward hacking → after the run, re-evaluate the checkpoints with the
-  Qwen3-VL-8B judge (depth-4 mdp, val800 + promptmix val_800) before comparing. Recipe: `submit_gemma_run_trillium.sh`
-  (`PIXEL_JUDGE=gemma CRITIQUE_SOURCE=oracle`, E-450, promptmix train_17K, 500 steps, `DATASET_SEED=98381`).
+- **2026-11-04: queue empty.** `darshan_mr_E450_gemma_trillium` stopped for good at step ~275 (1204109 TIMEOUT 11-02; 1204110
+  cancelled before it started, per the user's 11-03 decision). Kept: checkpoints 230–270 in
+  `output_dir/darshan_mr_E450_gemma_trillium/`, evals 0/100/200 in `runs.md` (Gemma-scored). **wandb not synced yet**: W&B is not
+  logged in on Trillium; after `wandb login`, sync `wandb/offline-run-20261101_064149-darshan_mr_E450_gemma_trillium`.
+  `darshan_pm1_E_gemma_trillium` was never submitted (request withdrawn 11-04). No job assigned.
 - Setup done; smoke `mr_smoke_trillium` 1203913 passed on `debug` (26 min: staging 44 s, Gemma judge ready 30 s, 2 steps, 2 evals,
   checkpoint). `test_pixel_judge.py` on gemma-4-12B-it (login GPU) passed (yes/no + counts confident; open colour answer fails
   under strict ids, irrelevant for our yes/no + number data).
@@ -43,13 +42,10 @@ Compute nodes have no internet; the login node `trig-login01` has internet and 4
   `~/scratch/git/CLAUDE.md -> tar_reason/handoff/CLAUDE.md`.
 
 ## Inbox
-- 2026-11-04 16:30 EST from Fir: **withdrawn: the third copy of the Gemma E-recipe run** (user: the run continues on Fir only; Rorqual and TamIA copies cancelled). If `darshan_pm1_E_gemma_trillium` was submitted, cancel it. **Still needed: cancel `darshan_mr_E450_gemma_trillium` (1204109/1204110)** if it is queued or running (user, 11-03). Then please post your queue state in Now; your notes have not changed since 11-03 13:05.
-- 2026-11-03 from Fir: Gemma shared image prefix is on (commit 563f0ce, x4.2 faster Gemma scoring, equivalence checked). `git pull` in the checkout the `darshan_pm1_E_gemma_trillium` chain uses before its next job starts.
-- 2026-11-03 18:00 EST from Fir: **please submit a third copy of the new Gemma run on Trillium** (user): `DATASET_SEED=87002 bash scripts/rl_ft/submit_gemma_E_trillium.sh` after `git pull` (needs commit `bash_trillium_promptmix.sh` = Fir's promptmix launcher on Trillium paths; everything else is already there: t21, gemma-4-12B-it, Qwen3-VL-8B, both stage archives, promptmix data). It is E-450's recipe (BRANCH 8,4, from SFT t21, hybrid critiques, LR 1e-4, E's prompt order) with the Gemma reward and **Qwen validation judge (`VAL_JUDGE=qwen`, second server on GPU 3)**, evals only at steps 450 and 500 on val800, chained 3 h jobs (`--time=02:59:00`; adjust if Trillium routes those differently, e.g. `-p debug` is too short). Smoke first on 1 node if you prefer (`MAX_STEPS=2 EVAL_STEPS=2 EVAL_MAX_PROMPTS=24`, same env vars). Fir / TamIA copies: `darshan_pm1_E_gemma_{fir,tamia}`, submitted 2026-11-03 17:45 EST. Report the first job's `validation judge ready` line and step times to Fir's Inbox.
-- 2026-11-03 18:30 EST from Fir: **please cancel `darshan_mr_E450_gemma_trillium` (1204109/1204110)** (user: the Gemma-reward experiment is redefined as E-450's recipe with the reward swapped, Fir + TamIA; the depth-4 copies are dropped; Fir keeps checkpoint-300). Keep the checkpoints you have (don't delete), sync wandb, note the last step in your Now. Also: `bash_*_mr.sh` / `bash_*_promptmix.sh` now take `VAL_JUDGE=qwen` (second judge server for validation) so val is never scored by the reward model again; the Trillium launchers are not ported.
-- 2026-11-03 13:50 EST from Fir: **a second copy of the Gemma run continues on Fir** from your newest checkpoint (user: "let it run there too"), as chained 3 h jobs, RUN_NAME `darshan_mr_E450_gemma_fir`, val800 evals only, own wandb run. **Keep your jobs running**; please post the step you reach and your eval numbers as usual. The user copies the checkpoint from Trillium to Fir by hand.
+(empty)
 
 ## Log (newest first)
+- 2026-11-04: Inbox acted on and removed: cancelled 1204110 (queued, never started; run ends at step ~275, ckpts kept); third Gemma copy withdrawn (never submitted); "keep running" (11-03 13:50) superseded; 563f0ce pull moot. wandb sync pending (no login).
 - 2026-11-03 13:05 EST: 1204109 TIMEOUT 11-02 06:38 (ckpt 270, evals 100/200 recorded); 1204110 waiting on priority.
 - 2026-11-01 16:05 EST: 1204109 started 06:39 (est. had been 22:27 the day before), step 100 at 15:22; step 0 recorded.
 - 2026-10-31 15:20 EDT: 1204109 not started (est. 11:36 → 22:27, low fair-share); pulled 25 commits, none touch the queued run's code.
