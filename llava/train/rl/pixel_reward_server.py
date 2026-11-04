@@ -77,20 +77,21 @@ from llava.train.rl.reward import ANSWER_SUFFIXES, answer_variants
 #                    get_rope_index); False = plain 1-D positions P, P+1, ...
 JUDGE_PROFILES = {
     "gemma4": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
-                   prefix_share=False, prefix_end="<|image|>", mrope=False),
+                   prefix_share=True, prefix_end="<|image|>", mrope=False, nested_images=True),
     # Gemma 4 12B / 31B (dense "unified" checkpoints, Gemma4UnifiedForConditionalGeneration): same prompt handling.
     # prefix_share (2026-11-03, user: "implement the optimization fix that jeet did"): the image block
     # (template placeholder <|image|>, expanded by the processor to <|image> <|image|>x256 <image|>) is run once per image (bidirectional image attention, 1-D RoPE, KV
     # sharing in the last layers, sliding window 1024 > any row here) and every question continues from its
-    # KV cache; set True only once util_scripts/debug/test_prefix_share.py shows score_shared == score_rows.
+    # KV cache. util_scripts/debug/test_prefix_share.py on Rorqual 2026-11-03: 12B max |diff| 0.052, mean 0.0026
+    # (bf16 noise, same level as Qwen3-VL's); 26B-A4B passes too. 8-image request: 12B 1.93 s per row -> 0.46 s shared.
     "gemma4_unified": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
-                           prefix_share=False, prefix_end="<|image|>", mrope=False),
+                           prefix_share=True, prefix_end="<|image|>", mrope=False, nested_images=True),
     "qwen3_vl": dict(template_kwargs={}, soft_tokens=False, prefix_share=True,
-                     prefix_end="<|vision_end|>", mrope=True),
+                     prefix_end="<|vision_end|>", mrope=True, nested_images=False),
     # Qwen3-VL-30B-A3B-Instruct (AlphaGRPO's reward model; MoE, 62 GB bf16, 3B active): same prompt handling and rope
     # indexing as the dense Qwen3-VL, so the shared image prefix applies too (checked by test_pixel_judge.py before use).
     "qwen3_vl_moe": dict(template_kwargs={}, soft_tokens=False, prefix_share=True,
-                         prefix_end="<|vision_end|>", mrope=True),
+                         prefix_end="<|vision_end|>", mrope=True, nested_images=False),
     # Qwen3.5 (natively multimodal; 2026-11-03 timing check of Qwen3.5-35B-A3B as a reward model). Same image tokens and
     # processor as Qwen3-VL. Thinking is on by default: enable_thinking=False makes the template end the prompt with an
     # empty "<think>\n\n</think>\n\n" block, so the next token is the answer (the model card's non-thinking mode).
@@ -98,11 +99,12 @@ JUDGE_PROFILES = {
     # recurrent states, which score_shared does not copy yet, so no prefix sharing. Install flash-linear-attention in
     # the judge env, or the linear layers run transformers' slow reference implementation.
     "qwen3_5_moe": dict(template_kwargs={"enable_thinking": False}, soft_tokens=False, prefix_share=False,
-                        prefix_end="<|vision_end|>", mrope=True),
+                        prefix_end="<|vision_end|>", mrope=True, nested_images=False),
     "qwen3_5": dict(template_kwargs={"enable_thinking": False}, soft_tokens=False, prefix_share=False,
-                    prefix_end="<|vision_end|>", mrope=True),
+                    prefix_end="<|vision_end|>", mrope=True, nested_images=False),
 }
-DEFAULT_PROFILE = dict(template_kwargs={}, soft_tokens=False, prefix_share=False, prefix_end=None, mrope=False)
+DEFAULT_PROFILE = dict(template_kwargs={}, soft_tokens=False, prefix_share=False, prefix_end=None, mrope=False,
+                       nested_images=False)
 QUESTION_PLACEHOLDER = "@@QUESTION@@"
 
 
@@ -296,7 +298,9 @@ class Judge:
 
         tok = self.processor.tokenizer
         prefix_text, suffix_tmpl = self._split_template(images[0])
-        enc = self.processor(text=[prefix_text] * len(images), images=list(images),
+        # Gemma 4's processor wants one list of images per text; Qwen3-VL's takes a flat list.
+        imgs = [[im] for im in images] if self.profile["nested_images"] else list(images)
+        enc = self.processor(text=[prefix_text] * len(images), images=imgs,
                              return_tensors="pt", padding=True)
         if not bool(enc["attention_mask"].all()):
             return None             # mixed image sizes -> ragged prefixes

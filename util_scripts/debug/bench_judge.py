@@ -40,6 +40,8 @@ def main():
     p.add_argument("--answer_id_mode", default="strict", choices=["strict", "geneval2"])
     p.add_argument("--answer_suffix", default="geneval2")
     p.add_argument("--share_image_prefix", action="store_true")
+    p.add_argument("--force_share", action="store_true",
+                   help="use score_shared even if the profile has prefix_share=False (to time it before switching it on)")
     p.add_argument("--attn", default="sdpa")
     args = p.parse_args()
     rows = [json.loads(l) for _, l in zip(range(args.n_images), open(args.data))]
@@ -51,6 +53,8 @@ def main():
                   image_soft_tokens=args.image_soft_tokens, answer_id_mode=args.answer_id_mode,
                   share_image_prefix=args.share_image_prefix)
     load_s = time.time() - t0
+    if args.force_share:
+        judge.share_image_prefix = True
     msgs = [[{"role": "user", "content": [{"type": "image", "image": images[0]},
                                           {"type": "text", "text": judge.question_text(vqas[0][0][0])}]}]]
     ids = judge._template_inputs(msgs)["input_ids"][0]
