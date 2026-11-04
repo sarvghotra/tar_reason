@@ -32,7 +32,12 @@
 #   sbatch --account=rrg-bengioy-ad_gpu -o /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.out \
 #          -e /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.err scripts/eval/official_judges_tamia.sh
 set -u
-case "$(hostname -f 2>/dev/null || hostname)" in
+case "${CC_CLUSTER:-}:$(hostname -f 2>/dev/null || hostname)" in
+  rorqual:*)   # Rorqual (2026-11-04, GenAI only): same paths as Nibi, copied from there (clipt5_judge env, t2v_metrics repos,
+               # GenAI-Bench, clip-flant5-xxl + clip-vit-336 + flan-t5-xxl hub entries, baseline image folders); no vLLM env
+    REPO=/scratch/dars11/git/tar_reason; BENCH_DIR=/scratch/dars11/benchmarks; export HF_HOME=/scratch/dars11/hf_home
+    VLLM_ENV=/nonexistent; CLIPT5_ENV=$HOME/envs/clipt5_judge; SUM_ENV=$HOME/envs/clipt5_judge; STATS_ENV=$HOME/envs/clipt5_judge
+    T2V_CLIPT5=/scratch/dars11/git/t2v_metrics_clipt5; T2V_FORK=/scratch/dars11/git/t2v_metrics_jeet ;;
   *nibi*)   # Nibi: /scratch/dars11, envs in ~/envs (clipt5_judge also serves the summaries + stats: pandas, openpyxl, matplotlib)
     REPO=/scratch/dars11/git/tar_reason; BENCH_DIR=/scratch/dars11/benchmarks; export HF_HOME=/scratch/dars11/hf_home
     VLLM_ENV=$HOME/envs/vllm_judge; CLIPT5_ENV=$HOME/envs/clipt5_judge; SUM_ENV=$HOME/envs/vllm_judge; STATS_ENV=$HOME/envs/vllm_judge   # vllm_judge also has pandas/openpyxl/matplotlib
