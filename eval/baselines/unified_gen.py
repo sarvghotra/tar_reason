@@ -60,6 +60,10 @@ def parse_args(argv=None):
     parser.add_argument("--save_size", type=int, default=0, help="Resize saved images to this square size (0 = native).")
     parser.add_argument("--dry_run", action="store_true", help="No model: dummy images to check arguments and layout.")
     parser.add_argument("--limit_prompts", type=int, default=0, help="Use only the first N prompts (0 = all).")
+    parser.add_argument("--shard", default=None,
+                        help="k/K: this job generates only prompts with index %% K == k (independent 1-GPU jobs; every prompt "
+                             "has its own seed, so the images are the same as unsharded). Use with --resume; a final unsharded "
+                             "--resume run (nothing left to generate, no model load) writes the merged json files.")
     parser.add_argument("--bench", choices=["geneval2", "genai", "tiif"], help="Default: inferred from the flags.")
     parser.add_argument("--resume", action="store_true",
                         help="Keep existing outputs and skip prompts whose record (<save_dir>/records/<key>.json, written "
@@ -186,6 +190,10 @@ def main():
         return os.path.join(records_dir, result_key(i).replace("/", "__") + ".json")
 
     jobs = list(range(rank, len(prompts), world_size))
+    if args.shard:
+        k_shard, n_shard = map(int, args.shard.split("/"))
+        assert 0 <= k_shard < n_shard and args.resume, "--shard k/K needs 0 <= k < K and --resume"
+        jobs = [i for i in jobs if i % n_shard == k_shard]
     local_results, local_geneval2 = {}, [{} for _ in range(n)]
     if args.resume:   # prompts finished by an earlier (preempted) run: reuse their record, regenerate the rest
         def images_exist(i):   # the periodic copy can carry a record without the images written just before it
@@ -205,7 +213,7 @@ def main():
                         os.path.join(iter_dirs[k], f"{i:05d}", "samples", "00000.png"))
         jobs = [i for i in jobs if i not in set(done)]
         print(f"[rank {rank}] resume: {len(done)} prompts already done, {len(jobs)} to generate", flush=True)
-    gen = DryRun(args, getattr(backend, "DEFAULT_SIZE", 512)) if args.dry_run else backend.Backend(args, device)
+    gen = (DryRun(args, getattr(backend, "DEFAULT_SIZE", 512)) if args.dry_run else backend.Backend(args, device)) if jobs else None
     t0 = time.perf_counter()
     for b, batch in enumerate(chunks(jobs, args.gen_batch)):
         outputs = gen.run([prompts[i] for i in batch], [args.seed * 100003 + i for i in batch])
@@ -249,7 +257,10 @@ def main():
 
     all_results = gather(local_results, world_size)
     all_geneval2 = gather(local_geneval2, world_size) if args.bench == "geneval2" else None
-    if rank == 0:
+    if rank == 0 and args.shard:
+        print(f"[{args.family}] shard {args.shard} done: {len(local_results)} prompts, {time.perf_counter() - t0:.0f}s; "
+              f"merged json files are written by an unsharded --resume run", flush=True)
+    elif rank == 0:
         merged = {}
         for part in all_results:
             merged.update(part)
