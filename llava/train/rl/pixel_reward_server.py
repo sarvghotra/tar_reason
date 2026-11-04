@@ -87,6 +87,16 @@ JUDGE_PROFILES = {
     # indexing as the dense Qwen3-VL, so the shared image prefix applies too (checked by test_pixel_judge.py before use).
     "qwen3_vl_moe": dict(template_kwargs={}, soft_tokens=False, prefix_share=True,
                          prefix_end="<|vision_end|>", mrope=True),
+    # Qwen3.5 (natively multimodal; 2026-11-03 timing check of Qwen3.5-35B-A3B as a reward model). Same image tokens and
+    # processor as Qwen3-VL. Thinking is on by default: enable_thinking=False makes the template end the prompt with an
+    # empty "<think>\n\n</think>\n\n" block, so the next token is the answer (the model card's non-thinking mode).
+    # The text model mixes Gated-DeltaNet linear attention with full attention every 4th layer: its cache holds
+    # recurrent states, which score_shared does not copy yet, so no prefix sharing. Install flash-linear-attention in
+    # the judge env, or the linear layers run transformers' slow reference implementation.
+    "qwen3_5_moe": dict(template_kwargs={"enable_thinking": False}, soft_tokens=False, prefix_share=False,
+                        prefix_end="<|vision_end|>", mrope=True),
+    "qwen3_5": dict(template_kwargs={"enable_thinking": False}, soft_tokens=False, prefix_share=False,
+                    prefix_end="<|vision_end|>", mrope=True),
 }
 DEFAULT_PROFILE = dict(template_kwargs={}, soft_tokens=False, prefix_share=False, prefix_end=None, mrope=False)
 QUESTION_PLACEHOLDER = "@@QUESTION@@"
