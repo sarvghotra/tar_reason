@@ -14,7 +14,7 @@ export PATH=$PATH:/opt/software/slurm/bin
 mkdir -p output_dir/slurm_logs
 R=/scratch/dars11/tar_reason/results_jeet
 LOGS=(-o /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.out -e /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.err)
-ACC=(--account=rrg-bengioy-ad_gpu)
+ACC=(--account=rrg-bengioy-ad_gpu ${SBATCH_EXTRA})   # e.g. SBATCH_EXTRA="--gpus-per-node=h100:1 --cpus-per-task=8 --mem=64G --time=02:59:00" with N_GPUS=1 (GenAI only; starts much sooner than 4 GPUs x 6 h)
 case ${1:?e450 | tar7b_gen | tar7b | baselines} in
   baselines)
     shift; BENCHES=(${@:-tiif genai})

@@ -48,7 +48,7 @@ BENCH=${BENCH:?set BENCH=tiif|genai}
 MODEL_NAME=${MODEL_NAME:?set MODEL_NAME (the label used at generation time, e.g. darshan_agrpo_tar_380)}
 RUN_DIR=${RUN_DIR:?set RUN_DIR (holds seed_*/)}
 N_ITERS=${N_ITERS:-5}
-N_GPUS=4
+N_GPUS=${N_GPUS:-4}   # GenAI-only jobs can run on 1 GPU (one iteration ~3.6 min): N_GPUS=1 + SBATCH_EXTRA in nibi_official_jobs.sh
 if [ -n "${SEEDS:-}" ]; then read -r -a SEEDS <<< "$SEEDS"; else
   SEEDS=($(ls -d ${RUN_DIR}/seed_* 2>/dev/null | sed 's/.*seed_//' | sort -n)); fi
 [ ${#SEEDS[@]} -gt 0 ] || { echo "no seed_* under ${RUN_DIR}"; exit 1; }
