@@ -98,7 +98,8 @@ set -uo pipefail
 #          -e /scratch/dars11/git/tar_reason/output_dir/slurm_logs/%x_%j.err scripts/eval/bench_official_tamia.sh
 # GEN_ONLY=1 stops after the images are generated (no judging / scoring): for the official-judge re-scoring
 # (official_judges_tamia.sh), which needs only the images.)
-case "$(hostname -f 2>/dev/null || hostname)" in
+case "${CC_CLUSTER:-}:$(hostname -f 2>/dev/null || hostname)" in
+  rorqual:*) P_SCRATCH=/scratch/dars11; P_REPO=${P_SCRATCH}/git/tar_reason; P_ENVS=/home/dars11/envs ;;   # GenAI judging only (rorqual_genai_judges.sh stages GENAI_PY / T2V_DIR / HF_HOME on node-local disk)
   *nibi*) P_SCRATCH=/scratch/dars11; P_REPO=${P_SCRATCH}/git/tar_reason; P_ENVS=/home/dars11/envs ;;
   *)      P_SCRATCH=/scratch/d/dars11; P_REPO=${P_SCRATCH}/git/tar_reason_pm; P_ENVS=/home/d/dars11/envs ;;
 esac
@@ -106,7 +107,7 @@ GEN_ONLY=${GEN_ONLY:-0}
 REPO=${P_REPO}
 MODELS=${P_SCRATCH}/models/tar
 BENCH_DIR=${P_SCRATCH}/benchmarks
-T2V_DIR=${P_SCRATCH}/git/t2v_metrics_jeet    # copy of jeet's t2v_metrics fork (code only)
+T2V_DIR=${T2V_DIR:-${P_SCRATCH}/git/t2v_metrics_jeet}    # copy of jeet's t2v_metrics fork (code only)
 MODEL_NAME=${MODEL_NAME:?set MODEL_NAME (label for the results folder)}
 BENCH=${BENCH:?set BENCH to geneval2, genai or tiif}
 MODEL_PATH=${MODEL_PATH:-${MODELS}/sft/slf_ref_edit_t21_ckpt17000}
@@ -160,8 +161,8 @@ fi
 TAR_ENV=${P_ENVS}/tar
 TAR_PY=${TAR_ENV}/bin/python
 JUDGE_PY=${P_ENVS}/qwen_judge/bin/python    # GenEval2 scorer (Qwen3-VL-8B), TIIF judge (Qwen2.5-VL-7B) + summaries
-GENAI_PY=${P_ENVS}/genai_judge/bin/python   # t2v_metrics (Qwen3.5-27B); its bin/ has ffmpeg
-export HF_HOME=${P_SCRATCH}/hf_home            # all judge weights are in $HF_HOME/hub
+GENAI_PY=${GENAI_PY:-${P_ENVS}/genai_judge/bin/python}   # t2v_metrics (Qwen3.5-27B); its bin/ has ffmpeg
+export HF_HOME=${JUDGE_HF_HOME:-${P_SCRATCH}/hf_home}            # all judge weights are in $HF_HOME/hub
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1    # TamIA compute nodes have no internet: fail fast on a missing weight
 export SIGLIP2_PATH=${MODELS}/siglip2-so400m-patch14-384
 TMP_DIR=${SLURM_TMPDIR:-/tmp}
