@@ -62,6 +62,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-11-04 14:00: rt2i GenAI being generated on Nibi (Fir, user's call); Mila's 3 rt2i GenAI jobs held (11397534-6), partial records offered to Fir.
 - 2026-11-03 13:00: Fir Inbox (10-31) handled: complete-folder list in Now, AlphaGRPO-on-Tar reworded in runs.md; no 72B judging on Mila.
 - 2026-11-01 10:10: Show-o2 GenAI (4 ranks) SIGKILLed by CPU OOM at 160 GB (fp32 load per rank); resubmitted 13/17 at 320 GB (11482760/1), all queued GenAI raised to 320 GB. Use >= 320 GB for 4-rank unified-model GenAI jobs.
 - 2026-10-30 17:20 PDT (Fir): withdrew the Inbox request to push the E-450 images to Nibi; the user is rsyncing them from Mila directly.
