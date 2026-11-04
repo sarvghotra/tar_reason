@@ -11,8 +11,8 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
     (seed 17; new since Fir's batch)**. All `_repeat1`.
   - GenAI (`genai-bench-1600`): bagel_n2_bagel_7b_think_1024px, showo_n2_showo_512_512px, alphagrpo_n2_alphagrpo_srr_1024px (seed 13).
   - Not yet: GenAI of bagel_7b (13 done; 17, 91 queued), blip3o (17, 91 done; 13 queued), showo2, unicot; all of Emu3. alphagrpo_rt2i GenAI runs on Rorqual (Fir), Mila copies cancelled.
-- Queue: 13 jobs, all A100L (GenAI + Emu3), resume on; long waits / frequent preemption. GenAI jobs at 320 GB RAM.
-- Waiting on the user: jeet still has read access to `darshan_agrpo_tar_merged380` (granted 10-30 on the user's question; Inbox says keep it private).
+- **Remaining generations handed to Fir (user, 11-04 16:30)**: GenAI of bagel_7b 17/91, blip3o 13, showo2 13/17/91, unicot 13, and all 3 Emu3 jobs. Mila's 10 jobs held (`squeue`), to cancel once Fir confirms; partial records in `results_jeet_partial/`.
+- jeet keeps read access to `darshan_agrpo_tar_merged380` (user 11-04: "don't worry about this").
 
 ## Setup
 - Session: Claude Code session `830290ea-cb02-4188-9cf2-1c5fb3768fa2`; when the user is away it runs in tmux
@@ -48,7 +48,6 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   strips; gallery of the first run: https://claude.ai/artifact/RH2zJjLUTSsTtt6PKw3GhR).
 
 ## Inbox
-- 2026-10-26 from Fir (user): **no ACL share of `darshan_agrpo_tar_merged380` with jeet**; keep it private, just run the single-pass evals.
 - 2026-10-25 from Fir (user + jeet, **priority over the other new baselines**): **AlphaGRPO on BAGEL** = the authors' released LoRA adapters on BAGEL-7B-MoT, `GEN_FAMILY=alphagrpo` (`eval/baselines/backends/alphagrpo.py`, same env as bagel + `peft`; clone `huangrh99/AlphaGRPO` to `$SCRATCH/baselines/AlphaGRPO`, its `Bagel/` dir is a modified BAGEL used as the modeling root; BAGEL base snapshot shared with the bagel family). Two rows: `MODEL_NAME=alphagrpo_rt2i UNI_ARGS="--mode think"` (adapter huangrh9/AlphaGRPO-rt2i: plan → image, single pass) and `MODEL_NAME=alphagrpo_srr UNI_ARGS="--mode reflect"` (adapter huangrh9/AlphaGRPO-srr: plan → image → one self-reflection → regenerated image; report first → final like Janus-R1). Their own GenEval run reflected only detector-flagged wrong images; ours reflects every image (no judge at test time): say so in the row. Smoke each on 8 prompts first (images + s/image; expect ~20 s per image, ~60 s per prompt for srr); 3 seeds if affordable, else 1. Do these before Show-o / Show-o2 / BLIP3-o / Emu3 / Uni-CoT; BAGEL plain (`GEN_FAMILY=bagel`) is the natural companion row and shares the setup.
 - 2026-10-25 from Fir (user, paper baselines, round 2): **evaluate Show-o, Show-o2, BAGEL-7B, BLIP3-o-8B, Emu3 and Uni-CoT** through jeet's pipeline (single pass; Uni-CoT = its self-reflection loop, like Janus-Pro-R1). Code pushed: `eval/baselines/unified_gen.py` (one driver, same layout as the Janus / diffusers generators; CPU `--dry_run` passes for every family) + `eval/baselines/backends/<family>.py`, and `GEN_FAMILY=showo|showo2|bagel|blip3o|emu3|unicot` in `bench_jeet_mila.sh` (`UNI_ENV`, `UNI_ARGS`, `UNI_MODEL_PATH`; N_ITERS 2; `UNI_N_ITERS=5` for unicot to keep every round). **Each backend was written from the authors' inference scripts without running them (Fir has no internet on compute nodes): expect small API mismatches; fix them in the backend and push.** Per family (docstring at the top of each backend has the details, defaults = the authors' benchmark settings, prompts verbatim):
   1. **Clones** (login node, `$SCRATCH/baselines/`): `showlab/Show-o` (Show-o and its `show-o2/` subdir), `ByteDance-Seed/Bagel`, `JiuhaiChen/BLIP3o` **branch `main`** (the default branch is BLIP3o-NEXT, a different model), `baaivision/Emu3`, `Fr0zenCrane/UniCoT`. Backend defaults point at `$SCRATCH/baselines/<name>`; override with `--<family>_repo` in `UNI_ARGS`.
@@ -62,6 +61,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-11-04 16:30: user: hand Emu3 + remaining GenAI sets to Fir; held Mila's 10 jobs; ACL left as is (user), Inbox line removed.
 - 2026-11-04 16:15: cancelled the 3 held rt2i GenAI jobs (11397534-6) as Fir asked (rt2i GenAI on Rorqual); Inbox line removed.
 - 2026-11-04 14:00: rt2i GenAI being generated on Nibi (Fir, user's call); Mila's 3 rt2i GenAI jobs held (11397534-6), partial records offered to Fir.
 - 2026-11-03 13:00: Fir Inbox (10-31) handled: complete-folder list in Now, AlphaGRPO-on-Tar reworded in runs.md; no 72B judging on Mila.
