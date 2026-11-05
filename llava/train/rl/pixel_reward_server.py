@@ -84,8 +84,13 @@ JUDGE_PROFILES = {
     # sharing in the last layers, sliding window 1024 > any row here) and every question continues from its
     # KV cache. util_scripts/debug/test_prefix_share.py on Rorqual 2026-11-03: 12B max |diff| 0.052, mean 0.0026
     # (bf16 noise, same level as Qwen3-VL's); 26B-A4B passes too. 8-image request: 12B 1.93 s per row -> 0.46 s shared.
+    # 2026-11-05: score_shared now soft-caps the final logits as the models' forward does (it did not before). With that,
+    # Gemma 4 E4B (gemma4) matches per row: max |diff| 0.007, mean 0.0005 -> shared on. The 12B then differs MORE
+    # (max 0.117, mean 0.005): the old 0.052 was the missing cap partly cancelling a second, untraced difference, so 12B
+    # sharing is OFF until that is found. The finished 12B E-twin run (steps 51-500) trained with the old, uncapped shared
+    # path (0.052 / 0.0026 from per row on this test).
     "gemma4_unified": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
-                           prefix_share=True, prefix_end="<|image|>", mrope=False, nested_images=True),
+                           prefix_share=False, prefix_end="<|image|>", mrope=False, nested_images=True),
     "qwen3_vl": dict(template_kwargs={}, soft_tokens=False, prefix_share=True,
                      prefix_end="<|vision_end|>", mrope=True, nested_images=False),
     # Qwen3-VL-30B-A3B-Instruct (AlphaGRPO's reward model; MoE, 62 GB bf16, 3B active): same prompt handling and rope
@@ -195,15 +200,9 @@ class Judge:
         self._answer_cache = {}
         space = self.processor.tokenizer.encode(" ", add_special_tokens=False)
         self._space_id = space[0] if len(space) == 1 else None
-        # Models with KV-shared layers (Gemma 4 E2B/E4B: text_config.num_kv_shared_layers = 18) do not reproduce the
-        # per-row scores from a reused image-prefix cache: test_prefix_share.py on Rorqual 2026-11-05 (25725078 /
-        # 25725192), E4B max |diff| 0.16 (e.g. 0.85 rows vs 0.99 shared), with rows identical at batch 1 / eager, so
-        # the shared path is the one that is off. Score those per row (12B / 26B-A4B have no KV-shared layers).
-        kv_shared = getattr(getattr(config, "text_config", config), "num_kv_shared_layers", 0) or 0
-        self.share_image_prefix = share_image_prefix and self.profile["prefix_share"] and kv_shared == 0
+        self.share_image_prefix = share_image_prefix and self.profile["prefix_share"]
         if share_image_prefix and not self.share_image_prefix:
-            print(f"[reward] --share_image_prefix ignored for {self.model_type}"
-                  f"{f' (num_kv_shared_layers={kv_shared})' if kv_shared else ''}", flush=True)
+            print(f"[reward] --share_image_prefix ignored for {self.model_type}", flush=True)
         self._prefix_checked = False
 
     def question_text(self, question: str) -> str:
