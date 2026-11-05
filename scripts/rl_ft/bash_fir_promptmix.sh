@@ -44,13 +44,15 @@ VAL_PM_JSONL=${VAL_PM_JSONL:-/home/dars11/scratch/data/promptmix/val_400.jsonl}
 # logic as bash_fir_mr.sh (2026-11-03).
 PIXEL_JUDGE=${PIXEL_JUDGE:-qwen}
 VAL_JUDGE=${VAL_JUDGE:-${PIXEL_JUDGE}}
-judge_settings() {   # $1 = qwen | gemma -> J_MODEL J_ENV J_UV_PY_DIR J_PYBIN J_ARGS
+judge_settings() {   # $1 = qwen | gemma | gemma_e4b -> J_MODEL J_ENV J_UV_PY_DIR J_PYBIN J_ARGS
   case $1 in
     qwen)  J_MODEL=/home/dars11/scratch/models/vlm/Qwen3-VL-8B-Instruct; J_ENV=qwen_judge
            J_UV_PY_DIR=cpython-3.10.22-linux-x86_64-gnu; J_PYBIN=python3.10; J_ARGS="--answer_id_mode geneval2" ;;
     gemma) J_MODEL=/home/dars11/scratch/models/vlm/gemma-4-12B-it; J_ENV=gemma_judge
            J_UV_PY_DIR=cpython-3.12.15-linux-x86_64-gnu; J_PYBIN=python3.12; J_ARGS="--answer_id_mode strict --image_soft_tokens ${REWARD_SOFT_TOKENS:-280}" ;;
-    *) echo "judge must be qwen or gemma (got '$1')" >&2; exit 1 ;;
+    gemma_e4b) J_MODEL=/home/dars11/scratch/models/vlm/gemma-4-E4B-it; J_ENV=gemma_judge   # Gemma 4 E4B (2026-11-04: smaller-reward ablation)
+           J_UV_PY_DIR=cpython-3.12.15-linux-x86_64-gnu; J_PYBIN=python3.12; J_ARGS="--answer_id_mode strict --image_soft_tokens ${REWARD_SOFT_TOKENS:-280}" ;;
+    *) echo "judge must be qwen, gemma or gemma_e4b (got '$1')" >&2; exit 1 ;;
   esac
 }
 judge_settings ${PIXEL_JUDGE}
@@ -61,13 +63,13 @@ if [ "${VAL_JUDGE}" != "${PIXEL_JUDGE}" ]; then
   VAL_JUDGE_MODEL=$J_MODEL; VAL_JUDGE_ENV=$J_ENV; VAL_JUDGE_UV_PY_DIR=$J_UV_PY_DIR; VAL_JUDGE_PYBIN=$J_PYBIN; VAL_JUDGE_ARGS=$J_ARGS
   VAL_JUDGE_PY=/home/dars11/envs/${VAL_JUDGE_ENV}/bin/python
   # Two archives: the reward judge's (tar + its env + uv Pythons) plus the val judge's env pulled out of its own archive.
-  case ${PIXEL_JUDGE} in qwen) ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst ;; gemma) ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_gemmajudge.tar.zst ;; esac
-  case ${VAL_JUDGE} in qwen) ENV_ARCHIVE_EXTRA_DEFAULT=/home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst ;; gemma) ENV_ARCHIVE_EXTRA_DEFAULT=/home/dars11/scratch/stage/envs_tar_gemmajudge.tar.zst ;; esac
+  case ${PIXEL_JUDGE} in qwen) ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst ;; gemma|gemma_e4b) ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_gemmajudge.tar.zst ;; esac
+  case ${VAL_JUDGE} in qwen) ENV_ARCHIVE_EXTRA_DEFAULT=/home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst ;; gemma|gemma_e4b) ENV_ARCHIVE_EXTRA_DEFAULT=/home/dars11/scratch/stage/envs_tar_gemmajudge.tar.zst ;; esac
 else
   VAL_JUDGE_MODEL=; VAL_JUDGE_ENV=; VAL_JUDGE_UV_PY_DIR=; VAL_JUDGE_PYBIN=; VAL_JUDGE_ARGS=; VAL_JUDGE_PY=
   case ${PIXEL_JUDGE} in
     qwen)  ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_qwenjudge.tar.zst ;;
-    gemma) ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_gemmajudge.tar.zst ;;
+    gemma|gemma_e4b) ENV_ARCHIVE_DEFAULT=/home/dars11/scratch/stage/envs_tar_gemmajudge.tar.zst ;;
   esac
 fi
 # Node-local staging (default on): Fir's Lustre /home and /scratch have killed jobs with SIGBUS (memory-mapped
