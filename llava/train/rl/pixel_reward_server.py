@@ -369,8 +369,15 @@ class Judge:
                         ).last_hidden_state
             last = hidden[torch.arange(R, device=self.device),
                           torch.tensor(lens, device=self.device) - 1]
+            logits = self.model.lm_head(last)
+            # The full forward (score_rows) soft-caps the logits for Gemma (final_logit_softcapping = 30): do the same,
+            # in the same order, or the probabilities come out sharper than score_rows' (2026-11-05: Gemma 4 E4B max |diff|
+            # 0.16 without it, e.g. 0.85 rows vs 0.99 shared; Gemma 4 12B 0.052). Qwen has no soft-capping.
+            cap = getattr(self.model.config.get_text_config(), "final_logit_softcapping", None)
+            if cap is not None:
+                logits = torch.tanh(logits / cap) * cap
             # `generate` upcasts before the softmax; match it for identical numbers.
-            probs = torch.softmax(self.model.lm_head(last).float(), dim=-1)
+            probs = torch.softmax(logits.float(), dim=-1)
             for j, (i, slot, _, aids) in enumerate(chunk):
                 result[i][slot] = float(probs[j, aids].sum()) if aids else 0.0
         return result
