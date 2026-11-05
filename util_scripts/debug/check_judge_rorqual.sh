@@ -17,7 +17,7 @@ ARGS=${ARGS:---image_soft_tokens 280 --answer_id_mode strict}
 D=/home/dars11/scratch/data/promptmix/train_17K.jsonl
 cd /home/dars11/scratch/git/tar_reason; export PYTHONPATH=$PWD HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 t0=$(date +%s); cp -r $JUDGE $SLURM_TMPDIR/judge; echo "staged in $(( $(date +%s) - t0 )) s"; M=$SLURM_TMPDIR/judge
-f() { grep -v -i -E "warn|loading weights|loading checkpoint"; }
+f() { grep -v -i -E "warn|loading weights|loading checkpoint|UNEXPECTED|LOAD REPORT|^Key |^-----|can be ignored|^Notes"; }
 echo "=== sanity $(date +%H:%M)";      $PY util_scripts/debug/test_pixel_judge.py $M $ARGS 2>&1 | f | cut -c1-200 | head -40
 echo "=== prefix share $(date +%H:%M)"; $PY util_scripts/debug/test_prefix_share.py $M $ARGS 2>&1 | f | cut -c1-250 | head -30
 echo "=== per row $(date +%H:%M)";      $PY util_scripts/debug/bench_judge.py $M --data $D $ARGS 2>&1 | f | grep -E "RESULT|Error" | head -3
