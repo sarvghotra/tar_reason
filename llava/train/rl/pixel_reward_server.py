@@ -195,9 +195,15 @@ class Judge:
         self._answer_cache = {}
         space = self.processor.tokenizer.encode(" ", add_special_tokens=False)
         self._space_id = space[0] if len(space) == 1 else None
-        self.share_image_prefix = share_image_prefix and self.profile["prefix_share"]
+        # Models with KV-shared layers (Gemma 4 E2B/E4B: text_config.num_kv_shared_layers = 18) do not reproduce the
+        # per-row scores from a reused image-prefix cache: test_prefix_share.py on Rorqual 2026-11-05 (25725078 /
+        # 25725192), E4B max |diff| 0.16 (e.g. 0.85 rows vs 0.99 shared), with rows identical at batch 1 / eager, so
+        # the shared path is the one that is off. Score those per row (12B / 26B-A4B have no KV-shared layers).
+        kv_shared = getattr(getattr(config, "text_config", config), "num_kv_shared_layers", 0) or 0
+        self.share_image_prefix = share_image_prefix and self.profile["prefix_share"] and kv_shared == 0
         if share_image_prefix and not self.share_image_prefix:
-            print(f"[reward] --share_image_prefix ignored for {self.model_type}", flush=True)
+            print(f"[reward] --share_image_prefix ignored for {self.model_type}"
+                  f"{f' (num_kv_shared_layers={kv_shared})' if kv_shared else ''}", flush=True)
         self._prefix_checked = False
 
     def question_text(self, question: str) -> str:

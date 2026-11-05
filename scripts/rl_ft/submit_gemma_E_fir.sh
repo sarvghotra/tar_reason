@@ -32,7 +32,8 @@ export PIXEL_JUDGE VAL_JUDGE=qwen BRANCH=8,4 RUN_NAME DATASET_SEED SAVE_STEPS=5
 export EXTRA_ARGS="--no-eval_on_start --save_total_limit 120"
 export PREV_STAGE_CHECKPOINT=/home/dars11/scratch/models/tar/sft/slf_ref_edit_t21_ckpt17000
 export TRAIN_JSONL=/home/dars11/scratch/data/promptmix/train_17K.jsonl
-COMMON=(--export=ALL --exclude=fc10212 --time=02:59:00 -J ${JOB_NAME:-darshan_pm1Egemma_fir})
+# TIME: per-job limit (2026-11-05 probes: Fir starts 4-node 6-12 h jobs as soon as 3 h ones, 24 h ones wait days).
+COMMON=(--export=ALL --exclude=fc10212 --time=${TIME:-02:59:00} -J ${JOB_NAME:-darshan_pm1Egemma_fir})
 PREV=$(MAX_STEPS=450 EVAL_STEPS=450 sbatch --parsable "${COMMON[@]}" scripts/rl_ft/bash_fir_promptmix.sh); IDS=$PREV
 for i in $(seq 2 ${N1}); do PREV=$(MAX_STEPS=450 EVAL_STEPS=450 sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} scripts/rl_ft/bash_fir_promptmix.sh); IDS="$IDS $PREV"; done
 for i in $(seq 1 ${N2}); do PREV=$(MAX_STEPS=500 EVAL_STEPS=500 sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} scripts/rl_ft/bash_fir_promptmix.sh); IDS="$IDS $PREV"; done
