@@ -148,7 +148,15 @@ class Judge:
                  image_soft_tokens=None, answer_id_mode="strict", share_image_prefix=False):
         from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor
 
-        self.model_type = getattr(AutoConfig.from_pretrained(model_path), "model_type", "?")
+        config = AutoConfig.from_pretrained(model_path)
+        self.model_type = getattr(config, "model_type", "?")
+        load_kwargs = {}
+        if self.model_type == "gemma4" and getattr(config, "audio_config", None) is not None:
+            # Gemma 4 E2B/E4B (model_type gemma4) carry a Gemma4AudioModel tower with no SDPA path in transformers
+            # ("does not support ... scaled_dot_product_attention", 2026-11-05). We score images only: build the model
+            # without it (its weights are skipped as unexpected keys). gemma4_unified (12B) loads as before.
+            config.audio_config = None
+            load_kwargs["config"] = config
         self.profile = JUDGE_PROFILES.get(self.model_type, DEFAULT_PROFILE)
         proc_kwargs = {}
         if image_soft_tokens is not None:
@@ -164,13 +172,13 @@ class Judge:
         self.processor.tokenizer.padding_side = "left"
         try:
             self.model = AutoModelForImageTextToText.from_pretrained(
-                model_path, dtype=torch.bfloat16, attn_implementation=attn_implementation)
+                model_path, dtype=torch.bfloat16, attn_implementation=attn_implementation, **load_kwargs)
         except ValueError:
             # transformers >= 5 registers the unified Gemma 4 checkpoints (image + audio) only under
             # AutoModelForMultimodalLM; the forward signature used here (input_ids, pixel_values, ...) is the same.
             from transformers import AutoModelForMultimodalLM
             self.model = AutoModelForMultimodalLM.from_pretrained(
-                model_path, dtype=torch.bfloat16, attn_implementation=attn_implementation)
+                model_path, dtype=torch.bfloat16, attn_implementation=attn_implementation, **load_kwargs)
         self.model.to(device).eval()
         for p in self.model.parameters():
             p.requires_grad_(False)
