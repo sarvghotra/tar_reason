@@ -23,7 +23,7 @@ for f in $ADAPTER/adapter_model.safetensors $M/slf_ref_edit_t21_ckpt17000/config
   [ -s "$f" ] || { echo "missing $f" >&2; exit 1; }
 done
 mkdir -p output_dir/${RUN_NAME}
-cp -n output_dir/darshan_mr_E450_orc_fir/data.yaml output_dir/darshan_mr_E450_orc_fir/val.yaml output_dir/${RUN_NAME}/   # run 1's data / val sets
+for f in data.yaml val.yaml; do [ -s output_dir/${RUN_NAME}/$f ] || cp output_dir/darshan_mr_E450_orc_fir/$f output_dir/${RUN_NAME}/; done   # run 1's data / val sets
 # 1) the adapter is merged onto SFT t21 (as E-450 was for run 1) by merge_then_fir_mr.sh inside the first job of the chain
 #    (Fir's 1-GPU queue held a separate merge job for 20+ min on 2026-11-05); every chain job goes through the wrapper,
 #    which skips the merge once merged_from.json exists, so a failed merge is retried by the next job.
