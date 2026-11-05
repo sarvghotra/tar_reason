@@ -24,19 +24,15 @@ for f in $ADAPTER/adapter_model.safetensors $M/slf_ref_edit_t21_ckpt17000/config
 done
 mkdir -p output_dir/${RUN_NAME}
 cp -n output_dir/darshan_mr_E450_orc_fir/data.yaml output_dir/darshan_mr_E450_orc_fir/val.yaml output_dir/${RUN_NAME}/   # run 1's data / val sets
-# 1) merge the adapter onto SFT t21 (as E-450 was for run 1), on one GPU, unless done
-DEP=()
-if [ ! -s $BASE/config.json ]; then
-  MJ=$(sbatch --parsable --account=rrg-bengioy-ad_gpu --gpus-per-node=h100:1 --cpus-per-task=8 --mem=96000M --time=00:45:00 \
-       -J merge_gemmaE450 -o output_dir/slurm_logs/%x_%j.out \
-       --wrap "cd /home/dars11/scratch/git/tar_reason && export PYTHONPATH=\$PWD && ~/envs/tar/bin/python util_scripts/merge_lora.py --base $M/slf_ref_edit_t21_ckpt17000 --adapter $ADAPTER --out $BASE --device cuda && ls -la $BASE")
-  DEP=(--dependency=afterok:${MJ}); echo "merge job ${MJ} -> ${BASE}"
-fi
+# 1) the adapter is merged onto SFT t21 (as E-450 was for run 1) by merge_then_fir_mr.sh inside the first job of the chain
+#    (Fir's 1-GPU queue held a separate merge job for 20+ min on 2026-11-05); every chain job goes through the wrapper,
+#    which skips the merge once merged_from.json exists, so a failed merge is retried by the next job.
+export MERGE_BASE=$M/slf_ref_edit_t21_ckpt17000 MERGE_ADAPTER=$PWD/$ADAPTER
 # 2) the run: chain of TIME jobs; each resumes from the newest checkpoint and exits at once when done
 export PIXEL_JUDGE=gemma VAL_JUDGE=qwen CRITIQUE_SOURCE=oracle RUN_NAME DATASET_SEED=81556 MAX_STEPS=500 EVAL_STEPS=100 SAVE_STEPS=10
 export PREV_STAGE_CHECKPOINT=$BASE TRAIN_JSONL=/home/dars11/scratch/data/promptmix/train_17K.jsonl
 export EXTRA_ARGS="--save_total_limit 60"   # keep every checkpoint (every 10 steps, ~1.9 GB each)
 COMMON=(--export=ALL --exclude=fc10212 --time=${TIME} -J ${JOB_NAME:-darshan_mrEgemma450_fir})
-PREV=$(sbatch --parsable "${COMMON[@]}" "${DEP[@]}" scripts/rl_ft/bash_fir_mr.sh); IDS=$PREV
-for i in $(seq 2 ${N_JOBS}); do PREV=$(sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} scripts/rl_ft/bash_fir_mr.sh); IDS="$IDS $PREV"; done
+PREV=$(sbatch --parsable "${COMMON[@]}" scripts/rl_ft/merge_then_fir_mr.sh); IDS=$PREV
+for i in $(seq 2 ${N_JOBS}); do PREV=$(sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} scripts/rl_ft/merge_then_fir_mr.sh); IDS="$IDS $PREV"; done
 echo "submitted ${N_JOBS} chained ${TIME} jobs: ${IDS} (${RUN_NAME})"
