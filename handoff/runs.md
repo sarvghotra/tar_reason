@@ -302,7 +302,7 @@ best-of-5 bound, self-selection, SFT depth-4 baseline, branching curriculum. Dec
   | BAGEL-7B-MoT (plain) | 1024 | 3 | 69.7 ± 0.2 (22.3 / 14.9%) | pending | 73.5 ± 0.5 | 74.2 ± 0.4 |
   | Show-o2-7B | 432 | 3 | 64.1 ± 0.2 (16.1 / 8.7%) | pending | 68.3 ± 0.6 | 67.1 ± 0.4 |
   | BLIP3-o-8B | 1024 | 3 | 59.7 ± 0.2 (13.8 / 7.6%) | pending | 62.7 ± 0.7 | 62.1 ± 1.3 |
-  | **AlphaGRPO rt2i** (BAGEL + released LoRA, plan -> image) | 1024 | 3 | **75.9 ± 0.0** (31.6 / 20.5%) | pending | 72.8 ± 0.4 | 73.2 ± 0.5 |
+  | **AlphaGRPO rt2i** (BAGEL + released LoRA, plan -> image) | 1024 | 3 | **75.9 ± 0.0** (31.6 / 20.5%) | **54.5 ± 0.3** (Rorqual 2026-11-05; CLIP-FlanT5 80.4) | 72.8 ± 0.4 | 73.2 ± 0.5 |
   | **AlphaGRPO srr** (plan -> image -> 1 reflection -> image; first -> final) | 1024 | **1** | 72.6 -> **76.1** (26.1 -> 31.5 / 17.0 -> 20.1%) | 53.0 -> **61.0** | 71.3 -> **75.6** | 73.5 -> **75.0** |
   | **Uni-CoT-7B-MoT** (own loop: plan -> image -> self-reflect -> regenerate, up to 4 rounds; images 1 -> 5) | 1024 | **1** | 73.9 -> **78.0** (28.3 -> 37.7 / 19.1 -> 24.3%; 484/800 regenerated) | pending | 70.4 -> **76.4** | 69.1 -> **73.8** (260/554 regenerated) |
   AlphaGRPO-on-Tar (the AlphaGRPO recipe run on base Tar-7B, a baseline; single pass): see `bench_tamia darshan_agrpo_tar_380` (TamIA; Mila GenEval2 74.4 ± 0.1 agrees).
