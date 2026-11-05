@@ -84,13 +84,14 @@ JUDGE_PROFILES = {
     # sharing in the last layers, sliding window 1024 > any row here) and every question continues from its
     # KV cache. util_scripts/debug/test_prefix_share.py on Rorqual 2026-11-03: 12B max |diff| 0.052, mean 0.0026
     # (bf16 noise, same level as Qwen3-VL's); 26B-A4B passes too. 8-image request: 12B 1.93 s per row -> 0.46 s shared.
-    # 2026-11-05: score_shared now soft-caps the final logits as the models' forward does (it did not before). With that,
-    # Gemma 4 E4B (gemma4) matches per row: max |diff| 0.007, mean 0.0005 -> shared on. The 12B then differs MORE
-    # (max 0.117, mean 0.005): the old 0.052 was the missing cap partly cancelling a second, untraced difference, so 12B
-    # sharing is OFF until that is found. The finished 12B E-twin run (steps 51-500) trained with the old, uncapped shared
-    # path (0.052 / 0.0026 from per row on this test).
+    # 2026-11-05: score_shared now soft-caps the final logits as the models' forward does (it did not before). Checked on
+    # Fir inside a running job (util_scripts/debug/test_prefix_share.py): Gemma 4 E4B shared vs per row max |diff| 0.007,
+    # mean 0.0005; Gemma 4 12B 0.009 / 0.0002 against per-row scoring at batch 1. Batched per-row scoring of the 12B is
+    # itself off (0.117 / 0.005 at batch 64: left padding with its bidirectional image attention), so for the 12B the
+    # shared path is the more exact one. History: the 12B E-twin run scored steps 1-50 per row (batched) and steps
+    # 51-500 shared without the cap; neither path was exact.
     "gemma4_unified": dict(template_kwargs={"enable_thinking": False}, soft_tokens=True,
-                           prefix_share=False, prefix_end="<|image|>", mrope=False, nested_images=True),
+                           prefix_share=True, prefix_end="<|image|>", mrope=False, nested_images=True),
     "qwen3_vl": dict(template_kwargs={}, soft_tokens=False, prefix_share=True,
                      prefix_end="<|vision_end|>", mrope=True, nested_images=False),
     # Qwen3-VL-30B-A3B-Instruct (AlphaGRPO's reward model; MoE, 62 GB bf16, 3B active): same prompt handling and rope

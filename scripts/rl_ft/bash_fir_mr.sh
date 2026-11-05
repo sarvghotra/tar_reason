@@ -165,7 +165,12 @@ mkdir -p "$LOCAL_DIR"
 [ -f "$VAL_DATA_PATH" ] || printf 'datasets:\n    - json_path:\n      - %s\n      ratio: 1\n' "${VAL_JSONL}" > "$VAL_DATA_PATH"
 
 LAST=$(ls -d ${LOCAL_DIR}/checkpoint-* 2>/dev/null | sed 's/.*checkpoint-//' | sort -n | tail -1)
-if [ -n "$LAST" ] && [ "$LAST" -ge "$MAX_STEPS" ]; then
+# A job that hit its time limit during the final validation leaves checkpoint-MAX_STEPS without eval_done_MAX_STEPS:
+# resume once more so train_grpo.py redoes that validation (as bash_fir_promptmix.sh, 2026-11-05).
+if [ -n "$LAST" ] && [ "$LAST" -eq "$MAX_STEPS" ] && [ "${EVAL_STEPS:-0}" -gt 0 ] && [ $((MAX_STEPS % EVAL_STEPS)) -eq 0 ] \
+   && [ ! -e "${LOCAL_DIR}/eval_done_${MAX_STEPS}" ]; then
+    echo "checkpoint-${LAST} = MAX_STEPS but its validation did not finish: resuming to redo it."
+elif [ -n "$LAST" ] && [ "$LAST" -ge "$MAX_STEPS" ]; then
     echo "checkpoint-${LAST} >= MAX_STEPS=${MAX_STEPS}: run already complete, nothing to do."
     exit 0
 fi
