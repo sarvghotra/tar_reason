@@ -74,6 +74,11 @@ ITERATIVE_PROMPT_PREFIX = "Generate an image iteratively by self-reflecting and 
 SYSTEM_PROMPT = "You are a helpful assistant."
 REFLECT_SPLICE = "<im_end>\nSelf-reflect:"
 LOOKS_GOOD_RE = re.compile(r"looks good", re.IGNORECASE)
+
+# ``critique_fn`` may return this instead of a Critique for a parent whose children
+# sample (and train) their own reflections, as without a critique_fn
+# (--critique_source mixed: per parent, the oracle or the policy's own trained critic).
+SAMPLE_OWN = "SAMPLE_OWN"
 SCALE_SEQ_LEN = {0: 729, 1: 169, 2: 81}
 
 
@@ -408,14 +413,16 @@ class TreeRollout:
             if critique_fn is not None and live:
                 crits = list(critique_fn(live, prompts, lambda nodes: self.sample_critiques(model, nodes)))
                 assert len(crits) == len(live), "critique_fn must return one Critique per parent"
-                assert all(c is None or isinstance(c, Critique) for c in crits), \
-                    "critique_fn must return Critique objects (or None)"
+                assert all(c is None or c is SAMPLE_OWN or isinstance(c, Critique) for c in crits), \
+                    "critique_fn must return Critique objects, SAMPLE_OWN or None"
                 # No critique (nothing to fix): the parent's image is final.
                 leaves.extend(n for n, c in zip(live, crits) if c is None)
                 live = [n for n, c in zip(live, crits) if c is not None]
                 crits = [c for c in crits if c is not None]
             children: List[Node] = []
             for n, crit in zip(live, crits):
+                if crit is SAMPLE_OWN:
+                    crit = None   # the children sample their own reflections below
                 splice = self.reflect_splice
                 if crit is not None:
                     # Spliced like the eval script splices decoded reflection
@@ -442,7 +449,10 @@ class TreeRollout:
                 nodes_by_round.append(children)
                 level = children
                 continue
-            if critique_fn is None:
+            own = [c for c in children if not c.teacher_forced]   # all of them without a critique_fn
+            if own:
+                forced_kids = [c for c in children if c.teacher_forced]
+                children = own
                 reflections = self._sample_reflections(model, [c.seq for c in children])
                 for c, refl in zip(children, reflections):
                     self._set_reflection(c, refl)
@@ -459,7 +469,7 @@ class TreeRollout:
                         if not c.looks_good:
                             c.forced_refine = True
                     forced = [c for c in forced if c.looks_good]
-                children = self._add_critique_followers(children)
+                children = forced_kids + self._add_critique_followers(children)
             pending = [c for c in children if not c.looks_good]
             for c in pending:
                 c.seq.extend(self.image_splice)

@@ -56,14 +56,14 @@ from llava.train.rl.grpo import KIND_NONE, GRPOConfig, grpo_loss, masked_token_l
 from llava.train.rl.oracle_critique import SKILL_ORDER, oracle_critique
 from llava.train.rl.pixel_reward import PixelVQAReward
 from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQAReward
-from llava.train.rl.rollout import Critique, LOOKS_GOOD_RE, Node, RolloutBatch, RolloutConfig, TreeRollout
+from llava.train.rl.rollout import SAMPLE_OWN, Critique, LOOKS_GOOD_RE, Node, RolloutBatch, RolloutConfig, TreeRollout
 
 # Per-skill stats buckets; questions with any other skill tag land in "other".
 # The extra tags come from the GenEval2-style prompt-mix sets (GenEval2 itself
 # only uses SKILL_ORDER).
 STAT_SKILLS = tuple(SKILL_ORDER) + ("negation", "comparison", "differentiation",
                                     "text", "style", "other")
-CRITIQUE_SOURCES = ("oracle", "policy")   # frozen-critique sources split in the stats
+CRITIQUE_SOURCES = ("oracle", "policy", "sampled")   # critique sources split in the stats ("sampled" = trained own critique)
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +191,7 @@ def parse_args():
                         "reflection is re-sampled (up to --refine_resample_tries times). "
                         "Training only; validation always uses the policy as is.")
     p.add_argument("--refine_resample_tries", type=int, default=3)
-    p.add_argument("--critique_source", default="policy", choices=["policy", "oracle", "hybrid"],
+    p.add_argument("--critique_source", default="policy", choices=["policy", "oracle", "hybrid", "mixed"],
                    help="policy: sample the reflection from the policy and train it. oracle: "
                         "teacher-force the oracle critique of the parent's failed VQA "
                         "questions (llava/train/rl/oracle_critique.py), untrained, so every "
@@ -202,9 +202,13 @@ def parse_args():
                         "untrained; a policy reflection that says 'looks good' is re-sampled "
                         "--refine_resample_tries times, then the oracle is used. In both, "
                         "parents that fail nothing get no children. Validation always uses "
-                        "the policy's own critic.")
+                        "the policy's own critic. mixed: per parent, with prob "
+                        "--hybrid_oracle_frac the oracle critique (untrained, shared; a parent that "
+                        "fails nothing gets no children), otherwise the children sample their own "
+                        "reflections and train them, exactly as with 'policy' (also for parents that "
+                        "pass everything, so the critic learns to stop).")
     p.add_argument("--hybrid_oracle_frac", type=float, default=0.5,
-                   help="--critique_source hybrid: fraction of parents given the oracle critique.")
+                   help="--critique_source hybrid | mixed: fraction of parents given the oracle critique.")
     p.add_argument("--oracle_fail_threshold", type=float, default=0.5,
                    help="A question fails when the judge's answer probability is below this "
                         "(oracle critique, and the fix/break rates in the stats).")
@@ -508,8 +512,11 @@ def make_critique_fn(reward, fail_threshold: float, source: str = "oracle",
     then the oracle critique is used (``Critique.fallback``). Note the retries
     only help when the rollout samples reflections (``reflect_sample=True``);
     with greedy decoding every retry returns the same text (the rollout warns).
+    source="mixed": with prob ``oracle_frac`` the oracle critique (None when the
+    parent fails nothing), otherwise ``SAMPLE_OWN``: the children sample and
+    train their own reflections, as with --critique_source policy.
     """
-    assert source in ("oracle", "hybrid")
+    assert source in ("oracle", "hybrid", "mixed")
 
     def oracle_text(n: Node, prompts: List[Dict]) -> str:
         p = prompts[n.prompt_idx]
@@ -518,6 +525,15 @@ def make_critique_fn(reward, fail_threshold: float, source: str = "oracle",
     def fn(parents: List[Node], prompts: List[Dict], sample_fn=None) -> List[Optional[Critique]]:
         score_nodes(parents, prompts, reward)
         texts: List[Optional[Critique]] = [None] * len(parents)
+        if source == "mixed":
+            # One coin per parent (pass or fail); the trainer seeds torch per (step, rank).
+            coins = torch.rand(len(parents)).tolist()
+            for i, (n, c) in enumerate(zip(parents, coins)):
+                if c >= oracle_frac:
+                    texts[i] = SAMPLE_OWN
+                elif not all(q >= fail_threshold for q in n.per_question):
+                    texts[i] = Critique(oracle_text(n, prompts), source="oracle")
+            return texts
         todo = [i for i, n in enumerate(parents)
                 if not all(q >= fail_threshold for q in n.per_question)]
         policy_idx = []
@@ -1274,8 +1290,8 @@ def main():
     train_critique_fn = None
     if args.critique_source == "oracle":
         train_critique_fn = oracle_fn
-    elif args.critique_source == "hybrid":
-        train_critique_fn = make_critique_fn(reward, args.oracle_fail_threshold, "hybrid",
+    elif args.critique_source in ("hybrid", "mixed"):
+        train_critique_fn = make_critique_fn(reward, args.oracle_fail_threshold, args.critique_source,
                                              args.hybrid_oracle_frac, args.refine_resample_tries)
 
     def validate(step):

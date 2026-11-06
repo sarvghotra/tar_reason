@@ -125,7 +125,7 @@ GROUP=parent
 ADV_NORM=std
 ADV_STD_FLOOR=${ADV_STD_FLOOR:-0.04}
 
-CRITIQUE_SOURCE=hybrid
+CRITIQUE_SOURCE=${CRITIQUE_SOURCE:-hybrid}   # E-450 ablations (2026-11-06): policy = own critiques, trained; mixed = per parent oracle or own trained (HYBRID_ORACLE_FRAC)
 HYBRID_ORACLE_FRAC=${HYBRID_ORACLE_FRAC:-0.5}
 ORACLE_FAIL_THRESHOLD=0.5
 
