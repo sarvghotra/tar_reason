@@ -29,9 +29,9 @@ for f in $S/stage/envs_tar_qwenjudge.tar.zst $S/models/vlm/Qwen3-VL-8B-Instruct/
 done
 grep -q '"mixed"' llava/train/rl/train_grpo.py || { echo "this checkout has no --critique_source mixed" >&2; exit 1; }
 export CRITIQUE_SOURCE RUN_NAME HYBRID_ORACLE_FRAC=0.5 PIXEL_JUDGE=qwen BRANCH=8,4 DATASET_SEED=87002
-export MAX_STEPS=${MAX_STEPS:-450} EVAL_STEPS=50 SAVE_STEPS=10
+export MAX_STEPS=${MAX_STEPS:-450} EVAL_STEPS=50 SAVE_STEPS=${SAVE_STEPS:-10}   # 5 for 3 h chains
 export PREV_STAGE_CHECKPOINT=$S/models/tar/sft/slf_ref_edit_t21_ckpt17000 TRAIN_JSONL=$S/data/promptmix/train_17K.jsonl
-export EXTRA_ARGS="--no-eval_on_start --save_total_limit 60"   # keep every checkpoint (every 10 steps)
+export EXTRA_ARGS="--no-eval_on_start --save_total_limit 100"   # keep every checkpoint
 COMMON=(--export=ALL "${EXCL[@]}" --time=${TIME} -J ${JOB_NAME:-${RUN_NAME}})
 PREV=$(sbatch --parsable "${COMMON[@]}" ${LAUNCHER}); IDS=$PREV
 for i in $(seq 2 ${N_JOBS}); do PREV=$(sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} ${LAUNCHER}); IDS="$IDS $PREV"; done
