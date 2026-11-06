@@ -13,9 +13,11 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   - Not yet: GenAI of bagel_7b (13 done; 17, 91 queued), blip3o (17, 91 done; 13 queued), showo2, unicot; all of Emu3. alphagrpo_rt2i GenAI runs on Rorqual (Fir), Mila copies cancelled.
 - **Remaining baseline generations stay on Mila (Fir 11-05), reshaped onto the NON-preemptible partitions** (probe below), all `RESUME=1`:
   - DONE on short-unkillable 11-05/06: GenAI showo2 13/17/91, blip3o 13, bagel_7b 17/91 (each 3 h job resumed, 0 preemptions).
-  - `short-unkillable` now: Emu3 GenEval2 2213 (6 chained 3 h copies) + GenAI 13 (11 copies), one at a time, `RESUME=1`; ~64 prompts/h on 4 GPUs
-    (GenEval2 ~13 h, GenAI ~25 h). Ids in `$SCRATCH/baselines/emu3_chain_jobs.txt`; surplus copies exit at once ("done, skipping").
-  - `main` 1x A100L: Uni-CoT GenAI 13 (11550286). `unkillable` 1x A100L: Emu3 TIIF 17 (11550287, ~35 h).
+  - **PAUSED 2026-11-06 14:00 (user needs the GPUs; all `bj_` jobs held, resume with `scontrol release <ids>`)**. Final sync to
+    `results_jeet_partial` done first, then the 3 running jobs requeue-held: Emu3 GenEval2 2213 at 576/800 (11557873; 11557874-75 held
+    behind it), Emu3 TIIF 17 at 328/554 (11550287, `unkillable`), Uni-CoT GenAI 13 at 680/1549 (11550286, `main`); Emu3 GenAI 13 not
+    started (11557876-86 held). Ids in `$SCRATCH/baselines/emu3_chain_jobs.txt`; ~53 prompts/h for Emu3 on 4 GPUs; surplus copies exit
+    at once ("done, skipping").
 - **Scheduling probe (Mila, 2026-11-05 16:28, `sbatch --test-only`, then submitted)**: `long`: every shape (1/2/4 GPU x 1/3/12 h, a100l or l40s)
   estimated 21:14 (+5 h) and long jobs get preempted within minutes-hours; `main`: 1 GPU (a100l or l40s) any length est. +15 min, actual
   start immediate (per-user cap cpu 8, gpu 2, mem 48 GB total); `unkillable`: 1 GPU est. now, started immediately (cap cpu 6, gpu 1,
@@ -70,6 +72,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-11-06 14:00: paused all baseline jobs for the user (held; see Now).
 - 2026-11-06 04:30: GenAI done for showo2 (25.7), blip3o (49.0), bagel_7b (51.3) on short-unkillable; Emu3 GenEval2 / GenAI moved there as 3 h chains.
 - 2026-11-05 16:45: Fir Inbox handled (GenAI stays on Mila): scheduling probe, jobs moved to short-unkillable / main / unkillable, 3 running at once; Inbox line removed.
 - 2026-11-04 16:30: user: hand Emu3 + remaining GenAI sets to Fir; held Mila's 10 jobs; ACL left as is (user), Inbox line removed.
