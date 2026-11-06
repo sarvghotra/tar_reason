@@ -9,7 +9,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   - TIIF (`tiif-bench-testmini_eval`): showo_n2_showo_512_512px, showo2_n2_showo2_7b_432px, blip3o_n2_blip3o_8b_1024px, bagel_n2_bagel_7b_1024px,
     bagel_n2_bagel_7b_think_1024px, alphagrpo_n2_alphagrpo_rt2i_1024px, alphagrpo_n2_alphagrpo_srr_1024px (seed 17), **unicot_n5_unicot_7b_1024px
     (seed 17; new since Fir's batch)**. All `_repeat1`.
-  - GenAI (`genai-bench-1600`): bagel_n2_bagel_7b_think_1024px, showo_n2_showo_512_512px, alphagrpo_n2_alphagrpo_srr_1024px (seed 13).
+  - GenAI (`genai-bench-1600`): bagel_n2_bagel_7b_think_1024px, showo_n2_showo_512_512px, alphagrpo_n2_alphagrpo_srr_1024px (seed 13), **blip3o_n2_blip3o_8b_1024px (all 3 seeds, new 11-05)**; showo2_n2_showo2_7b_432px seeds 13 + 91 done, 17 running.
   - Not yet: GenAI of bagel_7b (13 done; 17, 91 queued), blip3o (17, 91 done; 13 queued), showo2, unicot; all of Emu3. alphagrpo_rt2i GenAI runs on Rorqual (Fir), Mila copies cancelled.
 - **Remaining baseline generations stay on Mila (Fir 11-05), reshaped onto the NON-preemptible partitions** (probe below), all `RESUME=1`:
   - `short-unkillable` (one 4x A100L job per user, <= 3 h): GenAI bagel_7b 17/91, blip3o 13, showo2 13/17/91, run one after another
