@@ -9,11 +9,14 @@
 # Step 0 = SFT t21 = E's step 0, so no step-0 eval. Chain of N_JOBS x TIME jobs, each resumes from the newest checkpoint.
 #   CRITIQUE_SOURCE=policy RUN_NAME=darshan_pm1_E_policy_fir  bash scripts/rl_ft/submit_E_critique_ablation.sh   (Fir)
 #   CRITIQUE_SOURCE=mixed  RUN_NAME=darshan_pm1_E_mixed_tamia bash scripts/rl_ft/submit_E_critique_ablation.sh   (TamIA)
+#   CRITIQUE_SOURCE=policy RUN_NAME=darshan_pm1_E_policy_rorqual bash scripts/rl_ft/submit_E_critique_ablation.sh   (Rorqual copy of the Fir one)
 set -eu
 : "${CRITIQUE_SOURCE:?policy | mixed}" "${RUN_NAME:?}"
 export PATH=$PATH:/opt/software/slurm/bin
 if [ -d /scratch/d/dars11 ]; then   # TamIA
   cd /scratch/d/dars11/git/tar_reason_pm; S=/scratch/d/dars11; LAUNCHER=scripts/rl_ft/bash_tamia_promptmix.sh; EXCL=()
+elif [[ "${CC_CLUSTER:-}" == rorqual* || "$(hostname)" == rorqual* ]]; then   # Rorqual (same paths and account as Fir)
+  cd /home/dars11/scratch/git/tar_reason; S=/home/dars11/scratch; LAUNCHER=scripts/rl_ft/bash_rorqual_promptmix.sh; EXCL=()
 else                               # Fir
   cd /home/dars11/scratch/git/tar_reason; S=/home/dars11/scratch; LAUNCHER=scripts/rl_ft/bash_fir_promptmix.sh; EXCL=(--exclude=fc10212)
 fi

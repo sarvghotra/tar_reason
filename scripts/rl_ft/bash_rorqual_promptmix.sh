@@ -10,7 +10,7 @@
 #SBATCH -J darshan_pm_rorqual
 #SBATCH -o /home/dars11/scratch/git/tar_reason/output_dir/slurm_logs/%x_%j.out
 #SBATCH -e /home/dars11/scratch/git/tar_reason/output_dir/slurm_logs/%x_%j.err
-# Rorqual copy of bash_fir_promptmix.sh (same paths and account; regenerated 2026-11-03 with PIXEL_JUDGE / VAL_JUDGE).
+# Rorqual copy of bash_fir_promptmix.sh (same paths and account; regenerated 2026-11-06 with CRITIQUE_SOURCE and the cut-off final-eval redo).
 
 # jeet's rl_ft_promptsmix_oracle_t1 on Fir under dars11 (his script: 2026-10-17): the t8 refiner recipe from
 # step 0 (SFT t21 ckpt-17000, fresh LoRA, LR 1e-4) on the promptmix prompt set. One refinement round
@@ -128,7 +128,7 @@ GROUP=parent
 ADV_NORM=std
 ADV_STD_FLOOR=${ADV_STD_FLOOR:-0.04}
 
-CRITIQUE_SOURCE=hybrid
+CRITIQUE_SOURCE=${CRITIQUE_SOURCE:-hybrid}   # E-450 ablations (2026-11-06): policy = own critiques, trained; mixed = per parent oracle or own trained (HYBRID_ORACLE_FRAC)
 HYBRID_ORACLE_FRAC=${HYBRID_ORACLE_FRAC:-0.5}
 ORACLE_FAIL_THRESHOLD=0.5
 
@@ -165,7 +165,13 @@ mkdir -p "$LOCAL_DIR"
 [ -f "$VAL_DATA_PATH" ] || printf 'datasets:\n    - json_path:\n      - %s\n      logname: val\n      ratio: 1\n    - json_path:\n      - %s\n      logname: promptmix\n      ratio: 1\n' "${VAL_JSONL}" "${VAL_PM_JSONL}" > "$VAL_DATA_PATH"
 
 LAST=$(ls -d ${LOCAL_DIR}/checkpoint-* 2>/dev/null | sed 's/.*checkpoint-//' | sort -n | tail -1)
-if [ -n "$LAST" ] && [ "$LAST" -ge "$MAX_STEPS" ]; then
+# A job that hit its time limit during the final validation leaves checkpoint-MAX_STEPS without eval_done_MAX_STEPS:
+# resume once more so train_grpo.py redoes that validation (no training steps left), instead of losing it (2026-11-05:
+# the Gemma run's step-450 eval was lost this way).
+if [ -n "$LAST" ] && [ "$LAST" -eq "$MAX_STEPS" ] && [ "${EVAL_STEPS:-0}" -gt 0 ] && [ $((MAX_STEPS % EVAL_STEPS)) -eq 0 ] \
+   && [ ! -e "${LOCAL_DIR}/eval_done_${MAX_STEPS}" ]; then
+    echo "checkpoint-${LAST} = MAX_STEPS but its validation did not finish: resuming to redo it."
+elif [ -n "$LAST" ] && [ "$LAST" -ge "$MAX_STEPS" ]; then
     echo "checkpoint-${LAST} >= MAX_STEPS=${MAX_STEPS}: run already complete, nothing to do."
     exit 0
 fi
