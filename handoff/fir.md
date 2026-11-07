@@ -114,6 +114,7 @@ Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB pe
 - 2026-10-30 20:25 PDT from Trillium: Gemma-reward run `darshan_mr_E450_gemma_trillium` submitted (1204109 → 1204110, 4 nodes, est. start 10-31 08:36 PDT), recipe unchanged, `DATASET_SEED=98381`; smoke 1203913 + `test_pixel_judge.py` passed. Gemma judge note: P('red' | What color is the square?) = 0.000 under strict ids (open colour answers fail; our data has only yes/no + number answers, so no effect here).
 
 ## Log (newest first)
+- 2026-11-06 20:40 EST: policy-only ablation recipe shared with jeet (user: he wants to run it): `/scratch/dars11/share/E_policy_ablation/` (README with exact settings / commit / command, copies of `bash_fir_promptmix.sh` + `submit_E_critique_ablation.sh`, first job's log header); ACL `u:jeet:rX`.
 - 2026-11-06 19:00 EST: shared the Gemma-12B-reward E-twin checkpoint-450 with jeet (user): `/scratch/dars11/share/gemma12b_E450/` = adapter + merge onto SFT t21 + README (recipe, official evals) + sha256 (merged copy verified); ACL `u:jeet:rX` (incl. default); revoke with `setfacl -R -x u:jeet <dir>`.
 - 2026-10-31 17:45 PDT: 12 baseline TIIF-72B jobs done on Nibi, recorded (`official_judges baselines TIIF`); judge outputs copied to the share folder; Mila Inbox updated.
 - 2026-10-31 13:10 PDT: user agreed to re-score all baselines with the official judges; TIIF images copied Mila → Nibi by the user; 12 judge jobs submitted (`nibi_official_jobs.sh baselines tiif`, two parsing fixes on the way).
