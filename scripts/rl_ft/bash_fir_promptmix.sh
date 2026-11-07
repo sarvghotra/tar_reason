@@ -167,7 +167,7 @@ LAST=$(ls -d ${LOCAL_DIR}/checkpoint-* 2>/dev/null | sed 's/.*checkpoint-//' | s
 # A job that hit its time limit during the final validation leaves checkpoint-MAX_STEPS without eval_done_MAX_STEPS:
 # resume once more so train_grpo.py redoes that validation (no training steps left), instead of losing it (2026-11-05:
 # the Gemma run's step-450 eval was lost this way).
-if [ -n "$LAST" ] && [ "$LAST" -eq "$MAX_STEPS" ] && [ "${EVAL_STEPS:-0}" -gt 0 ] && [ $((MAX_STEPS % EVAL_STEPS)) -eq 0 ] \
+if [ -n "$LAST" ] && [ "$LAST" -eq "$MAX_STEPS" ] && [ "${EVAL_STEPS:-0}" -gt 0 ] \
    && [ ! -e "${LOCAL_DIR}/eval_done_${MAX_STEPS}" ]; then
     echo "checkpoint-${LAST} = MAX_STEPS but its validation did not finish: resuming to redo it."
 elif [ -n "$LAST" ] && [ "$LAST" -ge "$MAX_STEPS" ]; then

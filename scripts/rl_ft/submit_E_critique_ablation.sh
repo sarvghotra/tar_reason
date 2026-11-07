@@ -1,7 +1,8 @@
 #!/bin/bash
 # E-450 critique ablations (user, 2026-11-06, both priority): E's recipe exactly (t1 recipe from SFT t21, fresh LoRA, LR 1e-4,
 # BRANCH 8,4 = 8 drafts x 4 refines, one refinement round ("2 iter" = draft + 1 refine), std floor 0.04, BREAK_WEIGHT 2, Qwen3-VL-8B
-# reward, promptmix train_17K, DATASET_SEED=87002 = E's prompt order, evals every 50 on val800 + promptmix val_400, own + oracle)
+# reward, promptmix train_17K, DATASET_SEED=87002 = E's prompt order, evals on val800 + promptmix val_400, own + oracle: every 50
+# until 2026-11-06 evening, then every 100 + the final step 450 (user))
 # with only the training critiques changed:
 #   1) CRITIQUE_SOURCE=policy  every child samples its own critique and the critique tokens are trained (no oracle critiques)
 #   2) CRITIQUE_SOURCE=mixed   per parent a coin: 50% oracle (as E), 50% own critiques sampled per child and trained
@@ -29,10 +30,10 @@ for f in $S/stage/envs_tar_qwenjudge.tar.zst $S/models/vlm/Qwen3-VL-8B-Instruct/
 done
 grep -q '"mixed"' llava/train/rl/train_grpo.py || { echo "this checkout has no --critique_source mixed" >&2; exit 1; }
 export CRITIQUE_SOURCE RUN_NAME HYBRID_ORACLE_FRAC=0.5 PIXEL_JUDGE=qwen BRANCH=8,4 DATASET_SEED=87002
-export MAX_STEPS=${MAX_STEPS:-450} EVAL_STEPS=50 SAVE_STEPS=${SAVE_STEPS:-10}   # 5 for 3 h chains
+export MAX_STEPS=${MAX_STEPS:-450} EVAL_STEPS=${EVAL_STEPS:-100} SAVE_STEPS=${SAVE_STEPS:-10}   # 5 for 3 h chains
 export PREV_STAGE_CHECKPOINT=$S/models/tar/sft/slf_ref_edit_t21_ckpt17000 TRAIN_JSONL=$S/data/promptmix/train_17K.jsonl
 export EXTRA_ARGS="--no-eval_on_start --save_total_limit 100"   # keep every checkpoint
 COMMON=(--export=ALL "${EXCL[@]}" --time=${TIME} -J ${JOB_NAME:-${RUN_NAME}})
-PREV=$(sbatch --parsable "${COMMON[@]}" ${LAUNCHER}); IDS=$PREV
+PREV=$(sbatch --parsable "${COMMON[@]}" ${AFTER:+--dependency=afterany:${AFTER}} ${LAUNCHER}); IDS=$PREV   # AFTER=<jobid>: chain behind a running job
 for i in $(seq 2 ${N_JOBS}); do PREV=$(sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} ${LAUNCHER}); IDS="$IDS $PREV"; done
 echo "submitted ${N_JOBS} chained ${TIME} jobs: ${IDS} (${RUN_NAME}, critique_source=${CRITIQUE_SOURCE})"

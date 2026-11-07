@@ -1326,7 +1326,8 @@ def main():
         validate_and_log(0)
     elif val_sets and start_step > 0 and start_step == args.eval_at_resume_step:
         validate_and_log(start_step, wandb_step=start_step + 1)
-    elif (start_step > 0 and val_sets and args.eval_steps and start_step % args.eval_steps == 0
+    elif (start_step > 0 and val_sets and args.eval_steps
+          and (start_step % args.eval_steps == 0 or start_step == args.max_steps)
           and not os.path.exists(eval_marker(start_step))):
         rank0_print(f"Validation at step {start_step} did not finish before the last job ended; redoing it.")
         # wandb already moved past start_step in the previous job, so this lands on the next step.
@@ -1372,7 +1373,9 @@ def main():
 
         if args.save_steps and step % args.save_steps == 0:
             save_checkpoint(model, optimizer, scheduler, step, args, device)
-        if args.eval_steps and val_sets and step % args.eval_steps == 0:
+        # The final step is always validated, also when max_steps is not a multiple of eval_steps
+        # (E-450 ablations, 2026-11-06: evals every 100 up to 450).
+        if args.eval_steps and val_sets and (step % args.eval_steps == 0 or step == args.max_steps):
             validate_and_log(step)
 
     if args.max_steps % max(args.save_steps, 1) != 0:
