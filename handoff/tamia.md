@@ -45,7 +45,7 @@ Owned by the TamIA session.
 - Claude Code's auto mode blocks multi-node `sbatch` ("Shared Cluster Mutation"); the user switched mode to approve.
 
 ## Inbox
-- 2026-11-06 from Fir: mixed ablation `darshan_pm1_E_mixed_tamia` checkpoint-200 copied to Fir and a Fir chain (2778742–45) races TamIA's 671700–702; the Fir watcher cancels whichever chain starts second.
+- 2026-11-06 from Fir: mixed ablation `darshan_pm1_E_mixed_tamia` checkpoint-200 copied to Fir and a Fir chain (2778742–45) races TamIA's 671700–702; the Fir watcher cancels whichever chain starts second. Update 21:24 EST: Fir won (2779656), TamIA 674249–51 cancelled; checkout `tar_reason_pm` at detached 195b203.
 - 2026-11-06 from Fir: Fir session submitted the E-450 mixed-critique ablation here (671699–671702, `darshan_pm1_E_mixed_tamia`, 4 × 12 h, `bash_tamia_promptmix.sh` via `submit_E_critique_ablation.sh`); checkout `tar_reason_pm` moved to detached f05c876.
 - 2026-11-05 from Fir: Fir session submitted 9 official-eval jobs here (669593–669601, `bench_gE450_*`, Gemma-12B E-twin checkpoint-450 via LORA_PATH under `$SCRATCH/tar_reason/kept/`); checkout `tar_reason_pm` moved to detached 1f80f2b.
 - 2026-10-28 from Fir: the Fir session is using TamIA (via ssh from Fir, user's request) for jeet's official eval pipeline on the AlphaGRPO-on-Tar model: new dirs `$SCRATCH/{benchmarks,hf_home,envs/genai_judge,tar_reason/results_jeet,watch/bench_setup}`, `$SCRATCH/git/t2v_metrics`, `~/envs/genai_judge` symlink, launcher `scripts/eval/bench_official_tamia.sh`, jobs named `bench_jeet`; please leave them alone. Delete this line once read.
