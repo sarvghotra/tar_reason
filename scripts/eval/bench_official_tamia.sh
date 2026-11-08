@@ -100,6 +100,7 @@ set -uo pipefail
 # (official_judges_tamia.sh), which needs only the images.)
 case "${CC_CLUSTER:-}:$(hostname -f 2>/dev/null || hostname)" in
   rorqual:*) P_SCRATCH=/scratch/dars11; P_REPO=${P_SCRATCH}/git/tar_reason; P_ENVS=/home/dars11/envs ;;   # GenAI judging only (rorqual_genai_judges.sh stages GENAI_PY / T2V_DIR / HF_HOME on node-local disk)
+  fir:*)   P_SCRATCH=/scratch/dars11; P_REPO=${P_SCRATCH}/git/tar_reason; P_ENVS=/home/dars11/envs ;;   # GenEval2 + TIIF (2026-11-08; benchmarks + Qwen2.5-VL-7B copied from Rorqual)
   *nibi*) P_SCRATCH=/scratch/dars11; P_REPO=${P_SCRATCH}/git/tar_reason; P_ENVS=/home/dars11/envs ;;
   *)      P_SCRATCH=/scratch/d/dars11; P_REPO=${P_SCRATCH}/git/tar_reason_pm; P_ENVS=/home/d/dars11/envs ;;
 esac
