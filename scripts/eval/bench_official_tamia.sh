@@ -104,7 +104,9 @@ case "${CC_CLUSTER:-}:$(hostname -f 2>/dev/null || hostname)" in
   *nibi*) P_SCRATCH=/scratch/dars11; P_REPO=${P_SCRATCH}/git/tar_reason; P_ENVS=/home/dars11/envs ;;
   *)      P_SCRATCH=/scratch/d/dars11; P_REPO=${P_SCRATCH}/git/tar_reason_pm; P_ENVS=/home/d/dars11/envs ;;
 esac
-GEN_ONLY=${GEN_ONLY:-0}
+# TIIF: images only by default (user 2026-11-08: no more non-standard Qwen2.5-VL-7B judging); score them with the
+# standard Qwen2.5-VL-72B judge in official_judges_tamia.sh. TIIF_7B_JUDGE=1 restores the in-job 7B judge.
+if [ "${BENCH:-}" = tiif ] && [ "${TIIF_7B_JUDGE:-0}" != 1 ]; then GEN_ONLY=${GEN_ONLY:-1}; else GEN_ONLY=${GEN_ONLY:-0}; fi
 REPO=${P_REPO}
 MODELS=${P_SCRATCH}/models/tar
 BENCH_DIR=${P_SCRATCH}/benchmarks
