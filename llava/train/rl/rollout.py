@@ -186,6 +186,12 @@ class Node:
     reward_txt: float = 0.0              # critique-level reward (--critique_break_weight)
     adv: float = 0.0                     # advantage of the image tokens
     adv_txt: float = 0.0                 # advantage of the reflection tokens (== adv unless M > 1)
+    # --critique_reward (critique_reward.py): the critique/stop reward of an own critique and its
+    # normalised advantage (added, times --critique_reward_coef, to adv_txt).
+    crit_reward: Optional[float] = None
+    adv_c: float = 0.0
+    crit_recall: Optional[float] = None
+    crit_fa: Optional[float] = None
 
     def ancestors(self) -> List["Node"]:
         chain, n = [], self

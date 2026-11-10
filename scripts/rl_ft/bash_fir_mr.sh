@@ -27,7 +27,7 @@
 #   cancel:  scancel --name=darshan_mr_fir --user=$USER
 
 REPO=${REPO:-/home/dars11/scratch/git/tar_reason}   # override to run from another checkout (e.g. the tar_reason_v2 worktree)
-MODELS=/home/dars11/scratch/models/tar
+MODELS=${MODELS:-/home/dars11/scratch/models/tar}   # read-only inputs; another Fir user (Xiaofeng, 2026-11-10) reads them via ACLs
 DATA=/home/dars11/scratch/data/geneval2_50K_v2
 TRAIN_JSONL=${TRAIN_JSONL:-${DATA}/evaluation_metadata_shuf_train.jsonl}
 VAL_JSONL=${VAL_JSONL:-${DATA}/evaluation_metadata_shuf_val800.jsonl}
@@ -133,8 +133,8 @@ ORACLE_FAIL_THRESHOLD=0.5
 
 BREAK_WEIGHT=2.0
 DRAFT_REWARD=${DRAFT_REWARD:-children_r1}  # every draft judged after one refinement (chain depths differ)
-STOP_PENALTY=0.5
-STOP_THRESHOLD=0.8
+STOP_PENALTY=${STOP_PENALTY:-0.5}
+STOP_THRESHOLD=${STOP_THRESHOLD:-0.8}
 MIN_REFINES=0
 REFINE_RESAMPLE_TRIES=3
 
@@ -158,8 +158,10 @@ DATASET_SEED=$(( ${DATASET_SEED:-$(( $(printf "%s" "$RUN_NAME" | cksum | cut -d"
 cd ${REPO}
 mkdir -p output_dir/slurm_logs
 [ -f "${VAL_JSONL}" ] || { echo "Validation file not found: ${VAL_JSONL}" >&2; exit 1; }
-[ -x "${JUDGE_PY}" ] || { echo "Judge env not found: ${JUDGE_PY}" >&2; exit 1; }
-[ -z "${VAL_JUDGE_PY}" ] || [ -x "${VAL_JUDGE_PY}" ] || { echo "Validation judge env not found: ${VAL_JUDGE_PY}" >&2; exit 1; }
+# With STAGE_LOCAL=1 the envs come from ENV_ARCHIVE, so /home/dars11/envs need not be readable (other users).
+[ "${STAGE_LOCAL}" = 1 ] || [ -x "${JUDGE_PY}" ] || { echo "Judge env not found: ${JUDGE_PY}" >&2; exit 1; }
+[ "${STAGE_LOCAL}" = 1 ] || [ -z "${VAL_JUDGE_PY}" ] || [ -x "${VAL_JUDGE_PY}" ] || { echo "Validation judge env not found: ${VAL_JUDGE_PY}" >&2; exit 1; }
+[ "${STAGE_LOCAL}" = 1 ] || [ "$(id -un)" = dars11 ] || { echo "STAGE_LOCAL=0 uses /home/dars11/envs: dars11 only" >&2; exit 1; }
 mkdir -p "$LOCAL_DIR"
 [ -f "$DATA_PATH" ] || printf 'datasets:\n    - json_path:\n      - %s\n      ratio: 1\n' "${TRAIN_JSONL}" > "$DATA_PATH"
 [ -f "$VAL_DATA_PATH" ] || printf 'datasets:\n    - json_path:\n      - %s\n      ratio: 1\n' "${VAL_JSONL}" > "$VAL_DATA_PATH"

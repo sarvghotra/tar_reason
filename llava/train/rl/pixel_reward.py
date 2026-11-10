@@ -88,6 +88,35 @@ class PixelVQAReward:
                     time.sleep(2.0 * (attempt + 1))
         raise RuntimeError(f"reward server {self.url} unreachable: {last}")
 
+    def critique_mentions(self, items: List[dict], per_request: int = 16) -> List[List[float]]:
+        """--critique_reward full: for each item {"prompt", "critique", "vqa": [[q, a], ...]}, the judge's
+        P(the critique names that check) per question, text only (pixel_reward_server.py
+        /critique_mentions)."""
+        out: List[List[float]] = []
+        for r0 in range(0, len(items), per_request):
+            chunk = items[r0:r0 + per_request]
+            body = json.dumps({"items": chunk}).encode()
+            last = None
+            for attempt in range(self.retries):
+                req = urllib.request.Request(f"{self.url}/critique_mentions", data=body,
+                                             headers={"Content-Type": "application/json"}, method="POST")
+                try:
+                    with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                        got = json.loads(r.read())["mentions"]
+                    break
+                except urllib.error.HTTPError as e:
+                    raise RuntimeError(f"reward server {e.code}: {e.read().decode()[:500]}") from e
+                except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+                    last = e
+                    if attempt + 1 < self.retries:
+                        time.sleep(2.0 * (attempt + 1))
+            else:
+                raise RuntimeError(f"reward server {self.url} unreachable: {last}")
+            assert len(got) == len(chunk) and all(len(g) == len(it["vqa"]) for g, it in zip(got, chunk)), \
+                "reward server returned a mismatched mention shape"
+            out.extend(got)
+        return out
+
     # -- scoring --------------------------------------------------------------
 
     def score_images(self, codes: Sequence[Sequence[int]],

@@ -17,6 +17,9 @@ Per optimizer step, each rank:
                     = +stop_reward / -stop_reward   ("looks good", --stop_reward > 0:
                       parent passes every question / fails one)
                                                             ("looks good")
+     + with --critique_reward stop | full, a critique/stop reward on the policy's own
+       critique tokens (critique_reward.py), normalised among siblings and added
+       to their advantage times --critique_reward_coef,
   3. normalises rewards within groups (drafts of a prompt / children of a node),
   4. takes a clipped policy-gradient step on the LoRA adapters with a KL penalty
      to the frozen base (adapters disabled).
@@ -51,6 +54,8 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from llava.train.rl.critique_reward import (CRITIQUE_REWARDS, add_critique_advantages, assign_critique_rewards,
+                                            finalize_critique_stats)
 from llava.train.rl.dataset import GenEval2PromptDataset
 from llava.train.rl.grpo import KIND_NONE, GRPOConfig, grpo_loss, masked_token_logprobs, normalize_groups
 from llava.train.rl.oracle_critique import SKILL_ORDER, oracle_critique
@@ -154,6 +159,17 @@ def parse_args():
                         "minus it otherwise.")
     p.add_argument("--stop_oracle_reward", type=float, default=0.2,
                    help="Magnitude R of the --stop_reward oracle reward (+R / -R).")
+    p.add_argument("--critique_reward", default="none", choices=CRITIQUE_REWARDS,
+                   help="Extra reward on the policy's own critique tokens (llava/train/rl/critique_reward.py; "
+                        "stage-3 end-to-end RL, 2026-11-10). stop: +1 for the right stop decision (\"looks good\" "
+                        "iff the parent passes every question), -1 otherwise. full: the same, except that editing a "
+                        "failing parent earns recall(failed checks named) - --critique_fa_beta * false alarms "
+                        "(passed checks named), judged text-only by the reward server. Normalised within the "
+                        "parent's siblings and added to the critique tokens' advantage times --critique_reward_coef.")
+    p.add_argument("--critique_reward_coef", type=float, default=0.25,
+                   help="lambda: critique tokens train with adv + lambda * adv_critique.")
+    p.add_argument("--critique_fa_beta", type=float, default=0.5,
+                   help="--critique_reward full: weight of the false-alarm term.")
     p.add_argument("--train_drafts", action=argparse.BooleanOptionalAction, default=True,
                    help="--no-train_drafts drops the round-0 image tokens from the loss. "
                         "With branch[0]=1 a draft's advantage is 0 anyway, but its tokens "
@@ -1183,6 +1199,11 @@ def main():
     assert args.images_per_critique >= 1
     assert args.images_per_critique == 1 or args.critique_source == "policy", \
         "--images_per_critique > 1 needs sampled critiques (--critique_source policy)"
+    assert args.critique_reward == "none" or (args.images_per_critique == 1 and args.group == "parent"
+                                              and args.critique_source in ("policy", "mixed")), \
+        "--critique_reward needs --images_per_critique 1, --group parent and own critiques (policy | mixed)"
+    assert args.critique_reward != "full" or args.reward_kind == "pixel", \
+        "--critique_reward full needs the pixel judge (--reward_kind pixel) for its text-only mention calls"
     rollout = TreeRollout(tokenizer, rcfg, image_start_id, num_image_tokens, device)
     if args.merged_rollout:
         if args.reward_kind != "pixel":
@@ -1348,6 +1369,10 @@ def main():
                    stop_reward=args.stop_reward, critique_break_weight=args.critique_break_weight,
                    stop_oracle_reward=args.stop_oracle_reward)
         adv_counts = assign_advantages(batch, args, gcfg)
+        crit_sums = {}
+        if args.critique_reward != "none":
+            crit_sums = assign_critique_rewards(batch, args, reward)
+            crit_sums.update(add_critique_advantages(batch, args, gcfg))
         t2 = time.time()
         train_metrics = train_on_tree(model, rollout, batch, args, gcfg, optimizer, scheduler, device)
         t3 = time.time()
@@ -1362,6 +1387,10 @@ def main():
             if args.chain_siblings > 0:
                 for kk, v in reduce_sum(chain_stats(batch, rollout.cfg.num_rounds), device).items():
                     metrics[kk] = v
+            if args.critique_reward != "none":
+                keys = ["crit/n", "crit/reward_sum", "crit/stop_correct", "crit/n_edit_fail", "crit/recall_sum",
+                        "crit/fa_sum", "crit/groups", "crit/zero_var", "crit/abs_adv_sum", "crit/adv_n"]
+                metrics.update(finalize_critique_stats(reduce_sum({k: crit_sums.get(k, 0.0) for k in keys}, device)))
             if args.images_per_critique > 1:
                 metrics["train/frac_zero_adv_critique_groups"] = (
                     sums["train/adv_zero_var_crit"] / max(sums["train/adv_groups_crit"], 1.0))

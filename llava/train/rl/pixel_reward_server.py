@@ -39,6 +39,8 @@ Protocol (JSON over HTTP, one connection per request):
     GET  /health -> {"ok": true, "model": ..., "model_type": ..., "answer_suffix": ...}
     POST /score  <- {"images": [{"png_b64": str, "vqa": [[question, answer], ...]}, ...]}
                  -> {"per_question": [[float, ...], ...]}
+    POST /critique_mentions <- {"items": [{"prompt": str, "critique": str, "vqa": [[q, a], ...]}, ...]}
+                            -> {"mentions": [[P(critique names check q), ...], ...]}   (text only)
 """
 
 import argparse
@@ -112,6 +114,16 @@ JUDGE_PROFILES = {
 DEFAULT_PROFILE = dict(template_kwargs={}, soft_tokens=False, prefix_share=False, prefix_end=None, mrope=False,
                        nested_images=False)
 QUESTION_PLACEHOLDER = "@@QUESTION@@"
+
+# POST /critique_mentions (--critique_reward full in train_grpo.py, 2026-11-10): text only, no image. For every
+# (critique, question) pair: does the critique say the image fails that check, or ask for a change that would make it
+# pass? Score = P(yes) / (P(yes) + P(no)) at the first answer token.
+MENTION_TEMPLATE = (
+    "A text-to-image model drew an image for this prompt:\n\"{prompt}\"\n\n"
+    "It then wrote this critique of its own image:\n\"{critique}\"\n\n"
+    "One check for the image is the question \"{question}\", whose correct answer is \"{answer}\".\n"
+    "Does the critique say that the image fails this check, or ask for a change meant to make the image pass it? "
+    "Answer yes or no.")
 
 
 def parse_args():
@@ -277,6 +289,41 @@ class Judge:
                 out[i][slot] = float(probs[j, ids].sum()) if ids else 0.0
         return out
 
+    @torch.inference_mode()
+    def score_yesno(self, texts):
+        """Text-only rows -> P(yes) / (P(yes) + P(no)) at the first answer token."""
+        tok = self.processor.tokenizer
+        if not hasattr(self, "_yes_no_ids"):
+            def firsts(words):
+                return sorted({tok.encode(w, add_special_tokens=False)[0] for w in words} - {self._space_id})
+            self._yes_no_ids = (firsts(["Yes", "yes"]), firsts(["No", "no"]))
+        yes, no = self._yes_no_ids
+        out = []
+        for start in range(0, len(texts), self.batch_size):
+            chunk = texts[start:start + self.batch_size]
+            messages = [[{"role": "user", "content": [{"type": "text", "text": t}]}] for t in chunk]
+            inputs = self._template_inputs(messages).to(self.device)
+            logits = self.model(**inputs, logits_to_keep=1).logits[:, -1, :].float()
+            cap = getattr(self.model.config.get_text_config(), "final_logit_softcapping", None)
+            if cap is not None:
+                logits = torch.tanh(logits / cap) * cap
+            probs = torch.softmax(logits, dim=-1)
+            py, pn = probs[:, yes].sum(-1), probs[:, no].sum(-1)
+            out.extend((py / (py + pn).clamp(min=1e-12)).tolist())
+        return out
+
+    def critique_mentions(self, items):
+        rows, owners = [], []
+        for i, it in enumerate(items):
+            for slot, (question, answer) in enumerate(it["vqa"]):
+                rows.append(MENTION_TEMPLATE.format(prompt=it["prompt"], critique=it["critique"].strip(),
+                                                    question=question, answer=answer))
+                owners.append((i, slot))
+        out = [[0.0] * len(it["vqa"]) for it in items]
+        for (i, slot), p in zip(owners, self.score_yesno(rows) if rows else []):
+            out[i][slot] = p
+        return out
+
     def _split_template(self, image):
         """(prefix text, suffix template) of one row, split right after the
         image tokens; the suffix holds QUESTION_PLACEHOLDER."""
@@ -420,6 +467,26 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": f"no such path: {self.path}"})
 
     def do_POST(self):
+        if self.path.rstrip("/") == "/critique_mentions":
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                items = json.loads(self.rfile.read(n))["items"]
+            except Exception as e:
+                self._send(400, {"error": f"{type(e).__name__}: {e}"})
+                return
+            try:
+                t0 = time.time()
+                with self.server.lock:
+                    mentions = self.server.judge.critique_mentions(items)
+                if self.server.verbose:
+                    print(f"[reward] {len(items)} critiques / {sum(len(it['vqa']) for it in items)} mention checks "
+                          f"in {time.time() - t0:.1f}s", flush=True)
+                self._send(200, {"mentions": mentions})
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                self._send(500, {"error": f"{type(e).__name__}: {e}"})
+            return
         if self.path.rstrip("/") != "/score":
             self._send(404, {"error": f"no such path: {self.path}"})
             return
