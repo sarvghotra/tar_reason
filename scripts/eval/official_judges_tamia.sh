@@ -39,6 +39,12 @@ case "${CC_CLUSTER:-}:$(hostname -f 2>/dev/null || hostname)" in
     REPO=/scratch/dars11/git/tar_reason; BENCH_DIR=${BENCH_DIR:-/scratch/dars11/benchmarks}; export HF_HOME=${HF_HOME:-/scratch/dars11/hf_home}
     VLLM_ENV=/nonexistent; CLIPT5_ENV=${CLIPT5_ENV:-$HOME/envs/clipt5_judge}; SUM_ENV=${CLIPT5_ENV}; STATS_ENV=${CLIPT5_ENV}
     T2V_CLIPT5=${T2V_CLIPT5:-/scratch/dars11/git/t2v_metrics_clipt5}; T2V_FORK=${T2V_FORK:-/scratch/dars11/git/t2v_metrics_jeet} ;;
+  fir:*)    # Fir (2026-11-09, TIIF only): Qwen2.5-VL-72B snapshot copied from TamIA as real files; vllm_judge = vLLM 0.32.0
+            # (TamIA's version) on uv Python 3.12, built on the login node. Summary scripts need pandas<3 (3.x dropped
+            # applymap): qwen_judge has pandas 2.3.3 + openpyxl. No GenAI judge env here.
+    REPO=/scratch/dars11/git/tar_reason; BENCH_DIR=/scratch/dars11/benchmarks; export HF_HOME=/scratch/dars11/hf_home
+    VLLM_ENV=$HOME/envs/vllm_judge; CLIPT5_ENV=/nonexistent; SUM_ENV=$HOME/envs/qwen_judge; STATS_ENV=$HOME/envs/tar
+    T2V_CLIPT5=/nonexistent; T2V_FORK=/nonexistent ;;
   *nibi*)   # Nibi: /scratch/dars11, envs in ~/envs (clipt5_judge also serves the summaries + stats: pandas, openpyxl, matplotlib)
     REPO=/scratch/dars11/git/tar_reason; BENCH_DIR=/scratch/dars11/benchmarks; export HF_HOME=/scratch/dars11/hf_home
     VLLM_ENV=$HOME/envs/vllm_judge; CLIPT5_ENV=$HOME/envs/clipt5_judge; SUM_ENV=$HOME/envs/vllm_judge; STATS_ENV=$HOME/envs/vllm_judge   # vllm_judge also has pandas/openpyxl/matplotlib
