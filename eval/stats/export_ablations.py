@@ -27,6 +27,7 @@ JUDGES = {"GenEval2": "Qwen3-VL-8B (soft-TIFA)", "TIIF": "Qwen2.5-VL-72B", "GenA
 
 # file name -> [(checkpoint step, eval label, benchmarks)]
 EXPERIMENTS = {
+    "ours_E450": [(450, "darshan_pm1_E_450", ["GenEval2", "TIIF"])],   # reference (our own Mila eval, 2026-10-24)
     "abl1_policy": [(200, "darshan_pm1_E_policy_200", ["GenEval2", "TIIF"]),
                     (450, "darshan_pm1_E_policy_450", ["GenEval2", "TIIF"])],
     "abl2_mixed": [(450, "darshan_pm1_E_mixed_450", ["GenEval2", "TIIF"])],
@@ -68,6 +69,9 @@ LOADERS = {"GenEval2": load_geneval2, "TIIF": load_tiif, "GenAI": load_genai}
 
 def rows_for(exp, step, label, bench, root):
     d = Path(root) / BENCH_DIRS[bench] / FOLDER.format(label=label)
+    if not any(d.glob("seed_*")):
+        print(f"[skip] {exp} {step} {bench}: no seed_* under {d}")
+        return []
     runs = LOADERS[bench](d)
     if not runs:
         print(f"[skip] {exp} {step} {bench}: no seeds under {d}")
