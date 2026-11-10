@@ -49,7 +49,7 @@ export CRITIQUE_SOURCE=policy STOP_PENALTY=0
 export EXTRA_ARGS="--critique_reward ${CRITIQUE_REWARD} --critique_reward_coef ${LAMBDA:-0.25} --critique_fa_beta ${BETA:-0.5} --save_total_limit 100"
 N_JOBS=${N_JOBS:-$([ "${SMOKE:-0}" = 1 ] && echo 1 || echo 3)}
 mkdir -p output_dir/slurm_logs
-COMMON=(--export=ALL --exclude=fc10212 --account=${ACCOUNT:-rrg-bengioy-ad_gpu} "${SB[@]}" -J ${RUN_NAME}
+COMMON=(--export=ALL --exclude=fc10212 --account=${ACCOUNT:-rrg-bengioy-ad_gpu} "${SB[@]}" -J ${JOB_NAME:-${RUN_NAME}}
         -o $REPO/output_dir/slurm_logs/%x_%j.out -e $REPO/output_dir/slurm_logs/%x_%j.err)
 PREV=$(sbatch --parsable "${COMMON[@]}" ${AFTER:+--dependency=afterany:${AFTER}} scripts/rl_ft/bash_fir_mr.sh); IDS=$PREV
 for i in $(seq 2 ${N_JOBS}); do PREV=$(sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} scripts/rl_ft/bash_fir_mr.sh); IDS="$IDS $PREV"; done

@@ -10,6 +10,8 @@ Written 2026-11-10 (Darshan) for Xiaofeng, who runs B on Fir. A runs on Fir unde
    `SMOKE=1 CRITIQUE_REWARD=full bash scripts/rl_ft/submit_e2e_fir.sh`
 3. The run (4 nodes, 3 chained 24 h jobs on `rrg-bengioy-ad_gpu`; it resumes on its own):
    `CRITIQUE_REWARD=full bash scripts/rl_ft/submit_e2e_fir.sh`
+   Shorter jobs often start much sooner on Fir: `TIME=11:59:00 N_JOBS=5` (5 × 12 h) instead of the default 3 × 24 h.
+   Check with `squeue -u $USER --start`.
 4. Check step 0 (the first eval, before training starts). `val/am_upto_3` should be ≈ 0.826 and `val_promptmix/am_upto_3` ≈ 0.792
    (jeet's t4 numbers). If they are far off, stop and ping Darshan.
 
