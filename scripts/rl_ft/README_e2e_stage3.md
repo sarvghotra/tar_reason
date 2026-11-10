@@ -65,7 +65,7 @@ Everything else is run 1's recipe (`scripts/rl_ft/bash_fir_mr.sh`):
 - **Start model.** Base and KL reference are `models/tar/sft/darshan_E450_orc500_crisft_t4_merged`, i.e. run 1 step 500
   merged plus jeet's t4 adapter, merged.
 - **Evals.** Depth-4 chains with own and oracle critiques, on GenEval2 val800 and promptmix val_800, at step 0 and
-  every 50 steps.
+  every 100 steps.
 - **Reproduction check.** Step 0 also checks that our code reproduces jeet's t4 numbers: val800 / promptmix own
   `am_final` at depth 3 = 0.826 / 0.792. Compare these with `val/am_upto_3` and `val_promptmix/am_upto_3`.
 

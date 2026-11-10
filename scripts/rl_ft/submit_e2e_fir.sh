@@ -11,7 +11,8 @@
 #   Run A (Fir, Darshan): CRITIQUE_REWARD=stop  -> +1 / -1 for the right / wrong stop decision.
 #   Run B (Xiaofeng):     CRITIQUE_REWARD=full  -> as A, but editing a failing image earns recall - 0.5 * false alarms
 #                                                  (checks named by the critique, judged text-only by Qwen3-VL-8B).
-#   Evals: depth-4 MDP chains (own + oracle) on GenEval2 val800 + promptmix val_800 at step 0 and every 50 steps.
+#   Evals: depth-4 MDP chains (own + oracle) on GenEval2 val800 + promptmix val_800 at step 0 and every 100 steps.
+#   Fir or Rorqual (same paths and account; the launcher is picked by cluster).
 #   Step 0 doubles as the check that our code reproduces jeet's t4 numbers (his d3: val800 own am_final 0.826,
 #   promptmix 0.792 = our val/am_upto_3).
 #
@@ -38,7 +39,7 @@ if [ "${SMOKE:-0}" = 1 ]; then
   SB=(--nodes=1 --time=01:00:00)
 else
   RUN_NAME=${RUN_NAME:-$( [ "$(id -un)" = dars11 ] && echo darshan || id -un )_e2e_${CRITIQUE_REWARD}_fir}
-  export MAX_STEPS=${MAX_STEPS:-500} EVAL_STEPS=${EVAL_STEPS:-50} SAVE_STEPS=${SAVE_STEPS:-10}
+  export MAX_STEPS=${MAX_STEPS:-500} EVAL_STEPS=${EVAL_STEPS:-100} SAVE_STEPS=${SAVE_STEPS:-10}   # evals every 100 (user, 2026-11-10)
   SB=(--nodes=${NODES:-4} --time=${TIME:-23:59:00})
 fi
 mkdir -p output_dir/${RUN_NAME}
@@ -49,8 +50,10 @@ export CRITIQUE_SOURCE=policy STOP_PENALTY=0
 export EXTRA_ARGS="--critique_reward ${CRITIQUE_REWARD} --critique_reward_coef ${LAMBDA:-0.25} --critique_fa_beta ${BETA:-0.5} --save_total_limit 100"
 N_JOBS=${N_JOBS:-$([ "${SMOKE:-0}" = 1 ] && echo 1 || echo 3)}
 mkdir -p output_dir/slurm_logs
-COMMON=(--export=ALL --exclude=fc10212 --account=${ACCOUNT:-rrg-bengioy-ad_gpu} "${SB[@]}" -J ${JOB_NAME:-${RUN_NAME}}
+if [[ "${CC_CLUSTER:-}" == rorqual* || "$(hostname)" == rorqual* ]]; then LAUNCHER=scripts/rl_ft/bash_rorqual_mr.sh; EXCL=()
+else LAUNCHER=scripts/rl_ft/bash_fir_mr.sh; EXCL=(--exclude=fc10212); fi
+COMMON=(--export=ALL "${EXCL[@]}" --account=${ACCOUNT:-rrg-bengioy-ad_gpu} "${SB[@]}" -J ${JOB_NAME:-${RUN_NAME}}
         -o $REPO/output_dir/slurm_logs/%x_%j.out -e $REPO/output_dir/slurm_logs/%x_%j.err)
-PREV=$(sbatch --parsable "${COMMON[@]}" ${AFTER:+--dependency=afterany:${AFTER}} scripts/rl_ft/bash_fir_mr.sh); IDS=$PREV
-for i in $(seq 2 ${N_JOBS}); do PREV=$(sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} scripts/rl_ft/bash_fir_mr.sh); IDS="$IDS $PREV"; done
+PREV=$(sbatch --parsable "${COMMON[@]}" ${AFTER:+--dependency=afterany:${AFTER}} ${LAUNCHER}); IDS=$PREV
+for i in $(seq 2 ${N_JOBS}); do PREV=$(sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} ${LAUNCHER}); IDS="$IDS $PREV"; done
 echo "submitted ${N_JOBS} job(s): ${IDS} (${RUN_NAME}, critique_reward=${CRITIQUE_REWARD}, base=${BASE})"
