@@ -2,7 +2,10 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-11-11 04:30 EST)
+## Now (2026-11-11 14:30 EST)
+- **2026-11-11 14:30 EST: run A 3-way race from checkpoint-125** (same RUN_NAME `darshan_e2e_stop_fir`): Fir 12 h 3445357–58 (+ held 3 h 3271265–79; **all Fir partitions DOWN since ~13:00 EST**; Fir outage from Tue 11-17 09:00 EST), Rorqual 26383037–39 (est. slipped 05:35 → 22:00 EST: 63/66 nodes busy, 6 higher-priority jobs ahead), **TamIA 687866–68** (`aip-agrawal`, probe est. ~15:20 EST; start model + checkpoint-125 copied, sha256 / data md5 ok, val.yaml paths rewritten to /home/d/dars11; checkout 7e05d65 with regenerated `bash_tamia_mr.sh`). `watchers/race_e2eA_3way.sh` cancels the two losers. Xiaofeng's run B `xiaofeng_e2e_full_fir` (5 × 12 h, 3301630–34) is queued on Fir (smoke 3301629 done 11-10).
+
+## Earlier (2026-11-11 04:30 EST)
 - **2026-11-11 04:30 EST: run A moved to Rorqual (user).** On Fir: 3271262 TIMEOUT (step 55), 3271263 hung (NCCL allreduce timeout at step ~71, FAILED), 3271264 TIMEOUT at step 125 (evals 0 and 100 in runs.md); 3271265 then pending 16 h (Priority, est. kept slipping) → Fir chain 3271265–79 **held** (`scontrol hold`; release or cancel later), checkpoint-125 + val.yaml copied to Rorqual (sha256 ok), **Rorqual chain 26383037–39** (3 × 12 h, `RUN_NAME=darshan_e2e_stop_fir` unchanged → same wandb id and dataset seed, `JOB_NAME=darshan_e2e_stop_rq`, checkout 10578e9), probe said start ~05:35 EST. Logs on Rorqual `output_dir/slurm_logs/darshan_e2e_stop_rq_*.out`. User: run to step 200, then decide (draft am_0 drifting: val800 0.797 → 0.745 at step 100).
 - **Qualitative teaser (user, 2026-11-10):** E-450 seed-13 trajectories copied from Mila to `/scratch/dars11/teaser_src/`; candidates ranked (`~/scratch/git/teaser_figure/`, contact sheet https://claude.ai/artifact/Q7TWyo1hkEcLXau5FKZAY9); user picked A-00348 (bookends) + G-00103 (pink cows) → `teaser_figure/qualitative_teaser.{tex,pdf}`, not yet in the paper repo.
 
