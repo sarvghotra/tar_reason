@@ -27,7 +27,7 @@ export PATH=$PATH:/opt/software/slurm/bin
 export REPO=$(cd "$(dirname "$0")/../.." && pwd)
 cd $REPO
 S=/home/dars11/scratch
-[[ "${CC_CLUSTER:-}" == tamia* || "$(hostname)" == tamia* ]] && S=/home/d/dars11/scratch   # TamIA: extra d/ level
+[[ "${CC_CLUSTER:-}" == tamia* || "$(hostname)" == tamia* ]] && S=/scratch/d/dars11   # TamIA: extra d/ level (real path, so other users need no access to /home/d/dars11)
 BASE=${BASE:-$S/models/tar/sft/darshan_E450_orc500_crisft_t4_merged}
 for f in $BASE/merged_from.json $S/stage/envs_tar_qwenjudge.tar.zst $S/models/vlm/Qwen3-VL-8B-Instruct/config.json \
          $S/data/promptmix/train_17K.jsonl $S/data/promptmix/val_800.jsonl $S/data/geneval2_50K_v2/evaluation_metadata_shuf_val800.jsonl; do

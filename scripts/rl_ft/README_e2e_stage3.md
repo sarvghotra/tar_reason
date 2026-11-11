@@ -98,6 +98,26 @@ CRITIQUE_REWARD=full bash scripts/rl_ft/submit_e2e_fir.sh           # the run: 4
   Use the same project as A (`tar_reasoning`) or your own.
 - **Settings.** Don't change them without telling Darshan and jeet. A and B should differ only in `CRITIQUE_REWARD`.
 
+### On TamIA instead (added 2026-11-11)
+
+Fir is down and has an outage from Tue 11-17, so B can run on TamIA. The same inputs are on TamIA under
+`/scratch/d/dars11/` (read-only for `xiaofeng`), and `submit_e2e_fir.sh` picks the TamIA launcher by itself. Use your own
+TamIA allocation, `aip-courvill`:
+
+```bash
+cd /scratch/x/xiaofeng   # or wherever you keep code on TamIA
+git clone -b darshan-rl-test git@github.com:sarvghotra/tar_reason.git tar_reason_e2e
+cd tar_reason_e2e
+ACCOUNT=aip-courvill TIME=11:59:00 N_JOBS=5 CRITIQUE_REWARD=full bash scripts/rl_ft/submit_e2e_fir.sh
+squeue -u $USER --start
+```
+
+- **One copy only.** If you also have the Fir chain queued, cancel the one that hasn't started as soon as the other starts
+  (`scancel --name=xiaofeng_e2e_full_fir` on that cluster). Both use the same run name, so they would write two
+  diverging runs.
+- **Run name.** Keep the default `xiaofeng_e2e_full_fir` (the name sets the prompt order; it stays the same on any
+  cluster).
+
 ## What to watch
 
 | wandb key | Meaning |
