@@ -12,7 +12,7 @@
 #   Run B (Xiaofeng):     CRITIQUE_REWARD=full  -> as A, but editing a failing image earns recall - 0.5 * false alarms
 #                                                  (checks named by the critique, judged text-only by Qwen3-VL-8B).
 #   Evals: depth-4 MDP chains (own + oracle) on GenEval2 val800 + promptmix val_800 at step 0 and every 100 steps.
-#   Fir or Rorqual (same paths and account; the launcher is picked by cluster).
+#   Fir, Rorqual (same paths and account) or TamIA (paths with d/, account aip-agrawal); the launcher is picked by cluster.
 #   Step 0 doubles as the check that our code reproduces jeet's t4 numbers (his d3: val800 own am_final 0.826,
 #   promptmix 0.792 = our val/am_upto_3).
 #
@@ -27,6 +27,7 @@ export PATH=$PATH:/opt/software/slurm/bin
 export REPO=$(cd "$(dirname "$0")/../.." && pwd)
 cd $REPO
 S=/home/dars11/scratch
+[[ "${CC_CLUSTER:-}" == tamia* || "$(hostname)" == tamia* ]] && S=/home/d/dars11/scratch   # TamIA: extra d/ level
 BASE=${BASE:-$S/models/tar/sft/darshan_E450_orc500_crisft_t4_merged}
 for f in $BASE/merged_from.json $S/stage/envs_tar_qwenjudge.tar.zst $S/models/vlm/Qwen3-VL-8B-Instruct/config.json \
          $S/data/promptmix/train_17K.jsonl $S/data/promptmix/val_800.jsonl $S/data/geneval2_50K_v2/evaluation_metadata_shuf_val800.jsonl; do
@@ -51,6 +52,7 @@ export EXTRA_ARGS="--critique_reward ${CRITIQUE_REWARD} --critique_reward_coef $
 N_JOBS=${N_JOBS:-$([ "${SMOKE:-0}" = 1 ] && echo 1 || echo 3)}
 mkdir -p output_dir/slurm_logs
 if [[ "${CC_CLUSTER:-}" == rorqual* || "$(hostname)" == rorqual* ]]; then LAUNCHER=scripts/rl_ft/bash_rorqual_mr.sh; EXCL=()
+elif [[ "${CC_CLUSTER:-}" == tamia* || "$(hostname)" == tamia* ]]; then LAUNCHER=scripts/rl_ft/bash_tamia_mr.sh; EXCL=(); ACCOUNT=${ACCOUNT:-aip-agrawal}
 else LAUNCHER=scripts/rl_ft/bash_fir_mr.sh; EXCL=(--exclude=fc10212); fi
 COMMON=(--export=ALL "${EXCL[@]}" --account=${ACCOUNT:-rrg-bengioy-ad_gpu} "${SB[@]}" -J ${JOB_NAME:-${RUN_NAME}}
         -o $REPO/output_dir/slurm_logs/%x_%j.out -e $REPO/output_dir/slurm_logs/%x_%j.err)
