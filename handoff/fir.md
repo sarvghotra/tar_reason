@@ -2,7 +2,10 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-11-11 14:30 EST)
+## Now (2026-11-11 17:30 EST)
+- **2026-11-11 17:30 EST: run A (`darshan_e2e_stop_fir`) RUNNING on TamIA: 687866 since 17:21 EST** (tg10607,10908,11301-11302; log `/home/d/dars11/scratch/git/tar_reason/output_dir/slurm_logs/darshan_e2e_stop_tamia_687866.out`: `resume_from=125`, DATASET_SEED 7360, settings unchanged; chain 687867–68 follows). Fir chains 3445357–58 + 3271265–79 cancelled by `watchers/race_e2eA_3way.sh`. **Rorqual 26383037–39 NOT cancelled yet** (ssh master to Rorqual down since ~15:50 EST; needs the user's MFA login, then `ssh rorqual scancel 26383037 26383038 26383039`). User: run to step 200, then decide (draft am_0 drift). Xiaofeng's run B on TamIA (`aip-courvill`, 687969–72, first held by him): his smoke 687967 and an access check 688014 failed in 1–2 s (cause in his `.err`, not readable to us); every input ACL verified in place, parent dirs now listable too (`watchers/share_xiaofeng_list_tamia.sh`, run by the user).
+
+## Earlier (2026-11-11 14:30 EST)
 - **2026-11-11 14:30 EST: run A 3-way race from checkpoint-125** (same RUN_NAME `darshan_e2e_stop_fir`): Fir 12 h 3445357–58 (+ held 3 h 3271265–79; **all Fir partitions DOWN since ~13:00 EST**; Fir outage from Tue 11-17 09:00 EST), Rorqual 26383037–39 (est. slipped 05:35 → 22:00 EST: 63/66 nodes busy, 6 higher-priority jobs ahead), **TamIA 687866–68** (`aip-agrawal`, probe est. ~15:20 EST; start model + checkpoint-125 copied, sha256 / data md5 ok, val.yaml paths rewritten to /home/d/dars11; checkout 7e05d65 with regenerated `bash_tamia_mr.sh`). `watchers/race_e2eA_3way.sh` cancels the two losers. Xiaofeng's run B `xiaofeng_e2e_full_fir` (5 × 12 h, 3301630–34) is queued on Fir (smoke 3301629 done 11-10).
 
 ## Earlier (2026-11-11 04:30 EST)
