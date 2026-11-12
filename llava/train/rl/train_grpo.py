@@ -263,6 +263,9 @@ def parse_args():
                         "keep proportionally small advantages instead of unit scale.")
     p.add_argument("--clip_eps", type=float, default=0.2)
     p.add_argument("--kl_coef", type=float, default=0.01)
+    p.add_argument("--draft_kl_scale", type=float, default=1.0,
+                   help="Multiplier on the KL term of round-0 (draft) image tokens: >1 anchors the draft to "
+                        "the reference while critiques / refinements train (stage-3 draft drift, 2026-11-12).")
     p.add_argument("--reflect_token_weight", type=float, default=1.0)
     p.add_argument("--num_ppo_epochs", type=int, default=1)
     p.add_argument("--train_micro_batch", type=int, default=2)
@@ -919,7 +922,9 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
             adv = r["adv"].to(device)[:, 1:][sel]
             weight = r["weight"].to(device)[:, 1:][sel]
             kinds = pk[:, 1:][sel]
-            loss, metrics = grpo_loss(logp, old_logps[i], ref_logps[i], adv, weight, kinds, denom, gcfg)
+            draft = r["draft"].to(device)[:, 1:][sel]
+            loss, metrics = grpo_loss(logp, old_logps[i], ref_logps[i], adv, weight, kinds, denom, gcfg,
+                                      draft=draft, draft_kl_scale=args.draft_kl_scale)
             loss.backward()
             w = float(weight.sum())
             for k, v in metrics.items():

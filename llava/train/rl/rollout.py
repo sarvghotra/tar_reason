@@ -544,8 +544,9 @@ class TreeRollout:
                             image_adv_scale: float = 1.0, own_segment_only: bool = False):
         """Right-padded tensors for a list of leaves.
 
-        Returns dict(input_ids, attention_mask, train_mask, pos_kind, adv, weight);
-        adv / weight are per position (zero outside trained segments).
+        Returns dict(input_ids, attention_mask, train_mask, pos_kind, adv, weight, draft);
+        adv / weight are per position (zero outside trained segments); ``draft`` marks
+        the trained round-0 image tokens (for ``--draft_kl_scale``).
         ``train_drafts=False`` leaves the round-0 image out of the train mask:
         a draft with advantage 0 would otherwise still get the KL term, which
         pulls it back toward the reference. ``train_images=False`` leaves every
@@ -566,6 +567,7 @@ class TreeRollout:
         pos_kind = torch.zeros((B, width), dtype=torch.long)
         adv = torch.zeros((B, width), dtype=torch.float32)
         weight = torch.zeros((B, width), dtype=torch.float32)
+        draft = torch.zeros((B, width), dtype=torch.bool)
         for i, leaf in enumerate(leaves):
             L = len(leaf.seq)
             input_ids[i, :L] = torch.tensor(leaf.seq, dtype=torch.long)
@@ -588,5 +590,6 @@ class TreeRollout:
                     train_mask[i, pos] = True
                     adv[i, pos] = node.adv_txt if kind == KIND_TXT else node.adv * image_adv_scale
                     weight[i, pos] = reflect_token_weight if kind == KIND_TXT else 1.0
+                    draft[i, pos] = node.round == 0 and kind == KIND_IMG
         return dict(input_ids=input_ids, attention_mask=attention_mask,
-                    train_mask=train_mask, pos_kind=pos_kind, adv=adv, weight=weight)
+                    train_mask=train_mask, pos_kind=pos_kind, adv=adv, weight=weight, draft=draft)

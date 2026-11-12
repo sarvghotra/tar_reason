@@ -141,12 +141,15 @@ def normalize_groups(rewards: List[float], groups: List[int], cfg: GRPOConfig
 
 def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor,
               adv: torch.Tensor, weight: torch.Tensor, kinds: torch.Tensor,
-              denom: float, cfg: GRPOConfig):
+              denom: float, cfg: GRPOConfig, draft: Optional[torch.Tensor] = None,
+              draft_kl_scale: float = 1.0):
     """Token-level clipped surrogate + KL(policy || ref) estimator.
 
     All inputs are flat (N,) over the trainable tokens of one micro-batch.
     ``denom`` is the total token weight of the whole optimizer step so the
     micro-batch losses sum to a proper weighted mean.
+    ``draft`` (bool, N) marks round-0 image tokens; their KL term is multiplied by
+    ``draft_kl_scale`` (anchors the draft while critiques / refinements train).
     """
     log_ratio = logp - old_logp
     ratio = log_ratio.exp()
@@ -157,7 +160,10 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
     d = ref_logp - logp
     kl = d.exp() - d - 1.0
 
-    tok = weight * (pg + cfg.kl_coef * kl)
+    kl_w = 1.0
+    if draft is not None and draft_kl_scale != 1.0:
+        kl_w = 1.0 + (draft_kl_scale - 1.0) * draft.float()
+    tok = weight * (pg + cfg.kl_coef * kl_w * kl)
     loss = tok.sum() / denom
 
     with torch.no_grad():
@@ -175,4 +181,6 @@ def grpo_loss(logp: torch.Tensor, old_logp: torch.Tensor, ref_logp: torch.Tensor
             "kl_txt": float((kl[txt]).mean()) if txt.any() else 0.0,
             "kl_img": float((kl[img]).mean()) if img.any() else 0.0,
         }
+        if draft is not None:
+            metrics["kl_draft"] = float((kl[draft]).mean()) if draft.any() else 0.0
     return loss, metrics
