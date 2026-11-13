@@ -3,7 +3,12 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-11-03 13:00 EST)
+## Now (2026-11-12)
+- **Table 2a (paper repo, Inbox 11-12) in progress:** GenEval2 Qwen3.5-27B re-scoring of iteration 1 of FLUX / SD3.5-L / Qwen-Image /
+  Janus-Pro-7B / Show-o2 / BAGEL / BLIP3-o (19 seed folders, staged in `$SCRATCH/tar_reason/results_jeet_rescore/GenEval2/`), jobs
+  11679985 → 11680059 (short-unkillable, ~48 min per folder per GPU). Export with `eval/stats/export_system_level.py` into
+  `LatentDCR_cvpr_paper/results/system_level_baselines/` (clone at `~/CODE/LatentDCR/LatentDCR_cvpr_paper`); TIIF-72B / GenAI CLIP rows
+  asked from Fir (Fir Inbox 11-12). Show the user the diff before pushing.
 - **Baseline folders complete for official-judge re-scoring on Nibi** (`$SCRATCH/tar_reason/results_jeet/<bench>/<run>/`; all planned seeds
   scored; srr / Uni-CoT / Emu3 = 1 seed; GenEval2 needs no re-scoring). Updated whenever a (run, bench) completes:
   - TIIF (`tiif-bench-testmini_eval`): showo_n2_showo_512_512px, showo2_n2_showo2_7b_432px, blip3o_n2_blip3o_8b_1024px, bagel_n2_bagel_7b_1024px,
