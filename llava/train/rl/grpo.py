@@ -101,6 +101,54 @@ def masked_token_logprobs(model, input_ids: torch.Tensor, attention_mask: torch.
 
 
 # ---------------------------------------------------------------------------
+# Image anchor: full-distribution KL to the reference on fixed images
+# ---------------------------------------------------------------------------
+
+def _decoder_hidden(model, input_ids, attention_mask):
+    base = model.get_base_model() if hasattr(model, "get_base_model") else model
+    position_ids = attention_mask.long().cumsum(-1) - 1
+    position_ids.masked_fill_(attention_mask == 0, 0)
+    hidden = base.model(input_ids=input_ids, attention_mask=attention_mask, position_ids=position_ids,
+                        use_cache=False, return_dict=True).last_hidden_state
+    return base, hidden
+
+
+def _chunk_img_logp(lm_head, h, img_start, img_end):
+    return torch.log_softmax(lm_head(h)[:, img_start:img_end].float(), dim=-1)
+
+
+def _chunk_anchor_kl(lm_head, h, ref_logp, img_start, img_end):
+    logp = _chunk_img_logp(lm_head, h, img_start, img_end)
+    ref = ref_logp.float()
+    return (ref.exp() * (ref - logp)).sum()
+
+
+@torch.no_grad()
+def anchor_ref_logprobs(model, input_ids, attention_mask, mask, img_start, img_end):
+    """Reference (adapters off) log-probs over the image vocabulary at the positions predicting the
+    ``mask``-ed tokens; a list of fp32 chunks of shape (chunk, n_img) (~190 MB per 729-token draft)."""
+    with model.disable_adapter():
+        base, hidden = _decoder_hidden(model, input_ids, attention_mask)
+        h = hidden[:, :-1][mask[:, 1:]]
+        return [_chunk_img_logp(base.lm_head, hc, img_start, img_end)
+                for hc in h.split(LOGPROB_CHUNK)]
+
+
+def anchor_kl_sum(model, input_ids, attention_mask, mask, ref_chunks, img_start, img_end):
+    """Sum over the ``mask``-ed image positions of KL(ref || policy), each over the full image
+    vocabulary (the support image tokens are sampled from). Teacher-forced on fixed images, so it
+    measures drift of the whole image distribution, not only of the tokens the policy samples now.
+    lm_head runs per chunk under activation checkpointing, as in ``masked_token_logprobs``."""
+    base, hidden = _decoder_hidden(model, input_ids, attention_mask)
+    h = hidden[:, :-1][mask[:, 1:]]
+    total = hidden.sum() * 0.0
+    for hc, rc in zip(h.split(LOGPROB_CHUNK), ref_chunks):
+        total = total + torch.utils.checkpoint.checkpoint(
+            _chunk_anchor_kl, base.lm_head, hc, rc, img_start, img_end, use_reentrant=False)
+    return total
+
+
+# ---------------------------------------------------------------------------
 # Advantages
 # ---------------------------------------------------------------------------
 

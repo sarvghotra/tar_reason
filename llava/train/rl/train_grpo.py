@@ -57,7 +57,8 @@ if REPO_ROOT not in sys.path:
 from llava.train.rl.critique_reward import (CRITIQUE_REWARDS, add_critique_advantages, assign_critique_rewards,
                                             finalize_critique_stats)
 from llava.train.rl.dataset import GenEval2PromptDataset
-from llava.train.rl.grpo import KIND_NONE, GRPOConfig, grpo_loss, masked_token_logprobs, normalize_groups
+from llava.train.rl.grpo import (KIND_NONE, GRPOConfig, anchor_kl_sum, anchor_ref_logprobs, grpo_loss,
+                                 masked_token_logprobs, normalize_groups)
 from llava.train.rl.oracle_critique import SKILL_ORDER, oracle_critique
 from llava.train.rl.pixel_reward import PixelVQAReward
 from llava.train.rl.reward import ANSWER_SUFFIXES, RewardConfig, TarLatentVQAReward
@@ -263,6 +264,15 @@ def parse_args():
                         "keep proportionally small advantages instead of unit scale.")
     p.add_argument("--clip_eps", type=float, default=0.2)
     p.add_argument("--kl_coef", type=float, default=0.01)
+    p.add_argument("--anchor_data", default=None,
+                   help="Image anchor (stage 3, 2026-11-12; jeet's t4 SFT anchor carried into RL): .npz from "
+                        "util_scripts/build_anchor_drafts.py (prompts, codes). Each step adds --anchor_coef x the mean "
+                        "per-token KL(ref || policy), full image vocabulary, teacher-forced on fixed reference drafts.")
+    p.add_argument("--anchor_coef", type=float, default=0.0, help="0 = anchor off")
+    p.add_argument("--anchor_per_step", type=int, default=36, help="anchor drafts per optimizer step, all ranks")
+    p.add_argument("--anchor_micro", type=int, default=2, help="anchor drafts per forward, per rank")
+    p.add_argument("--anchor_passing_only", action="store_true",
+                   help="anchor only on drafts that passed every check")
     p.add_argument("--draft_kl_scale", type=float, default=1.0,
                    help="Multiplier on the KL term of round-0 (draft) image tokens: >1 anchors the draft to "
                         "the reference while critiques / refinements train (stage-3 draft drift, 2026-11-12).")
@@ -873,8 +883,49 @@ def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
 # Training step
 # ---------------------------------------------------------------------------
 
+class DraftAnchor:
+    """Fixed reference drafts for --anchor_data. Each step every rank draws its share with an RNG keyed on
+    (seed, step, rank), so a resumed run draws the same drafts."""
+
+    def __init__(self, path, rollout: TreeRollout, args):
+        import numpy as np
+        d = np.load(path, allow_pickle=True)
+        keep = d["passed"] if args.anchor_passing_only else np.ones(len(d["codes"]), dtype=bool)
+        self.prompts = [str(x) for x in d["prompts"][keep]]
+        self.codes = d["codes"][keep]
+        self.rollout = rollout
+        ws = dist.get_world_size() if dist.is_initialized() else 1
+        self.per_rank = max(1, math.ceil(args.anchor_per_step / ws))
+        self.micro = max(1, args.anchor_micro)
+        self.seed = args.seed
+
+    def rows(self, step: int):
+        import random
+        rank = dist.get_rank() if dist.is_initialized() else 0
+        rng = random.Random(f"{self.seed}-{step}-{rank}")
+        idx = [rng.randrange(len(self.prompts)) for _ in range(self.per_rank)]
+        r = self.rollout
+        for i in range(0, len(idx), self.micro):
+            seqs, spans = [], []
+            for j in idx[i:i + self.micro]:
+                prefix = r.make_prefix(self.prompts[j])
+                img = [r.img_start + int(c) for c in self.codes[j]]
+                seqs.append(prefix + img)
+                spans.append((len(prefix), len(prefix) + len(img)))
+            width = max(len(x) for x in seqs)
+            ids = torch.full((len(seqs), width), r.pad_id, dtype=torch.long)
+            am = torch.zeros((len(seqs), width), dtype=torch.long)
+            mask = torch.zeros((len(seqs), width), dtype=torch.bool)
+            for b, (x, (a, e)) in enumerate(zip(seqs, spans)):
+                ids[b, :len(x)] = torch.tensor(x)
+                am[b, :len(x)] = 1
+                mask[b, a:e] = True
+            yield ids, am, mask
+
+
 def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: GRPOConfig,
-                  optimizer, scheduler, device) -> Dict[str, float]:
+                  optimizer, scheduler, device, anchor: Optional[DraftAnchor] = None,
+                  step: int = 0) -> Dict[str, float]:
     img_start, img_end = rollout.img_start, rollout.img_end
     mdp = rollout.cfg.context_mode == "mdp"
     if mdp:
@@ -930,6 +981,20 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
             for k, v in metrics.items():
                 agg[k] = agg.get(k, 0.0) + v * w
             agg["loss"] = agg.get("loss", 0.0) + float(loss)
+        if anchor is not None:
+            # Image anchor: coef x mean per-token KL(ref || policy) over this rank's anchor drafts (the
+            # all-reduce below averages ranks). Reference log-probs are recomputed per micro-batch.
+            micro = list(anchor.rows(step))
+            n_anchor = sum(int(m[:, 1:].sum()) for _, _, m in micro)
+            kl_total = 0.0
+            for ids, am, m in micro:
+                ids, am, m = ids.to(device), am.to(device), m.to(device)
+                ref_chunks = anchor_ref_logprobs(model, ids, am, m, img_start, img_end)
+                kl_sum = anchor_kl_sum(model, ids, am, m, ref_chunks, img_start, img_end)
+                (args.anchor_coef * kl_sum / max(n_anchor, 1)).backward()
+                kl_total += float(kl_sum)
+                del ref_chunks
+            agg["anchor_kl"] = kl_total / max(n_anchor, 1)
         # Average LoRA grads across ranks.
         params = [p for p in model.parameters() if p.requires_grad]
         if dist.is_initialized():
@@ -945,7 +1010,7 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
         agg["grad_norm"] = float(gnorm)
     optimizer.zero_grad(set_to_none=True)
     for k in list(agg):
-        if k not in ("loss", "grad_norm"):
+        if k not in ("loss", "grad_norm", "anchor_kl"):
             agg[k] /= denom
     agg["train_tokens"] = n_tokens
     return agg
@@ -1269,6 +1334,12 @@ def main():
         vinfo = val_reward.health()
         rank0_print(f"validation judge: {vinfo.get('model')} at {args.val_reward_server_url} "
                     f"(answer_suffix={vinfo.get('answer_suffix')})")
+    anchor = None
+    if args.anchor_coef > 0:
+        assert args.anchor_data, "--anchor_coef needs --anchor_data"
+        anchor = DraftAnchor(args.anchor_data, rollout, args)
+        rank0_print(f"image anchor: {len(anchor.prompts)} drafts from {args.anchor_data}, coef {args.anchor_coef}, "
+                    f"{anchor.per_rank} per rank per step")
     gcfg = GRPOConfig(clip_eps=args.clip_eps, kl_coef=args.kl_coef, adv_norm=args.adv_norm,
                       adv_std_floor=args.adv_std_floor,
                       reflect_token_weight=args.reflect_token_weight)
@@ -1379,7 +1450,8 @@ def main():
             crit_sums = assign_critique_rewards(batch, args, reward)
             crit_sums.update(add_critique_advantages(batch, args, gcfg))
         t2 = time.time()
-        train_metrics = train_on_tree(model, rollout, batch, args, gcfg, optimizer, scheduler, device)
+        train_metrics = train_on_tree(model, rollout, batch, args, gcfg, optimizer, scheduler, device,
+                                      anchor=anchor, step=step)
         t3 = time.time()
 
         if step % args.logging_steps == 0:

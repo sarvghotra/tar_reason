@@ -33,6 +33,7 @@ for f in $BASE/merged_from.json $S/stage/envs_tar_qwenjudge.tar.zst $S/models/vl
          $S/data/promptmix/train_17K.jsonl $S/data/promptmix/val_800.jsonl $S/data/geneval2_50K_v2/evaluation_metadata_shuf_val800.jsonl; do
   [ -s "$f" ] || { echo "missing $f" >&2; exit 1; }
 done
+[ -z "${ANCHOR_COEF:-}" ] || [ -s "${ANCHOR_DATA:-$S/data/anchor/run1_500_drafts_promptmix.npz}" ] || { echo "missing anchor data" >&2; exit 1; }
 grep -q -- '--critique_reward' llava/train/rl/train_grpo.py || { echo "this checkout has no --critique_reward" >&2; exit 1; }
 if [ "${SMOKE:-0}" = 1 ]; then
   RUN_NAME=${RUN_NAME:-e2e_${CRITIQUE_REWARD}_smoke_fir}
@@ -48,10 +49,13 @@ mkdir -p output_dir/${RUN_NAME}
   $S/data/geneval2_50K_v2/evaluation_metadata_shuf_val800.jsonl $S/data/promptmix/val_800.jsonl > output_dir/${RUN_NAME}/val.yaml
 export RUN_NAME PREV_STAGE_CHECKPOINT=$BASE TRAIN_JSONL=$S/data/promptmix/train_17K.jsonl PIXEL_JUDGE=qwen
 export CRITIQUE_SOURCE=policy STOP_PENALTY=0
-export EXTRA_ARGS="--critique_reward ${CRITIQUE_REWARD} --critique_reward_coef ${LAMBDA:-0.25} --critique_fa_beta ${BETA:-0.5} --save_total_limit 100${DRAFT_KL_SCALE:+ --draft_kl_scale ${DRAFT_KL_SCALE}}${NO_EVAL0:+ --no-eval_on_start}"
+export EXTRA_ARGS="--critique_reward ${CRITIQUE_REWARD} --critique_reward_coef ${LAMBDA:-0.25} --critique_fa_beta ${BETA:-0.5} --save_total_limit 100${DRAFT_KL_SCALE:+ --draft_kl_scale ${DRAFT_KL_SCALE}}${NO_EVAL0:+ --no-eval_on_start}${ANCHOR_COEF:+ --anchor_coef ${ANCHOR_COEF} --anchor_data ${ANCHOR_DATA:-$S/data/anchor/run1_500_drafts_promptmix.npz}}"
 # Draft-drift fix test (2026-11-12): A and B both lost ~4-5 pts of draft AM (am_0) by step 100-300 while am_upto_3 stayed
 # flat. DRAFT_REWARD=own (drafts scored on their own image; exported to the launcher) + DRAFT_KL_SCALE=k (KL on round-0
 # image tokens x k). NO_EVAL0=1 skips the step-0 eval (same start model as A: its step-0 numbers apply).
+# Image anchor (2026-11-12, after the draft-KL test failed): ANCHOR_COEF=c adds c x the full-vocab KL(ref || policy) on
+# fixed reference drafts (ANCHOR_DATA, default run 1 step 500's promptmix drafts, util_scripts/build_anchor_drafts.py),
+# the RL version of jeet's t4 SFT image anchor.
 N_JOBS=${N_JOBS:-$([ "${SMOKE:-0}" = 1 ] && echo 1 || echo 3)}
 mkdir -p output_dir/slurm_logs
 if [[ "${CC_CLUSTER:-}" == rorqual* || "$(hostname)" == rorqual* ]]; then LAUNCHER=scripts/rl_ft/bash_rorqual_mr.sh; EXCL=()
