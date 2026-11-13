@@ -4,11 +4,10 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
 ## Now (2026-11-12)
-- **Table 2a (paper repo, Inbox 11-12) in progress:** GenEval2 Qwen3.5-27B re-scoring of iteration 1 of FLUX / SD3.5-L / Qwen-Image /
-  Janus-Pro-7B / Show-o2 / BAGEL / BLIP3-o (19 seed folders, staged in `$SCRATCH/tar_reason/results_jeet_rescore/GenEval2/`), jobs
-  11679985 → 11680059 (short-unkillable, ~48 min per folder per GPU). Export with `eval/stats/export_system_level.py` into
-  `LatentDCR_cvpr_paper/results/system_level_baselines/` (clone at `~/CODE/LatentDCR/LatentDCR_cvpr_paper`); TIIF-72B / GenAI CLIP rows
-  asked from Fir (Fir Inbox 11-12). Show the user the diff before pushing.
+- **Table 2a pushed** to `LatentDCR_cvpr_paper` main (`595302d`, `results/system_level_baselines/`, user OK'd): GenEval2 Qwen3.5-27B
+  (Mila, mirrors `$SCRATCH/tar_reason/results_jeet_rescore/GenEval2/<run>_judge-Qwen3.5-27B/`) + Fir's TIIF-72B / GenAI-1600 rows. To
+  come from Fir: GenAI-800 rows, and CLIP-FlanT5 for Show-o2 13/17/91, BAGEL 17/91, BLIP3-o 13 once the user has rsynced those
+  images to Nibi; then rerun `eval/stats/export_system_level.py --extra_per_seed <Fir CSVs>` and push again.
 - **Baseline folders complete for official-judge re-scoring on Nibi** (`$SCRATCH/tar_reason/results_jeet/<bench>/<run>/`; all planned seeds
   scored; srr / Uni-CoT / Emu3 = 1 seed; GenEval2 needs no re-scoring). Updated whenever a (run, bench) completes:
   - TIIF (`tiif-bench-testmini_eval`): showo_n2_showo_512_512px, showo2_n2_showo2_7b_432px, blip3o_n2_blip3o_8b_1024px, bagel_n2_bagel_7b_1024px,
