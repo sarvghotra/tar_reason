@@ -11,8 +11,8 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
     `darshan_mr_E450_orc_merged500`; generator = his vLLM MDP driver from a frozen copy of his checkout
     (`$SCRATCH/jeet_snapshot/tar_reason_20261113`, 137f9bd + uncommitted diff) in his vllm env; same sampling as his t4 runs.
   - Generation `scripts/eval/t4_gen_mila.sh` -> `$SCRATCH/tar_reason/results_t4/{GenEval++,T2I-CompBench++/<cat>}/iter_adhoc_MDP_n3_E-450_ORC_512px_repeat1_Cric-SFT-t4/seed_13/`:
-    short-unkillable 11693208 -> 09 -> 10 (geneval_pp color shape texture non_spatial complex), main 11693211 (spatial 3d_spatial, 2 GPUs),
-    unkillable 11693212 (numeracy, 1 GPU). Smoke 11692693 OK (vLLM start ~7 min per set).
+    short-unkillable 11693222 -> 23 -> 24 (geneval_pp color shape texture non_spatial complex), main 11693225 (spatial 3d_spatial, 2 GPUs),
+    unkillable 11693227 (numeracy, 1 GPU); any 80 GB GPU (`--constraint=80gb`). 11693222 / 27 started 17:13 EST. Smoke 11692693 OK (vLLM start ~7 min per set).
   - Scoring: `scripts/eval/t4_compbench_score_mila.sh` (official evaluators via `t2icompbench_eval_mila.sh`, env `~/envs/t2icompbench`,
     py3.9 torch 2.0.1 detectron2 5aeb252, all 8 smoke-tested), `scripts/eval/t4_geneval_pp_judge_mila.sh` (`vllm serve` 72B + `eval/geneval_pp_judge.py`).
   - Published comparators collected (GenEval++ only for BAGEL / Janus-Pro / FLUX / BLIP3-o / Qwen-Image / Uni-CoT, GPT-4.1; T2I-CompBench++
