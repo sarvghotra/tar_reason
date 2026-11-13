@@ -84,6 +84,9 @@ for SRC in "${SRC_DIRS[@]}"; do
     for ITER in $(seq 1 $N_ITERS); do
       { echo " "; echo "ITER-${ITER}:"; cat ${SEED_DIR}/${ITER}/eval_log.txt; } >> $LOG_FILE
     done
+    # the summary tables need >= 2 iterations; iteration-1-only mirrors stop at the ITER block
+    # (eval/stats/export_system_level.py computes all-correct from results_geneval2.jsonl)
+    [ $N_ITERS -ge 2 ] || continue
     $TAR_PY ${REPO}/eval/analyze/viz_geneval2_iter_results.py --results-dir ${SEED_DIR} --delta-threshold 0.1 \
       --no_images >> $LOG_FILE || POST_FAILED="$POST_FAILED ${SEED_DIR}"
   done
