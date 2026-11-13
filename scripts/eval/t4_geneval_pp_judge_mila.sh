@@ -42,7 +42,14 @@ export HF_HUB_OFFLINE=1 VLLM_CACHE_ROOT=/network/scratch/s/singhsd/.cache/vllm T
 # jeet's workaround: Triton compiles against a node-local copy of the Python headers
 PY_INC=$(python -c 'import sysconfig; print(sysconfig.get_paths()["include"])')
 LOCAL_PY_INC=/tmp/py_include_judge_${SLURM_JOB_ID:-$$}
-rm -rf ${LOCAL_PY_INC}; cp -r ${PY_INC} ${LOCAL_PY_INC}
+PY_INC_COPY=/network/scratch/s/singhsd/jeet_snapshot/py_include_vllm   # copy of ${PY_INC}: reading his env failed on some nodes
+for TRY in 1 2 3 4 5; do
+  rm -rf ${LOCAL_PY_INC}
+  cp -r ${PY_INC_COPY} ${LOCAL_PY_INC} 2>/dev/null \
+    && [ "$(find ${LOCAL_PY_INC} -type f | wc -l)" -eq "$(find ${PY_INC_COPY} -type f | wc -l)" ] && break
+  echo "copy of Python headers failed (try $TRY)"; sleep 20
+done
+[ -f ${LOCAL_PY_INC}/Python.h ] || { echo "ERROR: could not copy ${PY_INC}"; exit 1; }
 export CC=/tmp/triton_cc_judge_${SLURM_JOB_ID:-$$}.sh
 cat > ${CC} <<EOS
 #!/bin/bash

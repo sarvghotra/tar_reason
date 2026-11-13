@@ -57,7 +57,14 @@ unset RANK WORLD_SIZE LOCAL_RANK MASTER_ADDR MASTER_PORT
 # jeet's vllm_gen_activate: compile Triton against a node-local copy of the Python headers
 PY_INC=$(${VLLM_PYTHON} -c 'import sysconfig; print(sysconfig.get_paths()["include"])')
 LOCAL_PY_INC=/tmp/py_include_gen_${SLURM_JOB_ID:-$$}
-rm -rf ${LOCAL_PY_INC}; cp -r ${PY_INC} ${LOCAL_PY_INC}
+PY_INC_COPY=/network/scratch/s/singhsd/jeet_snapshot/py_include_vllm   # copy of ${PY_INC}: reading his env failed on some nodes
+for TRY in 1 2 3 4 5; do   # $SCRATCH reads fail transiently on some nodes (as in jeet's launcher)
+  rm -rf ${LOCAL_PY_INC}
+  cp -r ${PY_INC_COPY} ${LOCAL_PY_INC} 2>/dev/null \
+    && [ "$(find ${LOCAL_PY_INC} -type f | wc -l)" -eq "$(find ${PY_INC_COPY} -type f | wc -l)" ] && break
+  echo "copy of Python headers failed (try $TRY)"; sleep 20
+done
+[ -f ${LOCAL_PY_INC}/Python.h ] || { echo "ERROR: could not copy ${PY_INC}"; exit 1; }
 export CC=/tmp/triton_cc_gen_${SLURM_JOB_ID:-$$}.sh
 cat > ${CC} <<EOS
 #!/bin/bash
