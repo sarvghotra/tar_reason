@@ -212,7 +212,7 @@ unset SLURM_MEM_PER_NODE SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU
 
 # One task per node: each copies the tokenizer locally, starts its own judge on GPU 3
 # (127.0.0.1 is node-local, so every node needs one), then launches its 3 training ranks.
-srun --ntasks-per-node=1 --mem=0 --export=ALL bash -c '
+srun --ntasks-per-node=1 ${SRUN_MEM---mem=0} --export=ALL bash -c '
 set -e
 cd ${REPO}
 export PYTHONPATH=$PYTHONPATH:${REPO}/

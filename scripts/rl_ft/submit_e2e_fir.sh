@@ -12,7 +12,7 @@
 #   Run B (Xiaofeng):     CRITIQUE_REWARD=full  -> as A, but editing a failing image earns recall - 0.5 * false alarms
 #                                                  (checks named by the critique, judged text-only by Qwen3-VL-8B).
 #   Evals: depth-4 MDP chains (own + oracle) on GenEval2 val800 + promptmix val_800 at step 0 and every 100 steps.
-#   Fir, Rorqual (same paths and account) or TamIA (paths with d/, account aip-agrawal); the launcher is picked by cluster.
+#   Fir, Rorqual, Nibi (same paths and account) or TamIA (paths with d/, account aip-agrawal); the launcher is picked by cluster.
 #   Step 0 doubles as the check that our code reproduces jeet's t4 numbers (his d3: val800 own am_final 0.826,
 #   promptmix 0.792 = our val/am_upto_3).
 #
@@ -60,6 +60,10 @@ N_JOBS=${N_JOBS:-$([ "${SMOKE:-0}" = 1 ] && echo 1 || echo 3)}
 mkdir -p output_dir/slurm_logs
 if [[ "${CC_CLUSTER:-}" == rorqual* || "$(hostname)" == rorqual* ]]; then LAUNCHER=scripts/rl_ft/bash_rorqual_mr.sh; EXCL=()
 elif [[ "${CC_CLUSTER:-}" == tamia* || "$(hostname)" == tamia* ]]; then LAUNCHER=scripts/rl_ft/bash_tamia_mr.sh; EXCL=(); ACCOUNT=${ACCOUNT:-aip-agrawal}
+elif [[ "${CC_CLUSTER:-}" == nibi* || "$(hostname -f)" == *nibi* ]]; then
+  # Nibi (2026-11-13): Fir's launcher unchanged (~/scratch -> /scratch/dars11, same layout); 4 of a node's 8 H100 each.
+  # Nibi refuses --mem=0 on a partial node, so the memory comes from SBATCH_MEM_PER_NODE (overrides the #SBATCH line).
+  LAUNCHER=scripts/rl_ft/bash_fir_mr.sh; EXCL=(); export SBATCH_MEM_PER_NODE=${SBATCH_MEM_PER_NODE:-400G} SRUN_MEM=""   # srun without --mem=0 (as bash_nibi_alphagrpo.sh)
 else LAUNCHER=scripts/rl_ft/bash_fir_mr.sh; EXCL=(--exclude=${EXCLUDE:-fc10212}); fi   # EXCLUDE=fc10212,fcXXXXX to add bad nodes
 COMMON=(--export=ALL "${EXCL[@]}" --account=${ACCOUNT:-rrg-bengioy-ad_gpu} "${SB[@]}" -J ${JOB_NAME:-${RUN_NAME}}
         -o $REPO/output_dir/slurm_logs/%x_%j.out -e $REPO/output_dir/slurm_logs/%x_%j.err)
