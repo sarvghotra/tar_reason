@@ -53,8 +53,8 @@ METHODS = {
 EXPECTED = {
     "GenEval2": (["AM", "GM", "all_correct_pct"], GENEVAL2_JUDGE),
     "TIIF-testmini": (["overall_short", "overall_long"], "Qwen2.5-VL-72B-Instruct"),
-    "GenAI-Bench-1600": (["basic", "advanced", "all"], "clip-flant5-xxl (VQAScore)"),
-    "GenAI-Bench-800": (["basic", "advanced", "all"], "clip-flant5-xxl (VQAScore)"),
+    "GenAI-Bench-1600": (["basic", "advanced", "all"], "clip-flant5-xxl"),
+    "GenAI-Bench-800": (["basic", "advanced", "all"], "clip-flant5-xxl"),
 }
 
 PER_SEED_COLUMNS = ["method", "benchmark", "n", "metric", "seed", "value", "judge", "source_dir"]
