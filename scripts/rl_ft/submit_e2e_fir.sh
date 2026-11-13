@@ -60,7 +60,7 @@ N_JOBS=${N_JOBS:-$([ "${SMOKE:-0}" = 1 ] && echo 1 || echo 3)}
 mkdir -p output_dir/slurm_logs
 if [[ "${CC_CLUSTER:-}" == rorqual* || "$(hostname)" == rorqual* ]]; then LAUNCHER=scripts/rl_ft/bash_rorqual_mr.sh; EXCL=()
 elif [[ "${CC_CLUSTER:-}" == tamia* || "$(hostname)" == tamia* ]]; then LAUNCHER=scripts/rl_ft/bash_tamia_mr.sh; EXCL=(); ACCOUNT=${ACCOUNT:-aip-agrawal}
-else LAUNCHER=scripts/rl_ft/bash_fir_mr.sh; EXCL=(--exclude=fc10212); fi
+else LAUNCHER=scripts/rl_ft/bash_fir_mr.sh; EXCL=(--exclude=${EXCLUDE:-fc10212}); fi   # EXCLUDE=fc10212,fcXXXXX to add bad nodes
 COMMON=(--export=ALL "${EXCL[@]}" --account=${ACCOUNT:-rrg-bengioy-ad_gpu} "${SB[@]}" -J ${JOB_NAME:-${RUN_NAME}}
         -o $REPO/output_dir/slurm_logs/%x_%j.out -e $REPO/output_dir/slurm_logs/%x_%j.err)
 PREV=$(sbatch --parsable "${COMMON[@]}" ${AFTER:+--dependency=afterany:${AFTER}} ${LAUNCHER}); IDS=$PREV
