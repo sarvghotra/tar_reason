@@ -91,10 +91,10 @@ def genai_rows(method, run_dir, keys1600, skills1600, sub800):
         for k, v in vals.items():
             out.append([method, "GenAI-Bench-1600", 1, k, s, round(v, 6), GENAI_JUDGE, str(seed_dir)])
         if sub800:
+            # The 800 genai_skills.json lists ids of the 1600 set (= row positions of the 1600 tensor), not 0..799.
             idx, sk = sub800
-            t8 = t[idx]
-            v8 = {"basic": t8[sk["basic"]].mean().item(), "advanced": t8[sk["advanced"]].mean().item(),
-                  "all": t8.mean().item()}
+            v8 = {"basic": t[sk["basic"]].mean().item(), "advanced": t[sk["advanced"]].mean().item(),
+                  "all": t[idx].mean().item()}
             for k, v in v8.items():
                 out.append([method, "GenAI-Bench-800", 1, k, s, round(v, 6), GENAI_JUDGE, str(seed_dir)])
     return out
@@ -118,6 +118,8 @@ def main():
         pos = {k: i for i, k in enumerate(keys1600)}
         k800 = list(img800)
         assert all(k in pos and img800[k]["prompt"] == img1600[k]["prompt"] for k in k800), "800 not a subset of 1600"
+        ids800 = {pos[k] for k in k800}
+        assert all(i in ids800 for l in skills800.values() for i in l), "800 skill ids outside the 800 set"
         sub800 = ([pos[k] for k in k800], skills800)
     rows = []
     for method, run in RUNS.items():
