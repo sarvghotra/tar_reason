@@ -10,6 +10,7 @@ Rules (s_k = the policy's self-score of image k from eval/tiif_self_judge.py; ti
   plain     the last image (= the run's iter_B; chains stopped by "looks good" repeat their last image)
   rollback  start at image 1; accept image k+1 only if s_{k+1} > s_k, else keep image k and stop
             (what a rollback rule would have produced: a rejected refinement ends the chain)
+  rollback_after1  always take image 2 (the first correction), then roll back as above from there on
   best      argmax_k s_k over images 1..B
   oracle_*  the same rules with s_k = the judge's per-prompt accuracy (fraction of its questions answered as
             the ground truth): an upper bound that uses the evaluation judge itself
@@ -45,8 +46,8 @@ def pick(scores, budget, rule):
         return budget
     if rule == "best":
         return max(range(budget), key=lambda i: (s[i], -i)) + 1
-    cur = 0
-    for k in range(1, budget):
+    cur = 1 if rule == "rollback_after1" else 0
+    for k in range(cur + 1, budget):
         if s[k] > s[cur]:
             cur = k
         else:
@@ -86,7 +87,8 @@ def main():
             s = [self_scores[(key, k)] for k in range(1, args.n_iters + 1)]
             acc = [accuracy(judge_file(seed_dir, args.judge_dir, args.tag, k, key)) for k in range(1, args.n_iters + 1)]
             for budget in range(2, args.n_iters + 1):
-                for rule, sc in [("rollback", s), ("best", s), ("oracle_rollback", acc), ("oracle_best", acc)]:
+                for rule, sc in [("rollback", s), ("rollback_after1", s), ("best", s),
+                                 ("oracle_rollback", acc), ("oracle_best", acc)]:
                     base = rule.replace("oracle_", "")
                     picks.setdefault(f"{rule}_B{budget}", {})[key] = pick(sc, budget, base)
         for variant, chosen in picks.items():
