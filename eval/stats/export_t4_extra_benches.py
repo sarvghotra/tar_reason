@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path("/network/scratch/s/singhsd/tar_reason/results_t4")
 RUN = "iter_adhoc_MDP_n3_E-450_ORC_512px_repeat1_Cric-SFT-t4"
 METHOD = "CLAIRE-Tar-t4"
-GENEVAL_PP_JUDGE = "Qwen2.5-VL-72B-Instruct (Echo-4o GenEval++ prompt; official judge is GPT-4.1)"
+GENEVAL_PP_JUDGE = "Qwen2.5-VL-72B-Instruct (GenEval++ protocol; official judge is GPT-4.1)"
 # Geneval++.jsonl tags (40 prompts each), in Echo-4o Table 3's column order:
 # Color, Count, Color/Count, Color/Pos, Pos/Count, Pos/Size, Multi-Count
 GENEVAL_PP_TAGS = ["color_attr", "counting", "color_count_attr", "color_spatial_attr", "spatial_count_attr",
