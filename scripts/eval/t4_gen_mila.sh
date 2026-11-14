@@ -1,5 +1,5 @@
 #!/bin/bash
-# Final model t4 (jeet's rl_ft_s2ce_pmix_oracle_t4: critique SFT adapter sft/final on darshan_mr_E450_orc_merged500)
+# Final model t4 (or another checkpoint via MODEL_PATH / LORA_PATH / MODEL_NAME / RL_FT) (jeet's rl_ft_s2ce_pmix_oracle_t4: critique SFT adapter sft/final on darshan_mr_E450_orc_merged500)
 # on extra prompt sets (GenEval++, T2I-CompBench++), generated exactly as jeet's
 # iter_*_adhoc_e2e_MDP_vllm.sh runs of t4 (`iter_adhoc_MDP_n4_E-450_ORC_512px_repeat1_Cric-SFT-t4`): MDP, N_ITERS=4,
 # vLLM backend, same sampling (T 1.0, top-k 1200, top-p 0.95 for images and critiques, CFG 4.0, 128 critique tokens).
@@ -30,21 +30,26 @@ N_GPUS=${N_GPUS:-4}
 N_ITERS=${N_ITERS:-4}
 SNAP=/network/scratch/s/singhsd/jeet_snapshot/tar_reason_20261113
 JEET=/network/scratch/s/sarvjeet-singh.ghotra
-MODEL_PATH=${JEET}/models/tar/sft/darshan_mr_E450_orc_merged500
-LORA_PATH=${JEET}/git/tar_reason/output_dir/rorqual/rl_ft_s2ce_pmix_oracle_t4/sft/final
+# default model = t4; run A: MODEL_NAME=t4_e2eA500 RL_FT= MODEL_PATH=<t4-merged base> LORA_PATH=<run A adapter>
+MODEL_PATH=${MODEL_PATH:-${JEET}/models/tar/sft/darshan_mr_E450_orc_merged500}
+LORA_PATH=${LORA_PATH-${JEET}/git/tar_reason/output_dir/rorqual/rl_ft_s2ce_pmix_oracle_t4/sft/final}
+MODEL_NAME=${MODEL_NAME:-E-450_ORC}
+RL_FT=${RL_FT-_Cric-SFT-t4}
+REPEAT=${REPEAT:-1}            # samples per prompt (GenEval: 4)
 MODELS=/network/scratch/s/singhsd/models/tar          # ta_tok / ar_dtok_lp_512px / vq_ds16_t2i (same files as jeet's)
 B=/network/scratch/s/singhsd/benchmarks
-RUN=iter_adhoc_MDP_n${N_ITERS}_E-450_ORC_512px_repeat1_Cric-SFT-t4
+RUN=iter_adhoc_MDP_n${N_ITERS}_${MODEL_NAME}_512px_repeat${REPEAT}${RL_FT}
 OUT_ROOT=/network/scratch/s/singhsd/tar_reason/results_t4${LIMIT:+_smoke}
 
 prompts_of() {   # set name -> prompt file (one prompt per line)
   case $1 in
     geneval_pp) echo $B/Echo-4o/test_scripts/Geneval++.txt ;;
+    geneval) echo ${JEET}/git/geneval/prompts/evaluation_metadata.jsonl ;;   # GenEval (553), metadata per line
     color|shape|texture|spatial|3d_spatial|non_spatial|numeracy|complex) echo $B/T2I-CompBench/examples/dataset/$1_val.txt ;;
     *) echo "unknown set $1" >&2; return 1 ;;
   esac
 }
-bench_of() { [ "$1" = geneval_pp ] && echo GenEval++ || echo T2I-CompBench++/$1; }
+bench_of() { case $1 in geneval_pp) echo GenEval++ ;; geneval) echo GenEval ;; *) echo T2I-CompBench++/$1 ;; esac; }
 
 # his conda.sh points at /home/mila/s/sarvjeet-singh.ghotra (not readable to us): activate by hand
 export CONDA_PREFIX=${JEET}/installs/miniforge3/envs/vllm
@@ -75,6 +80,8 @@ EOS
 chmod +x ${CC}
 [ -f /tmp/ta_tok.pth ] || cp ${MODELS}/ta_tok.pth /tmp/
 
+GENEVAL2_ARG=""; [ "$REPEAT" = 1 ] && GENEVAL2_ARG="--geneval2"   # {prompt: path} json, needs --repeat 1
+LORA_ARG=""; [ -n "$LORA_PATH" ] && LORA_ARG="--lora_path $LORA_PATH"
 cd ${SNAP}
 for SET in "${SETS[@]}"; do
   PROMPTS=$(prompts_of $SET)
@@ -91,15 +98,15 @@ for SET in "${SETS[@]}"; do
   for (( R=0; R<N_GPUS; R++ )); do
     RANK=${R} WORLD_SIZE=${N_GPUS} CUDA_VISIBLE_DEVICES=${R} ${VLLM_PYTHON} eval/iterative_generation_adhoc_MDP.py \
       --lm_backend vllm --sync_dir ${SYNC_DIR} \
-      --n_iters $N_ITERS --model $MODEL_PATH --lora_path $LORA_PATH \
-      --out_dir $RESULT_DIR --prompts_file $PROMPTS --repeat 1 --geneval2 --seed $SEED \
+      --n_iters $N_ITERS --model $MODEL_PATH \
+      --out_dir $RESULT_DIR --prompts_file $PROMPTS --repeat $REPEAT $GENEVAL2_ARG --seed $SEED \
       --temperature 1.0 --top_k 1200 --top_p 0.95 \
       --reflect_temperature 1.0 --reflect_top_k 1200 --reflect_top_p 0.95 \
       --batch_size ${GEN_BATCH:-100} --decode_batch_size ${DECODE_BATCH:-32} \
       --vllm_gpu_memory_utilization ${VLLM_MEM:-0.45} --reflect_tokens ${REFLECT_TOKENS:-128} \
       --gen_seq_len 729 --cfg_scale 4.0 \
       --ar_path ${MODELS}/ar_dtok_lp_512px.pth --decoder_path ${MODELS}/vq_ds16_t2i.pt --encoder_path /tmp/ta_tok.pth \
-      --draft_img_scale 0 --draft_gen_seq_len 729 --verbose --prompt_format sft \
+      --draft_img_scale 0 --draft_gen_seq_len 729 --verbose --prompt_format sft $LORA_ARG \
       > ${RESULT_DIR}/gen_logs/rank${R}.log 2>&1 &
     PIDS+=($!)
   done
