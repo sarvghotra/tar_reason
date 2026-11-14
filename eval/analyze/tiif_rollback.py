@@ -30,6 +30,7 @@ DESC = {"short_description": "short", "long_description": "long"}
 
 
 def judge_file(seed_dir, judge_dir, tag, k, key):
+    """seed_dir: the seed folder holding the judge outputs (the run's own, or a re-judged copy via --judge_run_dir)."""
     dim, desc, idx = key.split("/")
     return seed_dir / judge_dir / f"{tag}_iter{k}" / dim / DESC[desc] / f"{idx}.json"
 
@@ -63,17 +64,21 @@ def main():
     ap.add_argument("--seeds", nargs="+", type=int, default=[13, 17, 91])
     ap.add_argument("--tag", default="E-450_ORC")
     ap.add_argument("--judge_dir", default="eval_results")
+    ap.add_argument("--judge_run_dir", default=None,
+                    help="run dir holding the judge outputs, if not --run_dir (e.g. a temperature-0 re-judge)")
     ap.add_argument("--n_iters", type=int, default=4)
-    ap.add_argument("--score", default="approve_lp", choices=["approve_lp", "approve_lp_mean", "vqa_yes"])
+    ap.add_argument("--score", default="approve_lp",
+                    choices=["approve_lp", "approve_lp_mean", "vqa_yes", "am_yes", "am_pol", "am_rephr"])
     ap.add_argument("--tiif_dir", required=True)
     ap.add_argument("--judge_py", required=True)
     args = ap.parse_args()
 
     stats = {}
     for seed in args.seeds:
-        seed_dir = Path(args.run_dir) / f"seed_{seed}"
+        seed_dir = Path(args.judge_run_dir or args.run_dir) / f"seed_{seed}"
         self_scores = {}
-        for r in map(json.loads, open(Path(args.self_dir) / f"seed_{seed}.jsonl")):
+        suffix = "_am" if args.score.startswith("am_") else ""
+        for r in map(json.loads, open(Path(args.self_dir) / f"seed_{seed}{suffix}.jsonl")):
             self_scores[(r["key"], r["iter"])] = r[args.score]
         keys = sorted({k for k, _ in self_scores})
         ev = Path(args.out) / f"seed_{seed}" / "eval_results"

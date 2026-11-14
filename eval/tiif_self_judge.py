@@ -11,6 +11,15 @@ the run kept only pixels, so these are not the exact sampled codes):
 * ``vqa_yes``: P(Yes) / (P(Yes) + P(No)) for a plain understanding turn (Tar's i2t format, bare image tokens):
   "{image}\\nDoes this image match the following description? {prompt}\\nAnswer Yes or No."
 
+* with ``--questions``: per-question self-AM over TIIF-Bench's own questions (read from the judge files; their
+  ground-truth answers are never read). For each prompt t4 first predicts, from the prompt text alone, the answer a
+  matching image should give to each question (``polarity``: P(Yes) > 0.5 -> "yes"); then for every image it answers
+  each question, "{image}\n{question} Answer Yes or No.", and ``am_yes`` = mean P(Yes), ``am_pol`` = mean P(its own
+  predicted answer). Also ``am_rephr``: t4 first rewrites each question from the prompt text alone so that "Yes" means
+  the prompt is satisfied (greedy, e.g. "Does the fork pierce the steak?" -> "Is the fork not piercing the steak?"
+  for a prompt saying it does not), then mean P(Yes) over the rewritten questions. Written to ``seed_S_am.jsonl``
+  with the per-question probabilities and the rewrites.
+
 Identical image files (chains stopped by "looks good" repeat their last image) are scored once.
 Writes ``<out_dir>/seed_S.jsonl``: {"key": "<dim>/<desc>/<idx>", "iter": k, "md5", "approve_lp", "approve_lp_mean",
 "vqa_yes"}. Resumes: keys already in the file are skipped.
@@ -44,7 +53,8 @@ def load(args, device):
     from transformers import AutoTokenizer, Qwen2ForCausalLM
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     model = Qwen2ForCausalLM.from_pretrained(args.model, torch_dtype=torch.bfloat16, attn_implementation="sdpa")
-    model = PeftModel.from_pretrained(model, args.lora_path, torch_dtype=torch.bfloat16).merge_and_unload()
+    if args.lora_path:
+        model = PeftModel.from_pretrained(model, args.lora_path, torch_dtype=torch.bfloat16).merge_and_unload()
     model = model.to(device).eval()
     ta_tok = TextAlignedTokenizer.from_checkpoint(args.ta_tok, load_teacher=False, input_type="indices",
                                                   teacher=args.siglip2).to(device).eval()
@@ -86,6 +96,93 @@ def yes_prob(model, tokenizer, contexts, yes_id, no_id, device):
     return two[:, 0].exp().tolist()
 
 
+DESC = {"short_description": "short", "long_description": "long"}
+REPHRASE_Q = ("Text-to-image prompt: {prompt}\nQuestion about an image: {question}\n"
+              "Rewrite the question so that its answer is Yes exactly when the image matches the prompt. If the answer "
+              "is already Yes for a matching image, repeat the question unchanged. Output only the question.")
+POLARITY_Q = ("Text-to-image prompt: {prompt}\nQuestion about an image: {question}\n"
+              "If an image matched the prompt exactly, what would the answer to the question be? Answer Yes or No.")
+
+
+def run_questions(args, seed, tokenizer, model, ta_tok, yes_id, no_id, device):
+    """Per-question self-AM for one seed (TIIF questions only; gt answers never read)."""
+    seed_dir = Path(args.run_dir) / f"seed_{seed}"
+    prompts = {k: v["prompt"] for k, v in json.load(open(seed_dir / "self_reflect.json")).items()}
+    questions = {}
+    for key in prompts:
+        dim, desc, idx = key.split("/")
+        f = seed_dir / args.judge_dir / f"{args.iter_tag}_iter1" / dim / DESC[desc] / f"{idx}.json"
+        questions[key] = [q.strip() for q in json.load(open(f))["questions"]]
+    out_path = Path(args.out_dir) / f"seed_{seed}_am.jsonl"
+    done = set()
+    if out_path.exists():
+        done = {(r["key"], r["iter"]) for r in map(json.loads, open(out_path))}
+    chat = lambda text: tokenizer.apply_chat_template(
+        [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": text}],
+        tokenize=False, add_generation_prompt=True)
+    # polarity from the prompt text alone
+    pol_rows = [(key, q) for key in sorted(prompts) for q in questions[key]]
+    pol = {}
+    for s in range(0, len(pol_rows), args.batch_size * 4):
+        batch = pol_rows[s:s + args.batch_size * 4]
+        ps = yes_prob(model, tokenizer, [chat(POLARITY_Q.format(prompt=prompts[k], question=q)) for k, q in batch],
+                      yes_id, no_id, device)
+        for (k, q), p in zip(batch, ps):
+            pol.setdefault(k, []).append(p)
+    rephr = {}
+    tokenizer.padding_side = "left"
+    for s in range(0, len(pol_rows), args.batch_size * 4):
+        batch = pol_rows[s:s + args.batch_size * 4]
+        enc = tokenizer([chat(REPHRASE_Q.format(prompt=prompts[k], question=q)) for k, q in batch],
+                        add_special_tokens=False, padding=True, return_tensors="pt").to(device)
+        with torch.no_grad():
+            gen = model.generate(**enc, max_new_tokens=48, do_sample=False, pad_token_id=tokenizer.pad_token_id)
+        for (k, q), g in zip(batch, gen[:, enc.input_ids.shape[1]:]):
+            text = tokenizer.decode(g, skip_special_tokens=True).strip().split("\n")[0].strip()
+            # t4 sometimes answers instead of rewriting: keep the original unless the output is a question
+            ok = text.endswith("?") and len(text.split()) >= 3
+            rephr.setdefault(k, []).append(text if ok else q)
+    items = [(key, k, seed_dir / "images" / key.split("/")[0] / f"{args.iter_tag}_iter{k}" /
+              key.split("/")[1] / f"{key.split('/')[2]}.png")
+             for key in sorted(prompts) for k in range(1, args.n_iters + 1) if (key, k) not in done]
+    items = items[:args.limit] if args.limit else items
+    print(f"seed {seed}: {len(items)} images, {len(pol_rows)} questions", flush=True)
+    cache = {}
+    with open(out_path, "a") as fout:
+        for s in range(0, len(items), args.batch_size):
+            batch = items[s:s + args.batch_size]
+            md5s = [hashlib.md5(open(p, "rb").read()).hexdigest() for _, _, p in batch]
+            todo = [i for i, (b, m) in enumerate(zip(batch, md5s)) if (b[0], m) not in cache]
+            if todo:
+                texts = image_text(ta_tok, [batch[i][2] for i in todo], device)
+                rows = [(i, j, chat(f"{t}\n{q} Answer Yes or No."))
+                        for i, t in zip(todo, texts)
+                        for j, q in enumerate(questions[batch[i][0]] + rephr[batch[i][0]])]
+                probs = []
+                for r in range(0, len(rows), args.batch_size):
+                    probs += yes_prob(model, tokenizer, [c for _, _, c in rows[r:r + args.batch_size]],
+                                      yes_id, no_id, device)
+                per = {}
+                for (i, j, _), p in zip(rows, probs):
+                    per.setdefault(i, {})[j] = p
+                for i in todo:
+                    key = batch[i][0]
+                    nq = len(questions[key])
+                    p_yes = [per[i][j] for j in range(nq)]
+                    p_rephr = [per[i][nq + j] for j in range(nq)]
+                    target_yes = [p > 0.5 for p in pol[key]]
+                    p_pol = [p if y else 1 - p for p, y in zip(p_yes, target_yes)]
+                    cache[(key, md5s[i])] = {"am_yes": sum(p_yes) / nq, "am_pol": sum(p_pol) / nq,
+                                             "am_rephr": sum(p_rephr) / nq, "p_yes": p_yes,
+                                             "polarity_yes": target_yes, "p_rephr": p_rephr,
+                                             "rephrased": rephr[key]}
+            for (key, k, _), m in zip(batch, md5s):
+                fout.write(json.dumps({"key": key, "iter": k, "md5": m, **cache[(key, m)]}) + "\n")
+            fout.flush()
+            if (s // args.batch_size) % 20 == 0:
+                print(f"seed {seed}: {s + len(batch)}/{len(items)}", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run_dir", required=True, help="TIIF run dir holding seed_*/")
@@ -93,12 +190,14 @@ def main():
     ap.add_argument("--iter_tag", default="E-450_ORC", help="images/<dim>/<iter_tag>_iter<k>/")
     ap.add_argument("--n_iters", type=int, default=4)
     ap.add_argument("--model", required=True)
-    ap.add_argument("--lora_path", required=True)
+    ap.add_argument("--lora_path", default="", help="empty: score with the base model alone (e.g. E-450_ORC)")
     ap.add_argument("--ta_tok", required=True)
     ap.add_argument("--siglip2", default="google/siglip2-so400m-patch14-384")
     ap.add_argument("--out_dir", required=True)
     ap.add_argument("--batch_size", type=int, default=16)
     ap.add_argument("--limit", type=int, default=None, help="smoke: first N images per seed")
+    ap.add_argument("--questions", action="store_true", help="per-question self-AM (see docstring)")
+    ap.add_argument("--judge_dir", default="eval_results", help="<seed>/<judge_dir>/<tag>_iter1/<dim>/<short|long>/<idx>.json")
     args = ap.parse_args()
 
     device = torch.device("cuda")
@@ -109,6 +208,9 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
 
     for seed in args.seeds:
+        if args.questions:
+            run_questions(args, seed, tokenizer, model, ta_tok, yes_id, no_id, device)
+            continue
         seed_dir = Path(args.run_dir) / f"seed_{seed}"
         prompts = {k: v["prompt"] for k, v in json.load(open(seed_dir / "self_reflect.json")).items()}
         out_path = Path(args.out_dir) / f"seed_{seed}.jsonl"

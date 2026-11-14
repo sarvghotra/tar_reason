@@ -93,30 +93,42 @@ for SET in "${SETS[@]}"; do
   echo "$(date +%H:%M:%S) $SET seed $SEED: $(grep -c . ${PROMPTS}) prompts -> ${RESULT_DIR}"
   T0=$(date +%s)
   mkdir -p ${RESULT_DIR}/gen_logs
-  SYNC_DIR=${RESULT_DIR}/.sync_${SLURM_JOB_ID:-$$}; rm -rf ${SYNC_DIR}
-  PIDS=()
-  for (( R=0; R<N_GPUS; R++ )); do
-    RANK=${R} WORLD_SIZE=${N_GPUS} CUDA_VISIBLE_DEVICES=${R} ${VLLM_PYTHON} eval/iterative_generation_adhoc_MDP.py \
-      --lm_backend vllm --sync_dir ${SYNC_DIR} \
-      --n_iters $N_ITERS --model $MODEL_PATH \
-      --out_dir $RESULT_DIR --prompts_file $PROMPTS --repeat $REPEAT $GENEVAL2_ARG --seed $SEED \
-      --temperature 1.0 --top_k 1200 --top_p 0.95 \
-      --reflect_temperature 1.0 --reflect_top_k 1200 --reflect_top_p 0.95 \
-      --batch_size ${GEN_BATCH:-100} --decode_batch_size ${DECODE_BATCH:-32} \
-      --vllm_gpu_memory_utilization ${VLLM_MEM:-0.45} --reflect_tokens ${REFLECT_TOKENS:-128} \
-      --gen_seq_len 729 --cfg_scale 4.0 \
-      --ar_path ${MODELS}/ar_dtok_lp_512px.pth --decoder_path ${MODELS}/vq_ds16_t2i.pt --encoder_path /tmp/ta_tok.pth \
-      --draft_img_scale 0 --draft_gen_seq_len 729 --verbose --prompt_format sft $LORA_ARG \
-      > ${RESULT_DIR}/gen_logs/rank${R}.log 2>&1 &
-    PIDS+=($!)
+  # A rank that dies at start-up (transient $SCRATCH read errors in the env, seen 11-14) leaves the others blocked
+  # at a --sync_dir barrier: reap ranks as they finish, kill the rest on the first failure, retry the set.
+  OK=0
+  for TRY in 1 2 3; do
+    SYNC_DIR=${RESULT_DIR}/.sync_${SLURM_JOB_ID:-$$}_${TRY}; rm -rf ${SYNC_DIR}
+    PIDS=()
+    for (( R=0; R<N_GPUS; R++ )); do
+      RANK=${R} WORLD_SIZE=${N_GPUS} CUDA_VISIBLE_DEVICES=${R} setsid ${VLLM_PYTHON} eval/iterative_generation_adhoc_MDP.py \
+        --lm_backend vllm --sync_dir ${SYNC_DIR} \
+        --n_iters $N_ITERS --model $MODEL_PATH \
+        --out_dir $RESULT_DIR --prompts_file $PROMPTS --repeat $REPEAT $GENEVAL2_ARG --seed $SEED \
+        --temperature 1.0 --top_k 1200 --top_p 0.95 \
+        --reflect_temperature 1.0 --reflect_top_k 1200 --reflect_top_p 0.95 \
+        --batch_size ${GEN_BATCH:-100} --decode_batch_size ${DECODE_BATCH:-32} \
+        --vllm_gpu_memory_utilization ${VLLM_MEM:-0.45} --reflect_tokens ${REFLECT_TOKENS:-128} \
+        --gen_seq_len 729 --cfg_scale 4.0 \
+        --ar_path ${MODELS}/ar_dtok_lp_512px.pth --decoder_path ${MODELS}/vq_ds16_t2i.pt --encoder_path /tmp/ta_tok.pth \
+        --draft_img_scale 0 --draft_gen_seq_len 729 --verbose --prompt_format sft $LORA_ARG \
+        > ${RESULT_DIR}/gen_logs/rank${R}_try${TRY}.log 2>&1 &
+      PIDS+=($!)
+    done
+    LEFT=("${PIDS[@]}"); FAILED=""
+    while [ ${#LEFT[@]} -gt 0 ]; do
+      DONE=""; wait -n -p DONE "${LEFT[@]}" && RC=0 || RC=$?
+      [ -n "$DONE" ] || break
+      KEEP=(); for P in "${LEFT[@]}"; do [ "$P" != "$DONE" ] && KEEP+=("$P"); done; LEFT=("${KEEP[@]}")
+      [ $RC -eq 0 ] || { FAILED="pid $DONE rc $RC"; break; }
+    done
+    if [ -z "$FAILED" ]; then OK=1; break; fi
+    echo "$(date +%H:%M:%S) $SET seed $SEED try $TRY failed ($FAILED); killing the other ranks"
+    for P in "${LEFT[@]}"; do kill -TERM -- -$P 2>/dev/null || true; done
+    sleep 15; for P in "${LEFT[@]}"; do kill -KILL -- -$P 2>/dev/null || true; done; wait 2>/dev/null
+    for R in "${!PIDS[@]}"; do grep -v "import_utils.py:408" ${RESULT_DIR}/gen_logs/rank${R}_try${TRY}.log | tail -3; done
+    sleep 30
   done
-  FAILED=""
-  for R in "${!PIDS[@]}"; do wait ${PIDS[$R]} || FAILED="$FAILED rank$R"; done
-  if [ -n "$FAILED" ]; then
-    echo "ERROR: $SET seed $SEED generation failed:$FAILED"
-    for R in "${!PIDS[@]}"; do echo "--- rank$R"; grep -v "import_utils.py:408" ${RESULT_DIR}/gen_logs/rank${R}.log | tail -20; done
-    exit 1
-  fi
+  [ $OK = 1 ] || { echo "ERROR: $SET seed $SEED generation failed 3 times"; exit 1; }
   rm -rf ${SYNC_DIR}
   touch ${RESULT_DIR}/.gen_done
   echo "$(date +%H:%M:%S) $SET seed $SEED: done in $(( $(date +%s) - T0 )) s"
