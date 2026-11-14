@@ -131,3 +131,23 @@ squeue -u $USER --start
 | `train/kl` | Should stay ~0.05–0.1. |
 
 Never compare `val/delta_am_k` with `val_oracle/delta_am_k`: they average different sets of nodes.
+
+## Run C (added 2026-11-14): stage 3 with jeet's substage-2 fixes
+
+Run A's setup (t4-merged start, own critiques trained, `--critique_reward stop`) with: 168 prompts/step (`PROMPTS_PER_GPU=14`),
+2 refinement rounds (`BRANCH=2,1,1`), LR 1e-4, promptmix v1 + promptmix v2 (jeet's 19K build minus its 800 v2 val prompts),
+300 steps, depth-3 evals at 0/100/200/300 on val800 + promptmix val_800 + promptmix v2 val_800. One script writes the data /
+val configs with the cluster's paths and pins the prompt order (`DATASET_SEED=57602`):
+
+```bash
+cd <your clone of darshan-rl-test> && git pull
+ACCOUNT=aip-courvill bash scripts/rl_ft/submit_e2e_runC.sh      # TamIA: 15 chained 2:59 jobs, checkpoints every 5 steps
+squeue -u $USER --start
+```
+
+- **Inputs** are read from Darshan's scratch (`/scratch/d/dars11/...` on TamIA; read-only for `xiaofeng`), including the new
+  `data/promptmix_v2/`.
+- **One copy only.** Darshan also has run C queued (Fir / Rorqual / TamIA). Whoever starts first keeps it; tell Darshan when yours
+  starts (or `scancel --name=darshan_e2e_stop_C_fir` if his started first). Don't change any setting.
+- **What to watch:** as for A (`train/crit_stop_acc`, `train/kl`, `val*/am_0`, `val*/am_upto_d`), plus `train/chain_groups_1/2`
+  (expect ~130 / ~115 groups per step) and the new `val_promptmix_v2/*`.
