@@ -3,7 +3,15 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-11-13 19:30 EST)
+## Now (2026-11-14 15:00 EST)
+- **Run A checkpoint-500 official evals (Inbox 11-14) running with jeet's pipeline as t4:** package `runA_ckpt500.tgz` scp'd by the user (md5 ok, adapter
+  sha256 ok); base rebuilt with `util_scripts/merge_lora.py` (E450_orc_merged500 + t4 sft/final) at
+  `$SCRATCH/models/tar/sft/darshan_E450orc500_crisft_t4_merged`, **bitwise identical to Fir's** (sha256 of all shards + config). Launchers =
+  jeet's `iter_{geneval2_adhoc_e2e,tiif_bench_adhoc_e2e,genai_bench_adhoc}_MDP_vllm.sh` ported by `scripts/eval/jeetpipe/port.sh` (paths /
+  env activation / output root only; run from the snapshot `$SCRATCH/jeet_snapshot/tar_reason_20261113`), label `t4_e2eA500`, results
+  `$SCRATCH/tar_reason/results_jeetpipe/<bench>/iter_adhoc_MDP_n4_t4_e2eA500_512px_repeat1/`. First job GenEval2 2213 = 11706474.
+- **TIIF rollback study (user, 11-14) done**, results in `$SCRATCH/tar_reason/results_t4/tiif_rollback_*`: t4 self-score vs 72B judge agree
+  56-58% on refinement direction; best rule = keep t4's top yes/no-scored image (+0.5 short / +2.3 long over plain image 4).
 - **t4 on GenEval++ / T2I-CompBench++ DONE (19:20 EST), paper-repo export staged, awaiting the user's OK to push**
   (`LatentDCR_cvpr_paper/results/t4_geneval_pp_t2icompbench/`). Seed 13, N_ITERS=3 (user), images 1 -> 3:
   T2I-CompBench++ (official evaluators) color 0.785 -> 0.820, shape 0.557 -> 0.575, texture 0.671 -> 0.684, 2D 0.457 -> 0.470,
