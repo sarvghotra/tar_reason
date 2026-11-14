@@ -4,19 +4,13 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
 ## Now (2026-11-13 17:10 EST)
-- **t4 on GenEval++ and T2I-CompBench++ (Inbox 11-13, user decisions):** 1 seed (13), **N_ITERS=3** (draft + 2 own-critique
-  corrections; user: limited time), GenEval++ judged by an **open judge only** (Qwen2.5-VL-72B with Echo-4o's GPT-4.1 prompt, not
-  comparable to published GenEval++), T2I-CompBench++ with the official evaluators on the 8 x 300 val prompts, 1 image per prompt.
-  - Model: jeet's `rl_ft_s2ce_pmix_oracle_t4/sft/final` (Rorqual run, on Mila under his `output_dir/rorqual/`) on
-    `darshan_mr_E450_orc_merged500`; generator = his vLLM MDP driver from a frozen copy of his checkout
-    (`$SCRATCH/jeet_snapshot/tar_reason_20261113`, 137f9bd + uncommitted diff) in his vllm env; same sampling as his t4 runs.
-  - Generation `scripts/eval/t4_gen_mila.sh` -> `$SCRATCH/tar_reason/results_t4/{GenEval++,T2I-CompBench++/<cat>}/iter_adhoc_MDP_n3_E-450_ORC_512px_repeat1_Cric-SFT-t4/seed_13/`:
-    short-unkillable 11693222 -> 23 -> 24 (geneval_pp color shape texture non_spatial complex), main 11693225 (spatial 3d_spatial, 2 GPUs),
-    unkillable 11693227 (numeracy, 1 GPU); any 80 GB GPU (`--constraint=80gb`). 11693222 / 27 started 17:13 EST. Smoke 11692693 OK (vLLM start ~7 min per set).
-  - Scoring: `scripts/eval/t4_compbench_score_mila.sh` (official evaluators via `t2icompbench_eval_mila.sh`, env `~/envs/t2icompbench`,
-    py3.9 torch 2.0.1 detectron2 5aeb252, all 8 smoke-tested), `scripts/eval/t4_geneval_pp_judge_mila.sh` (`vllm serve` 72B + `eval/geneval_pp_judge.py`).
-  - Published comparators collected (GenEval++ only for BAGEL / Janus-Pro / FLUX / BLIP3-o / Qwen-Image / Uni-CoT, GPT-4.1; T2I-CompBench++
-    official only FLUX.1-dev (3rd party) / FLUX.1-schnell); notes in the export README.
+- **t4 on GenEval++ / T2I-CompBench++ DONE (19:20 EST), paper-repo export staged, awaiting the user's OK to push**
+  (`LatentDCR_cvpr_paper/results/t4_geneval_pp_t2icompbench/`). Seed 13, N_ITERS=3 (user), images 1 -> 3:
+  T2I-CompBench++ (official evaluators) color 0.785 -> 0.820, shape 0.557 -> 0.575, texture 0.671 -> 0.684, 2D 0.457 -> 0.470,
+  3D 0.441 -> 0.450, non-spatial 0.316 -> 0.317, numeracy 0.685 -> 0.726, complex 0.375 -> 0.380 (all above published FLUX.1-dev ++);
+  **GenEval++ (open judge Qwen2.5-VL-72B, Echo-4o prompt; user: no GPT-4.1) 0.357 -> 0.332 -> 0.300**: refinement hurts under this
+  judge (deterministic: unchanged images keep their verdicts; 157 prompts refined, 11 fixed vs 27 broken). Results in
+  `$SCRATCH/tar_reason/results_t4/`; code `scripts/eval/t4_*_mila.sh`, `eval/geneval_pp_judge.py`, `eval/stats/export_t4_extra_benches.py`.
 
 ## Earlier (2026-11-12)
 - **Table 2a pushed** to `LatentDCR_cvpr_paper` main (`595302d`, `results/system_level_baselines/`, user OK'd): GenEval2 Qwen3.5-27B
