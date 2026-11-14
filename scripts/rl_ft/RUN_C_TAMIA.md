@@ -1,5 +1,7 @@
 # Start stage-3 run C on TamIA (for Xiaofeng or his agent)
 
+**2026-11-14 14:30 EST: run C is already RUNNING on Rorqual (Darshan). Do not submit another copy.**
+
 Written 2026-11-14 by Darshan. Self-contained: follow these steps in order. Ask Darshan before changing anything not listed here.
 
 ## What run C is
