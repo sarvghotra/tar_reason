@@ -61,7 +61,8 @@ chmod +x ${CC}
 
 LOG=/network/scratch/s/singhsd/tar_reason/output_dir/slurm_logs/genevalpp_judge_server_${SLURM_JOB_ID:-local}.log
 setsid python -m vllm.entrypoints.cli.main serve ${JUDGE} --port ${PORT} --dtype bfloat16 --tensor-parallel-size 4 \
-  --max-model-len 8192 --limit-mm-per-prompt '{"image": 1, "video": 0}' --seed 0 --disable-custom-all-reduce \
+  --max-model-len 8192 --limit-mm-per-prompt '{"image": 1, "video": 0}' --no-mm-device-do-normalize --seed 0 \
+  --disable-custom-all-reduce \
   > ${LOG} 2>&1 &
 SERVER=$!
 trap 'kill -- -${SERVER} 2>/dev/null || true' EXIT
