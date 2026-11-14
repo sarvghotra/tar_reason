@@ -3,7 +3,7 @@
 Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/singhsd/CODE/LatentDCR/`
 (`CLAUDE.md` there → `tar_reason/handoff/CLAUDE.md`, old copy `CLAUDE.md.old`; `papers/` and `tools/` next to `tar_reason/`).
 
-## Now (2026-11-13 17:10 EST)
+## Now (2026-11-13 19:30 EST)
 - **t4 on GenEval++ / T2I-CompBench++ DONE (19:20 EST), paper-repo export staged, awaiting the user's OK to push**
   (`LatentDCR_cvpr_paper/results/t4_geneval_pp_t2icompbench/`). Seed 13, N_ITERS=3 (user), images 1 -> 3:
   T2I-CompBench++ (official evaluators) color 0.785 -> 0.820, shape 0.557 -> 0.575, texture 0.671 -> 0.684, 2D 0.457 -> 0.470,
