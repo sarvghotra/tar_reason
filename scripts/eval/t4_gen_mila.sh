@@ -45,11 +45,12 @@ prompts_of() {   # set name -> prompt file (one prompt per line)
   case $1 in
     geneval_pp) echo $B/Echo-4o/test_scripts/Geneval++.txt ;;
     geneval) echo ${JEET}/git/geneval/prompts/evaluation_metadata.jsonl ;;   # GenEval (553), metadata per line
+    wise) echo $B/WISE/wise_verified_prompts.jsonl ;;   # WISE_Verified (1,000), line i = prompt_id i+1
     color|shape|texture|spatial|3d_spatial|non_spatial|numeracy|complex) echo $B/T2I-CompBench/examples/dataset/$1_val.txt ;;
     *) echo "unknown set $1" >&2; return 1 ;;
   esac
 }
-bench_of() { case $1 in geneval_pp) echo GenEval++ ;; geneval) echo GenEval ;; *) echo T2I-CompBench++/$1 ;; esac; }
+bench_of() { case $1 in geneval_pp) echo GenEval++ ;; geneval) echo GenEval ;; wise) echo WISE_Verified ;; *) echo T2I-CompBench++/$1 ;; esac; }
 
 # his conda.sh points at /home/mila/s/sarvjeet-singh.ghotra (not readable to us): activate by hand
 export CONDA_PREFIX=${JEET}/installs/miniforge3/envs/vllm
