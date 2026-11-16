@@ -8,7 +8,7 @@
 #
 #   Fir / Rorqual:  bash scripts/rl_ft/submit_e2e_runC.sh
 #   TamIA:          ACCOUNT=<your allocation> bash scripts/rl_ft/submit_e2e_runC.sh     (default 15 chained 2:59 jobs)
-# Overridable: RUN_NAME, JOB_NAME, ACCOUNT, TIME, N_JOBS, SAVE_STEPS. Keep DATASET_SEED (prompt order) as is.
+# Overridable: MAX_STEPS (constant LR, so raising it continues the run; 500 since 2026-11-15), RUN_NAME, JOB_NAME, ACCOUNT, TIME, N_JOBS, SAVE_STEPS. Keep DATASET_SEED (prompt order) as is.
 set -eu
 REPO=$(cd "$(dirname "$0")/../.." && pwd); cd "$REPO"
 S=/home/dars11/scratch
@@ -45,7 +45,7 @@ datasets:
       logname: promptmix_v2
       ratio: 1
 EOF
-export CRITIQUE_REWARD=stop PROMPTS_PER_GPU=14 BRANCH=2,1,1 EVAL_BRANCH=1,1,1,1 LR=1e-4 MAX_STEPS=300 EVAL_STEPS=100
+export CRITIQUE_REWARD=stop PROMPTS_PER_GPU=14 BRANCH=2,1,1 EVAL_BRANCH=1,1,1,1 LR=1e-4 MAX_STEPS=${MAX_STEPS:-300} EVAL_STEPS=100
 if [ $TAMIA = 1 ]; then export TIME=${TIME:-02:59:00} N_JOBS=${N_JOBS:-15} SAVE_STEPS=${SAVE_STEPS:-5}
 else export TIME=${TIME:-11:59:00} N_JOBS=${N_JOBS:-4} SAVE_STEPS=${SAVE_STEPS:-10}; fi
 export JOB_NAME=${JOB_NAME:-${RUN_NAME}}
