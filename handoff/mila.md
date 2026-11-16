@@ -103,6 +103,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-11-15 22:40: run C package (md5 1d8461f1..., both adapter sha256 OK, steps 200/300, LoRA r64/a128) unpacked to `$SCRATCH/models/tar/runC/runC_ckpt200_300/`; GenEval (original) queued on the t4-merged base as for run A: C200 gen 11724406/08/10, C300 11724412/14/16 (seeds 13/17/91), each followed by its scoring job; labels t4_e2eC200 / t4_e2eC300.
 - 2026-11-15 22:20: t4 GenEval2 under Qwen3.5-27B answered (jeet's existing re-score; runs.md row `geneval2_qwen35` t4); Inbox line removed. Run C GenEval waiting for the package scp.
 - 2026-11-14 16:50: run A eval Inbox line done (duplicates stopped per Fir's later line), removed.
 - 2026-11-14 03:00: jeet's rl_ft_sstg2_t1 README + promptmix v2 packed for Fir (`$SCRATCH/share_out/jeet_sstg2_t1.tgz`, md5 028374bd…; contents + summary in Fir's Inbox); GPT-4.1 hold line obsolete (user chose the open 72B judge); both Inbox lines removed.
