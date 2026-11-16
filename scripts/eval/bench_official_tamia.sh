@@ -106,7 +106,10 @@ case "${CC_CLUSTER:-}:$(hostname -f 2>/dev/null || hostname)" in
 esac
 # TIIF: images only by default (user 2026-11-08: no more non-standard Qwen2.5-VL-7B judging); score them with the
 # standard Qwen2.5-VL-72B judge in official_judges_tamia.sh. TIIF_7B_JUDGE=1 restores the in-job 7B judge.
-if [ "${BENCH:-}" = tiif ] && [ "${TIIF_7B_JUDGE:-0}" != 1 ]; then GEN_ONLY=${GEN_ONLY:-1}; else GEN_ONLY=${GEN_ONLY:-0}; fi
+# Every benchmark: images only by default since 2026-11-15 (user: evaluate only with the judges the paper reports).
+# The in-job judges are not the paper's: GenEval2 Qwen3-VL-8B (paper: Qwen3.5-27B, geneval2_rescore_tamia.sh / _mila.sh),
+# GenAI Qwen3.5-27B VQAScore (paper: CLIP-FlanT5-XXL on the 800 subset). IN_JOB_JUDGE=1 (or TIIF_7B_JUDGE=1) restores them.
+if [ "${IN_JOB_JUDGE:-0}" = 1 ] || { [ "${BENCH:-}" = tiif ] && [ "${TIIF_7B_JUDGE:-0}" = 1 ]; }; then GEN_ONLY=${GEN_ONLY:-0}; else GEN_ONLY=${GEN_ONLY:-1}; fi
 REPO=${P_REPO}
 MODELS=${P_SCRATCH}/models/tar
 BENCH_DIR=${P_SCRATCH}/benchmarks
