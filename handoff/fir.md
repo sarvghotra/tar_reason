@@ -2,9 +2,10 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-11-19 22:55 EST)
+## Now (2026-11-20 03:20 EST)
 - **2026-11-19 20:40 EST: Fir GPUs down** (reservation `NovemberOutage` since 2026-11-17 07:00 PST, open-ended): nothing GPU runs here.
   The 27B GenEval2 re-scores 4429588-90 stay pending. Other clusters need the user to open ssh masters from login2 (MFA).
+- **2026-11-20 03:20 EST: pilot raced on Rorqual + TamIA (user: urgent, race all shapes).** Rorqual 27274977-78 still pending (Priority, est. 09:18-11:20), so added: Rorqual `_r4s` (4n x 2:59 x5, SAVE 5) 27278724-28, `_r2l` (2n x 11:59 x3, 28 prompts/GPU = 168/step) 27278729-31, `_r2s` (2n x 2:59 x8) 27278732-; TamIA `_t4s` 724384-88, `_t2s` 724389-96 (all `darshan_orc_verdict_E450*`, MAX_STEPS=100, a42cf58 adds `NODES`). Watcher `~/scratch/watchers/pilot_race.sh` keeps the first to start, scancels the other names. Nibi skipped (multi-node hang 11-13, no E-450 / v2 data), Trillium unreachable from Fir (publickey).
 - **2026-11-19 22:55 EST: ORC + rollback-verifier pilot queued on Rorqual 27274977-78** (`darshan_orc_verdict_E450`, user: go). `MAX_STEPS=100 N_JOBS=2 bash scripts/rl_ft/submit_orc_verdict.sh`, est. start ~23:20 EST, ~10 h; evals at 0 / 100. Code `3334c38` (`--verdict_coef 0.1`, `--eval_rollback`) + `033b52e` (verdict_p / reverted in val_rb dumps, for offline thresholds). Smoke 27257634 (Rorqual, 1 node) ran clean (TIMEOUT only in the step-2 eval, 1 h limit); step-0 verifier says Yes to everything (val_rb = val). Decision criteria in runs.md. `train/lr` prints 0.0001 = 5e-5 rounded to 4 decimals.
 - **2026-11-19 20:40 EST: why (analyses, read-only).** jeet's `rl_ft_sstg2_t1` (substage 2, depth-2 refiner from E-450, 560/600 steps):
   refiner barely moves (train fix_2 0.276 -> 0.30, brk_2 0.073 -> 0.078; own-critique am_upto_3 flat after round 1) as
