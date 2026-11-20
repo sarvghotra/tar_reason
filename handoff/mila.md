@@ -101,6 +101,7 @@ Owned by the Mila session. Mila: user `singhsd`, project folder `/home/mila/s/si
   keeps them (they are in Fir `~/scratch/tar_reason_kept/darshan_t11_fir/`; need copying to Mila). (GenAI-bench setup done 2026-10-14.)
 
 ## Log (newest first)
+- 2026-11-20: all 16 pending jobs cancelled (user): the held Emu3 GenEval2 2213 / GenAI 13 / TIIF 17 chains and Uni-CoT GenAI 13 (paused since 11-06). Partial progress stays in `$SCRATCH/tar_reason/results_jeet_partial/` (Emu3 GenEval2 576/800, TIIF 328/554; Uni-CoT GenAI 680/1549); resubmitting with RESUME=1 picks it up. Mila queue empty.
 - 2026-11-16 12:30: E-450 qualitative package built (`$SCRATCH/share_out/e450_qual.tgz`, 5.7 GB, md5 0b8e6ec1...; contents in Fir's Inbox); Inbox line removed.
 - 2026-11-16 04:45: run C GenEval (C200, C300) done, runs.md row `geneval_orig` t4_e2eC200 / C300; run C Inbox lines removed.
 - 2026-11-15 22:40: run C package (md5 1d8461f1..., both adapter sha256 OK, steps 200/300, LoRA r64/a128) unpacked to `$SCRATCH/models/tar/runC/runC_ckpt200_300/`; GenEval (original) queued on the t4-merged base as for run A: C200 gen 11724406/08/10, C300 11724412/14/16 (seeds 13/17/91), each followed by its scoring job; labels t4_e2eC200 / t4_e2eC300.
