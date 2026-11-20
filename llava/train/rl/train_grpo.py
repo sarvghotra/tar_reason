@@ -250,6 +250,19 @@ def parse_args():
     p.add_argument("--eval_own", action=argparse.BooleanOptionalAction, default=True,
                    help="Run the deployed-loop validation pass (policy critic). --no-eval_own with --eval_oracle "
                         "evaluates / dumps oracle-driven chains only (run-2 data generation, 2026-10-30).")
+    # Rollback + in-loop verifier (2026-11-19; rollout.py module docstring "Rollback").
+    p.add_argument("--verdict_coef", type=float, default=0.0,
+                   help="> 0: train the rollback verifier: after every refined image the policy answers "
+                        "VERDICT_SPLICE with ' Yes' (better than its parent per the judge) or ' No' (worse); "
+                        "cross-entropy on that token, times this coefficient, added to the GRPO loss "
+                        "(mean over the step's labelled nodes). Ties (|delta AM| <= --verdict_margin) are skipped.")
+    p.add_argument("--verdict_margin", type=float, default=0.02)
+    p.add_argument("--verdict_threshold", type=float, default=0.5,
+                   help="Policy rollback (val_rb/*): keep a refined image iff its P(Yes) >= this.")
+    # (Training rollouts are unchanged: rollback is applied only in the val_rb/* validation pass.)
+    p.add_argument("--eval_rollback", action=argparse.BooleanOptionalAction, default=False,
+                   help="Also validate the deployed loop with the policy's own rollback verifier (val_rb/*: "
+                        "own critiques + own verdicts; am_upto_d / am_final from the chain's kept image).")
     p.add_argument("--eval_oracle", action=argparse.BooleanOptionalAction, default=False,
                    help="Also validate with oracle critiques (val_oracle/*): the refiner's "
                         "fix/break rates under a correct critique, independent of the critic.")
@@ -526,6 +539,26 @@ def refine_reward(n: Node, reward, fail_threshold: float, break_weight: float) -
     return alpha * am_delta + (1.0 - alpha) * gm_delta
 
 
+def make_self_rollback_fn(model, rollout: TreeRollout, threshold: float):
+    """rollback_fn from the policy's own verdict (P(Yes) after VERDICT_SPLICE); records verdict_p."""
+    def fn(nodes: List[Node]) -> List[bool]:
+        ps = rollout.verdict_probs(model, nodes)
+        for n, p in zip(nodes, ps):
+            n.verdict_p = p
+        return [p >= threshold for p in ps]
+    return fn
+
+
+def set_verdict_labels(batch: RolloutBatch, margin: float):
+    """Judge label of every refined, scored node vs the image it refined: 1 better, 0 worse, None tie."""
+    for n in batch.all_nodes():
+        n.verdict_label = None
+        if n.round == 0 or n.looks_good or n.per_question is None or n.parent.per_question is None:
+            continue
+        d = n.am - n.parent.am
+        n.verdict_label = 1 if d > margin else 0 if d < -margin else None
+
+
 def make_critique_fn(reward, fail_threshold: float, source: str = "oracle",
                      oracle_frac: float = 1.0, resample_tries: int = 3):
     """``critique_fn`` for TreeRollout.run: scores the parents and returns one
@@ -783,6 +816,16 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
             for src in CRITIQUE_SOURCES:
                 s[f"{prefix}critique_{src}_{r}"] = sum(n.critique_source == src for n in level)
             s[f"{prefix}critique_fallback_{r}"] = sum(n.critique_fallback for n in level)
+            # Rollback: share of this round's refined images rejected (the chain went back to the
+            # parent), and the policy verdict's agreement with the judge label where both exist.
+            s[f"{prefix}revert_{r}"] = sum(n.reverted for n in level)
+            rate(f"verdict_acc_{r}", 0, 0)
+            rate(f"verdict_keep_bad_{r}", 0, 0)
+            for n in level:
+                if n.verdict_p is not None and n.verdict_label is not None:
+                    rate(f"verdict_acc_{r}", (n.verdict_p >= 0.5) == bool(n.verdict_label), 1)
+                    if n.verdict_label == 0:
+                        rate(f"verdict_keep_bad_{r}", n.verdict_p >= 0.5, 1)
             keys = ([f"{kind}_{r}" for kind in ("fix", "brk")]
                     + [f"{kind}_{sk}_{r}" for kind in ("fix", "brk") for sk in STAT_SKILLS]
                     + [f"{kind}_{src}_{r}" for kind in ("fix", "brk") for src in CRITIQUE_SOURCES])
@@ -820,10 +863,13 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
                 if len(means) >= 2:
                     pm = sum(means) / len(means)
                     rate(f"crit_between_var_{r}", sum((m - pm) ** 2 for m in means), len(means) - 1)
-    # Final-image score per leaf (what the benchmark measures).
-    s[f"{prefix}am_final"] = sum(n.am for n in batch.leaves)
-    s[f"{prefix}n_final"] = len(batch.leaves)
-    pass_rates("final", batch.leaves)
+    # Final-image score per leaf (what the benchmark measures). With rollback the chain's final
+    # image is the kept one (root.states[-1]), one per root.
+    rb = bool(batch.roots) and batch.roots[0].states is not None
+    finals = [r.states[-1] for r in batch.roots] if rb else batch.leaves
+    s[f"{prefix}am_final"] = sum(n.am for n in finals)
+    s[f"{prefix}n_final"] = len(finals)
+    pass_rates("final", finals)
     # Fair depth curve: every leaf (= every prompt in a greedy eval chain) counts at
     # every depth d, with its image after d rounds, or its last image if the chain
     # ended earlier ("looks good", or nothing left to fix under the oracle).
@@ -831,8 +877,8 @@ def tree_stats(batch: RolloutBatch, prefix: str, num_rounds: int,
     # running, which is not comparable across rounds.
     for d in range(num_rounds + 1):
         tot, allpass = 0.0, 0
-        for leaf in batch.leaves:
-            chain = leaf.ancestors()
+        for leaf in (batch.roots if rb else batch.leaves):
+            chain = leaf.states if rb else leaf.ancestors()
             n = chain[min(d, len(chain) - 1)]
             tot += n.am
             allpass += int(n.per_question is not None
@@ -862,6 +908,7 @@ def finalize_stats(s: Dict[str, float], prefix: str) -> Dict[str, float]:
             for src in CRITIQUE_SOURCES:
                 out[f"{prefix}critique_{src}_{r}"] = s[f"{prefix}critique_{src}_{r}"] / n
             out[f"{prefix}critique_fallback_{r}"] = s[f"{prefix}critique_fallback_{r}"] / n
+            out[f"{prefix}revert_{r}"] = s[f"{prefix}revert_{r}"] / n
     out[f"{prefix}am_final"] = s[f"{prefix}am_final"] / max(s[f"{prefix}n_final"], 1.0)
     for k in s:
         if k.startswith((f"{prefix}am_upto_", f"{prefix}allpass_upto_")):
@@ -941,9 +988,11 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
         leaves = [n for n in leaves if n.critique_leader]
     micro = [leaves[i:i + args.train_micro_batch] for i in range(0, len(leaves), args.train_micro_batch)]
     rows = [rollout.build_training_rows(m, args.reflect_token_weight, args.train_drafts,
-                                        args.train_images, args.image_adv_scale, own_segment_only=mdp)
+                                        args.train_images, args.image_adv_scale, own_segment_only=mdp,
+                                        verdict=args.verdict_coef > 0)
             for m in micro]
     denom = max(float(sum(r["weight"].sum() for r in rows)), 1.0)
+    n_verdict = int(sum(r["verdict"].sum() for r in rows))
     n_tokens = int(sum(r["train_mask"].sum() for r in rows))
 
     # Reference log-probs (adapters off) are fixed for the whole step.
@@ -974,8 +1023,20 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
             weight = r["weight"].to(device)[:, 1:][sel]
             kinds = pk[:, 1:][sel]
             draft = r["draft"].to(device)[:, 1:][sel]
-            loss, metrics = grpo_loss(logp, old_logps[i], ref_logps[i], adv, weight, kinds, denom, gcfg,
-                                      draft=draft, draft_kl_scale=args.draft_kl_scale)
+            # Verdict answers (if any) are kept out of the GRPO term entirely (no KL to a reference
+            # that never saw the question) and trained by the CE term below.
+            vmask = r["verdict"].to(device)[:, 1:][sel]
+            g = ~vmask
+            loss, metrics = grpo_loss(logp[g], old_logps[i][g], ref_logps[i][g], adv[g], weight[g], kinds[g],
+                                      denom, gcfg, draft=draft[g], draft_kl_scale=args.draft_kl_scale)
+            if vmask.any():
+                # Verifier: supervised CE on the verdict token (weight 0 in the GRPO term above).
+                vlp = logp[vmask]
+                loss = loss - args.verdict_coef * vlp.sum() / max(n_verdict, 1)
+                agg["verdict_nll_sum"] = agg.get("verdict_nll_sum", 0.0) - float(vlp.sum())
+                agg["verdict_correct"] = agg.get("verdict_correct", 0.0) + float((vlp.exp() > 0.5).sum())
+                agg["verdict_yes"] = agg.get("verdict_yes", 0.0) + float(
+                    (ids[:, 1:][sel][vmask] == rollout.yes_id).sum())
             loss.backward()
             w = float(weight.sum())
             for k, v in metrics.items():
@@ -1009,10 +1070,16 @@ def train_on_tree(model, rollout: TreeRollout, batch: RolloutBatch, args, gcfg: 
         scheduler.step()
         agg["grad_norm"] = float(gnorm)
     optimizer.zero_grad(set_to_none=True)
+    vsums = {k: agg.pop(k, 0.0) for k in ("verdict_nll_sum", "verdict_correct", "verdict_yes")}
     for k in list(agg):
         if k not in ("loss", "grad_norm", "anchor_kl"):
             agg[k] /= denom
     agg["train_tokens"] = n_tokens
+    if args.verdict_coef > 0:   # per-rank means (the caller averages ranks)
+        agg["verdict_nll"] = vsums["verdict_nll_sum"] / max(n_verdict, 1)
+        agg["verdict_acc"] = vsums["verdict_correct"] / max(n_verdict, 1)
+        agg["verdict_yes_frac"] = vsums["verdict_yes"] / max(n_verdict, 1)
+        agg["verdict_n"] = float(n_verdict)
     return agg
 
 
@@ -1060,7 +1127,8 @@ def dump_validation_nodes(batch: RolloutBatch, out_dir: str, prefix: str, step: 
 
 @torch.no_grad()
 def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, step, decoder=None,
-                   critique_fn=None, prefix: str = "val/", sample_critic: bool = False):
+                   critique_fn=None, prefix: str = "val/", sample_critic: bool = False,
+                   self_rollback: bool = False):
     """Greedy-critic validation of the loop as deployed; with ``critique_fn``
     (oracle critiques) it measures the refiner alone, under ``prefix``; with
     ``sample_critic`` the policy critic is sampled as in training (one
@@ -1078,11 +1146,14 @@ def run_validation(model, rollout: TreeRollout, reward, val_rows, args, device, 
     samples = []
     bs = max(args.gen_batch_size, 1)
     for start in range(0, len(val_rows), bs):
-        batch = rollout.run(model, val_rows[start:start + bs], branch=branch, critique_fn=critique_fn)
+        rb_fn = make_self_rollback_fn(model, rollout, args.verdict_threshold) if self_rollback else None
+        batch = rollout.run(model, val_rows[start:start + bs], branch=branch, critique_fn=critique_fn,
+                            rollback_fn=rb_fn)
         score_tree(batch, reward, args.draft_reward, args.stop_penalty, args.stop_threshold,
                    args.oracle_fail_threshold, args.break_weight,
                    stop_reward=args.stop_reward, critique_break_weight=args.critique_break_weight,
                    stop_oracle_reward=args.stop_oracle_reward)
+        set_verdict_labels(batch, args.verdict_margin)
         if args.val_dump_dir:
             dump_validation_nodes(batch, args.val_dump_dir, prefix, step, codes=args.val_dump_codes)
         for k, v in tree_stats(batch, prefix, num_rounds, args.oracle_fail_threshold).items():
@@ -1404,6 +1475,9 @@ def main():
             if args.eval_sampled:
                 out.update(run_validation(model, rollout, val_reward, rows, args, device, step, None,
                                           prefix=f"val_sampled{tag}/", sample_critic=True))
+            if args.eval_rollback:
+                out.update(run_validation(model, rollout, val_reward, rows, args, device, step, None,
+                                          prefix=f"val_rb{tag}/", self_rollback=True))
             if args.eval_oracle:
                 out.update(run_validation(model, rollout, val_reward, rows, args, device, step, None,
                                           critique_fn=val_oracle_fn, prefix=f"val_oracle{tag}/"))
@@ -1444,6 +1518,7 @@ def main():
                    args.oracle_fail_threshold, args.break_weight,
                    stop_reward=args.stop_reward, critique_break_weight=args.critique_break_weight,
                    stop_oracle_reward=args.stop_oracle_reward)
+        set_verdict_labels(batch, args.verdict_margin)
         adv_counts = assign_advantages(batch, args, gcfg)
         crit_sums = {}
         if args.critique_reward != "none":

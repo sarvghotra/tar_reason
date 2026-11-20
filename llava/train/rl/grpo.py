@@ -17,6 +17,7 @@ import torch.utils.checkpoint
 KIND_NONE = 0   # prompt / forced splice tokens: never trained
 KIND_IMG = 1    # image token sampled from the image vocab
 KIND_TXT = 2    # reflection token sampled from the non-image vocab
+KIND_VERDICT = 3   # rollback-verifier answer (" Yes" / " No"): supervised CE, never in the GRPO term
 
 # Rows of hidden states pushed through lm_head at once; with the 217K vocab
 # this bounds the fp32 logits buffer to ~0.9 GB.

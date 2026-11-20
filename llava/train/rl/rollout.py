@@ -57,6 +57,17 @@ depth gets a clean sibling group. A chain that stops earlier (its image passes
 every question, or a "looks good" critique) simply has nothing to fix there.
 Chain nodes before ``k*`` are alone in their group, so their advantage is 0
 (they keep the KL term, like a lone draft).
+
+Rollback (``run(..., rollback_fn=...)``, 2026-11-19; validation chains only, not
+chain mode): before a chain is refined again, ``rollback_fn(nodes) -> [keep]``
+decides for each node refined in the previous round whether its image is kept;
+a rejected node (``reverted``) becomes a leaf and the next refinement is attached
+to its parent instead, i.e. it conditions on the earlier, better image (so a
+round-k node's parent may sit at round k-2 or earlier). The trainer's rule is the
+policy's own verdict (``verdict_probs``): after the refined image it is asked
+``VERDICT_SPLICE`` and P(" Yes") vs P(" No") decides. Every root then gets
+``states``: the chain's current image after each round (what an inference loop
+with rollback shows after d rounds), the last one decided after the final round.
 """
 
 import contextlib
@@ -68,11 +79,13 @@ from typing import Callable, Dict, List, Optional, Sequence
 import torch
 from transformers import LogitsProcessor, LogitsProcessorList
 
-from llava.train.rl.grpo import KIND_IMG, KIND_NONE, KIND_TXT
+from llava.train.rl.grpo import KIND_IMG, KIND_NONE, KIND_TXT, KIND_VERDICT
 
 ITERATIVE_PROMPT_PREFIX = "Generate an image iteratively by self-reflecting and correcting.\n"
 SYSTEM_PROMPT = "You are a helpful assistant."
 REFLECT_SPLICE = "<im_end>\nSelf-reflect:"
+# Asked after a refined image (rollback verifier): " Yes" keeps the image, " No" rolls back to its parent.
+VERDICT_SPLICE = "<im_end>\nDoes this image match the prompt better than the previous image? Answer:"
 LOOKS_GOOD_RE = re.compile(r"looks good", re.IGNORECASE)
 
 # ``critique_fn`` may return this instead of a Critique for a parent whose children
@@ -192,6 +205,14 @@ class Node:
     adv_c: float = 0.0
     crit_recall: Optional[float] = None
     crit_fa: Optional[float] = None
+    # Rollback: this node's image was rejected and the chain continued from its parent;
+    # verdict_p = the policy's P(Yes) when it made that decision; verdict_label = the judge's
+    # label for the verdict loss (1 better / 0 worse than the parent, None = tie); states (roots
+    # only) = the chain's current image after rounds 0..D.
+    reverted: bool = False
+    verdict_p: Optional[float] = None
+    verdict_label: Optional[int] = None
+    states: Optional[List["Node"]] = None
 
     def ancestors(self) -> List["Node"]:
         chain, n = [], self
@@ -245,6 +266,9 @@ class TreeRollout:
         self._check_special_tokens()
 
         self.reflect_splice = self._encode(REFLECT_SPLICE)
+        self.verdict_splice = self._encode(VERDICT_SPLICE)
+        self.yes_id = self._encode(" Yes")[0]
+        self.no_id = self._encode(" No")[0]
         self.image_splice = self._encode(f"\n<im_start><S{cfg.scale}>")
         self.image_proc = LogitsProcessorList([ImageVocabOnly(self.img_start, self.img_end)])
         self.text_proc = LogitsProcessorList([NoImageVocab(self.img_start, self.img_end)])
@@ -364,10 +388,29 @@ class TreeRollout:
         refl = self._sample_reflections(model, rows)
         return [self.tok.decode(r, skip_special_tokens=True).strip() for r in refl]
 
+    @torch.no_grad()
+    def verdict_probs(self, model, nodes: List[Node]) -> List[float]:
+        """P(" Yes") / (P(" Yes") + P(" No")) after ``node.seq + VERDICT_SPLICE``: does the node's
+        refined image match the prompt better than the image it refined (its parent)?"""
+        out = []
+        for start in range(0, len(nodes), self.cfg.gen_batch_size):
+            chunk = nodes[start:start + self.cfg.gen_batch_size]
+            ids, mask = self._left_pad([n.seq + self.verdict_splice for n in chunk])
+            # Last position only (full logits would be B x T x 217K), positions from the mask as in
+            # generate / masked_token_logprobs (rows are left-padded).
+            base = model.get_base_model() if hasattr(model, "get_base_model") else model
+            pos = (mask.long().cumsum(-1) - 1).clamp(min=0)
+            h = base.model(input_ids=ids, attention_mask=mask, position_ids=pos, use_cache=False,
+                           return_dict=True).last_hidden_state[:, -1]
+            two = torch.log_softmax(base.lm_head(h)[:, [self.yes_id, self.no_id]].float(), dim=-1)
+            out.extend(two[:, 0].exp().tolist())
+        return out
+
     # -- main entry ------------------------------------------------------------
 
     def run(self, model, prompts: List[Dict], branch: Optional[List[int]] = None,
-            critique_fn: Optional[Callable[..., List[Optional[str]]]] = None
+            critique_fn: Optional[Callable[..., List[Optional[str]]]] = None,
+            rollback_fn: Optional[Callable[[List[Node]], List[bool]]] = None
             ) -> RolloutBatch:
         """``critique_fn(parents, prompts, sample_fn) -> [Critique | None]``
         replaces reflection sampling with a fixed critique per parent (see the
@@ -375,17 +418,49 @@ class TreeRollout:
         reflection per node, for critique sources that want the frozen
         policy's own text."""
         chain = branch is None and self.cfg.chain_siblings > 0
+        assert not (chain and rollback_fn is not None), "rollback is for validation chains, not chain mode"
         branch = list(branch or self.cfg.branch)
         was_training = model.training
         model.eval()
         try:
             with self.sampling_context:
-                return self._run(model, prompts, branch, critique_fn, chain)
+                return self._run(model, prompts, branch, critique_fn, chain, rollback_fn)
         finally:
             if was_training:
                 model.train()
 
-    def _run(self, model, prompts, branch, critique_fn=None, chain=False) -> RolloutBatch:
+    def _rollback(self, rollback_fn, live: List[Node], leaves: List[Node], roots: List[Node]) -> List[Node]:
+        """Apply ``rollback_fn`` to the refined nodes of ``live``; returns the nodes to refine next
+        (a rejected node is replaced by its parent) and appends every root's current state."""
+        cand = [n for n in live if n.round >= 1 and not n.looks_good]
+        keep = list(rollback_fn(cand)) if cand else []
+        assert len(keep) == len(cand), "rollback_fn must return one flag per node"
+        for n, kp in zip(cand, keep):
+            n.reverted = not kp
+        out, seen = [], set()
+        for n in live:
+            if n.reverted:
+                leaves.append(n)
+                n = n.parent
+            if id(n) not in seen:      # two rejected siblings share one parent
+                seen.add(id(n))
+                out.append(n)
+        return out
+
+    @staticmethod
+    def _record_states(roots: List[Node], level: List[Node]):
+        """Each root's current image after this round: its chain's node in ``level`` (its parent if
+        rejected); chains with no node here (stopped, finished) keep their last state."""
+        cur = {id(r): r.states[-1] for r in roots}
+        for n in level:
+            if n.round == 0 or n.looks_good:
+                continue
+            r = n.ancestors()[0]
+            cur[id(r)] = n.parent if n.reverted else n
+        for r in roots:
+            r.states.append(cur[id(r)])
+
+    def _run(self, model, prompts, branch, critique_fn=None, chain=False, rollback_fn=None) -> RolloutBatch:
         # Round 0: drafts.
         roots: List[Node] = []
         for p_idx, p in enumerate(prompts):
@@ -408,6 +483,9 @@ class TreeRollout:
         nodes_by_round = [roots]
         leaves: List[Node] = []
         level = roots
+        if rollback_fn is not None:
+            for r in roots:
+                r.states = [r]
         for k in range(1, len(branch)):
             live = [n for n in level if not n.looks_good]
             leaves.extend(n for n in level if n.looks_good)
@@ -415,6 +493,9 @@ class TreeRollout:
                 # Past its branch round a chain is finished: its nodes are leaves.
                 leaves.extend(n for n in live if k > n.branch_round)
                 live = [n for n in live if k <= n.branch_round]
+            if rollback_fn is not None and k >= 2:
+                live = self._rollback(rollback_fn, live, leaves, roots)
+                self._record_states(roots, level)
             crits: List[Optional[Critique]] = [None] * len(live)
             if critique_fn is not None and live:
                 crits = list(critique_fn(live, prompts, lambda nodes: self.sample_critiques(model, nodes)))
@@ -491,6 +572,12 @@ class TreeRollout:
                     c.codes = c.parent.codes
             nodes_by_round.append(children)
             level = children
+        if rollback_fn is not None:
+            # Decide the last round too, so states[-1] is the image the loop would return.
+            self._rollback(rollback_fn, [n for n in level if not n.looks_good], [], roots)
+            self._record_states(roots, level)
+            for r in roots:            # chains that stopped before round 1 still need D + 1 states
+                r.states += [r.states[-1]] * (len(branch) - len(r.states))
         leaves.extend(level)
         return RolloutBatch(prompts=prompts, roots=roots, leaves=leaves,
                             nodes_by_round=nodes_by_round)
@@ -541,7 +628,8 @@ class TreeRollout:
 
     def build_training_rows(self, leaves: List[Node], reflect_token_weight: float,
                             train_drafts: bool = True, train_images: bool = True,
-                            image_adv_scale: float = 1.0, own_segment_only: bool = False):
+                            image_adv_scale: float = 1.0, own_segment_only: bool = False,
+                            verdict: bool = False):
         """Right-padded tensors for a list of leaves.
 
         Returns dict(input_ids, attention_mask, train_mask, pos_kind, adv, weight, draft);
@@ -559,7 +647,15 @@ class TreeRollout:
         node, not a leaf; its sequence already holds the whole context it was
         generated from, so the row trains only the node's own segment.
         """
-        width = max(len(n.seq) for n in leaves)
+        # verdict=True (mdp only): a node with a verdict_label gets VERDICT_SPLICE and its answer
+        # token (" Yes" / " No", KIND_VERDICT) appended to its row; the answer is in the train mask
+        # with weight 0 and marked in "verdict" (the trainer's supervised CE term).
+        extra = {}
+        if verdict and own_segment_only:
+            for n in leaves:
+                if n.verdict_label is not None:
+                    extra[id(n)] = self.verdict_splice + [self.yes_id if n.verdict_label else self.no_id]
+        width = max(len(n.seq) + len(extra.get(id(n), [])) for n in leaves)
         B = len(leaves)
         input_ids = torch.full((B, width), self.pad_id, dtype=torch.long)
         attention_mask = torch.zeros((B, width), dtype=torch.long)
@@ -568,11 +664,19 @@ class TreeRollout:
         adv = torch.zeros((B, width), dtype=torch.float32)
         weight = torch.zeros((B, width), dtype=torch.float32)
         draft = torch.zeros((B, width), dtype=torch.bool)
+        verdict_mask = torch.zeros((B, width), dtype=torch.bool)
         for i, leaf in enumerate(leaves):
             L = len(leaf.seq)
             input_ids[i, :L] = torch.tensor(leaf.seq, dtype=torch.long)
             attention_mask[i, :L] = 1
             pos_kind[i, :L] = torch.tensor(leaf.kinds, dtype=torch.long)
+            ext = extra.get(id(leaf))
+            if ext:
+                input_ids[i, L:L + len(ext)] = torch.tensor(ext, dtype=torch.long)
+                attention_mask[i, L:L + len(ext)] = 1
+                pos_kind[i, L + len(ext) - 1] = KIND_VERDICT
+                train_mask[i, L + len(ext) - 1] = True
+                verdict_mask[i, L + len(ext) - 1] = True
             trained = set(leaf.trained_rounds())
             chain = leaf.ancestors()
             if own_segment_only:
@@ -592,4 +696,5 @@ class TreeRollout:
                     weight[i, pos] = reflect_token_weight if kind == KIND_TXT else 1.0
                     draft[i, pos] = node.round == 0 and kind == KIND_IMG
         return dict(input_ids=input_ids, attention_mask=attention_mask,
-                    train_mask=train_mask, pos_kind=pos_kind, adv=adv, weight=weight, draft=draft)
+                    train_mask=train_mask, pos_kind=pos_kind, adv=adv, weight=weight, draft=draft,
+                    verdict=verdict_mask)
