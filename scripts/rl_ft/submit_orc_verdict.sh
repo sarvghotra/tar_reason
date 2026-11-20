@@ -13,7 +13,7 @@
 #
 #   smoke:  SMOKE=1 bash scripts/rl_ft/submit_orc_verdict.sh           (1 node, 2 steps, evals on 24 prompts)
 #   run:    bash scripts/rl_ft/submit_orc_verdict.sh                   (Fir / Rorqual / Nibi / TamIA, picked by host)
-# Overridable: RUN_NAME, MAX_STEPS, PROMPTS_PER_GPU, VERDICT_COEF, ACCOUNT, TIME, N_JOBS, SAVE_STEPS, AFTER.
+# Overridable: RUN_NAME, NODES, MAX_STEPS, PROMPTS_PER_GPU, VERDICT_COEF, ACCOUNT, TIME, N_JOBS, SAVE_STEPS, AFTER.
 set -eu
 export PATH=$PATH:/opt/software/slurm/bin
 export REPO=$(cd "$(dirname "$0")/../.." && pwd); cd $REPO
@@ -35,7 +35,7 @@ else
   export MAX_STEPS=${MAX_STEPS:-300} EVAL_STEPS=100 PROMPTS_PER_GPU=${PROMPTS_PER_GPU:-14}
   if [ $TAMIA = 1 ]; then TIME=${TIME:-02:59:00}; N_JOBS=${N_JOBS:-15}; export SAVE_STEPS=${SAVE_STEPS:-5}
   else TIME=${TIME:-11:59:00}; N_JOBS=${N_JOBS:-5}; export SAVE_STEPS=${SAVE_STEPS:-10}; fi
-  SB=(--nodes=4 --time=$TIME)
+  SB=(--nodes=${NODES:-4} --time=$TIME)   # NODES=2 with PROMPTS_PER_GPU=28 keeps 168 prompts/step
 fi
 O=output_dir/$RUN_NAME; mkdir -p $O output_dir/slurm_logs
 cat > $O/data.yaml <<EOF
