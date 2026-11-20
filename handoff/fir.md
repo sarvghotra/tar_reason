@@ -2,7 +2,20 @@
 
 Owned by the Fir session. Fir: Alliance cluster, user `dars11`, 4× H100 80GB per node, login nodes `login1`/`login2`.
 
-## Now (2026-11-16 09:30 EST)
+## Now (2026-11-19 20:40 EST)
+- **2026-11-19 20:40 EST: Fir GPUs down** (reservation `NovemberOutage` since 2026-11-17 07:00 PST, open-ended): nothing GPU runs here.
+  The 27B GenEval2 re-scores 4429588-90 stay pending. Other clusters need the user to open ssh masters from login2 (MFA).
+- **2026-11-19 20:40 EST: new 4-round ORC run with an in-loop rollback verifier, code ready, not submitted** (user: "4 iter ORC on
+  E-450" using sstg2_t1, self-selection and stage-3 learnings). Code `3334c38`: `--verdict_coef` (after every refined image
+  the policy answers "Does this image match the prompt better than the previous image?", CE on the 8B judge's label,
+  ties within 0.02 AM skipped; training rollouts unchanged) and `--eval_rollback` (val_rb*/: own critiques + own verdict
+  rollback). Launch: `bash scripts/rl_ft/submit_orc_verdict.sh` (smoke: `SMOKE=1`); E-450 start, oracle critiques, LR 5e-5,
+  168 prompts/step, promptmix v1+v2, val800 + promptmix + promptmix_v2, 300 steps. Planned cluster TamIA / Rorqual / Nibi.
+- **2026-11-19 20:40 EST: why (analyses, read-only).** jeet's `rl_ft_sstg2_t1` (substage 2, depth-2 refiner from E-450, 560/600 steps):
+  refiner barely moves (train fix_2 0.276 -> 0.30, brk_2 0.073 -> 0.078; own-critique am_upto_3 flat after round 1) as
+  E-450_ORC; refinements keep only ~7% of the parent's tokens (run 1 oracle chains). Self-selection on run C (GenEval2, 8B
+  judge): +2.9 / +4.2 AM, ceiling +5.6 / +7.2, 38-44% of chains end below an earlier image; a perfect stop rule gives only
+  +1.7 / +2.4 (69-74% of regressions still had errors: broken edits, not missed stops).
 - **2026-11-16 09:30 EST: run C paper-judge evals.** TIIF 72B done for @200 / @300 (Fir 4310642 + 4341832) and TIIF self-selection done (`scripts/eval/tiif_self_judge_fir.sh`, Fir 4358998; `eval/analyze/tiif_rollback.py --score am_pol`): runs.md rows. GenEval2 27B re-score of C200 / C300 / A500 queued on TamIA 699136 (est. 11:31 EST); then `geneval2_rollback.py` selection with the 27B mirrors.
 - **2026-11-16 09:30 EST: qualitative figure candidates (user: E-450, GenEval2 + TIIF, 1 / 2 / 3 rounds, paper judges).** Seed-13 sheet https://claude.ai/artifact/8jXamEjATFrrrfVWjxJE2f (`teaser_figure/qual_candidates.py`, GenEval2 checks still 8B). Asked Mila (Inbox) for jeet's E-450 n4 vllm GenEval2 run + its 27B mirror (3 seeds) and TIIF seeds 17 / 91; rebuild the sheet from those when the tgz arrives. Draw.io version of the old teaser: `teaser_figure/qualitative_teaser.drawio` (`build_drawio.py`).
 - **2026-11-15 23:35 EST: run C continuation 300 -> 500 DIVERGED, cancelled at step 335 (Fir 4269291-93).** Step 302 grad_norm 59, round-1 degraded 0.53; step 303 train am_0 0.72 -> 0.36, kl_img 0.15 -> 4.5; steps 327-328 grad_norm ~1.65e5, kl_img 441 / 527; no recovery. No llava/ code change since run C started; checkpoint-300 optimizer (392 params, step 300, exp_avg_sq ~ checkpoint-290's) and scheduler load normally; no NaN / hardware errors -> RL instability at LR 1e-4 (step 300 val was already below 200). checkpoints 310-330 moved to `output_dir/darshan_e2e_stop_C_fir_DIVERGED_after300/`. checkpoint-200 / 300 and their evals unaffected. Recommended to user: stop, step 200 = our model.
