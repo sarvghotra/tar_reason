@@ -1121,6 +1121,9 @@ def dump_validation_nodes(batch: RolloutBatch, out_dir: str, prefix: str, step: 
                     "forced_refine": n.forced_refine,
                     "parent_am": n.parent.am, "parent_per_question": n.parent.per_question,
                     "am": n.am, "per_question": n.per_question,
+                    # Rollback eval: P(Yes) from the policy's verdict and whether it rejected this image,
+                    # so a threshold other than --verdict_threshold can be evaluated offline.
+                    **({"verdict_p": n.verdict_p, "reverted": n.reverted} if n.verdict_p is not None else {}),
                     **({"parent_codes": n.parent.codes, "codes": n.codes} if codes else {}),
                 }) + "\n")
 
