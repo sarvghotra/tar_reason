@@ -1,5 +1,5 @@
 #!/bin/bash
-# Two E-450 refinement-RL runs with 8 siblings per group (user 2026-11-22), Rorqual:
+# Two E-450 refinement-RL runs with 8 siblings per group (user 2026-11-22), Rorqual / Fir / TamIA (picked by host):
 #   VARIANT=jeet  "build on sstg2_t1": jeet's code (commit 1105427, copied from his Fir checkout to
 #                 ~/scratch/git/tar_reason_jeet) and his rl_ft_sstg2_t1 settings (1 draft per prompt, drafts frozen with
 #                 their own KL, siblings at round 1 or 2 weighted 1:4, hybrid 50/50 critiques with the critic anchored,
@@ -11,10 +11,18 @@
 # readable from our account) and our 3 val sets with depth-4 own + oracle chains every 100 steps; 300 steps.
 #   smoke: SMOKE=1 VARIANT=jeet bash scripts/rl_ft/submit_orc_s8.sh      (1 node, 2 steps, 24 eval prompts)
 #   run:   VARIANT=jeet bash scripts/rl_ft/submit_orc_s8.sh              (AFTER=<smoke id> to start only if it passed)
+# Overridable: RUN_NAME, JOB_NAME, MAX_STEPS, PROMPTS_PER_GPU, TIME, N_JOBS, SAVE_STEPS, ACCOUNT, AFTER.
 set -eu
 export PATH=$PATH:/opt/software/slurm/bin
 OURS=$(cd "$(dirname "$0")/../.." && pwd); cd $OURS
-S=/home/dars11/scratch
+S=/home/dars11/scratch; HOSTF=$(hostname -f)
+if [[ "${CC_CLUSTER:-}" == tamia* || "$HOSTF" == *tamia* ]]; then
+  S=/scratch/d/dars11; LAUNCHER=scripts/rl_ft/bash_tamia_mr.sh; EXCL=(); DEF_ACCOUNT=aip-agrawal
+elif [[ "${CC_CLUSTER:-}" == rorqual* || "$HOSTF" == *rorqual* ]]; then
+  LAUNCHER=scripts/rl_ft/bash_rorqual_mr.sh; EXCL=(); DEF_ACCOUNT=rrg-bengioy-ad_gpu
+else
+  LAUNCHER=scripts/rl_ft/bash_fir_mr.sh; EXCL=(--exclude=${EXCLUDE:-fc10212}); DEF_ACCOUNT=rrg-bengioy-ad_gpu
+fi
 BASE=$S/models/tar/sft/darshan_pm1_E_merged450
 case ${VARIANT:?VARIANT=jeet or r1} in
   jeet) export REPO=$S/git/tar_reason_jeet RUN_NAME=${RUN_NAME:-darshan_sstg2_s8} BRANCH=1,1,1 LR=1e-4 \
@@ -36,7 +44,7 @@ if [ "${SMOKE:-0}" = 1 ]; then
   SB=(--nodes=1 --time=01:30:00); N_JOBS=1
 else
   export MAX_STEPS=${MAX_STEPS:-300} EVAL_STEPS=100 SAVE_STEPS=${SAVE_STEPS:-10} PROMPTS_PER_GPU=${PROMPTS_PER_GPU:-$PPG}
-  SB=(--nodes=4 --time=${TIME:-11:59:00}); N_JOBS=${N_JOBS:-5}
+  SB=(--nodes=4 --time=${TIME:-11:59:00}); N_JOBS=${N_JOBS:-5}   # short jobs: TIME=02:59:00 SAVE_STEPS=5 N_JOBS=15
 fi
 export RUN_NAME
 O=$REPO/output_dir/$RUN_NAME; mkdir -p $O $OURS/output_dir/slurm_logs
@@ -64,8 +72,8 @@ datasets:
       logname: promptmix_v2
       ratio: 1
 EOF
-COMMON=(--export=ALL --account=${ACCOUNT:-rrg-bengioy-ad_gpu} "${SB[@]}" -J ${RUN_NAME}
+COMMON=(--export=ALL "${EXCL[@]}" --account=${ACCOUNT:-$DEF_ACCOUNT} "${SB[@]}" -J ${JOB_NAME:-${RUN_NAME}}
         -o $OURS/output_dir/slurm_logs/%x_%j.out -e $OURS/output_dir/slurm_logs/%x_%j.err)
-PREV=$(sbatch --parsable "${COMMON[@]}" ${AFTER:+--dependency=afterok:${AFTER}} scripts/rl_ft/bash_rorqual_mr.sh); IDS=$PREV
-for i in $(seq 2 ${N_JOBS}); do PREV=$(sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} scripts/rl_ft/bash_rorqual_mr.sh); IDS="$IDS $PREV"; done
+PREV=$(sbatch --parsable "${COMMON[@]}" ${AFTER:+--dependency=afterok:${AFTER}} ${LAUNCHER}); IDS=$PREV
+for i in $(seq 2 ${N_JOBS}); do PREV=$(sbatch --parsable "${COMMON[@]}" --dependency=afterany:${PREV} ${LAUNCHER}); IDS="$IDS $PREV"; done
 echo "submitted ${N_JOBS} job(s): ${IDS} (${RUN_NAME}, REPO=${REPO}, branch=${BRANCH} siblings=${CHAIN_SIBLINGS} ${PROMPTS_PER_GPU}/GPU lr=${LR} critiques=${CRITIQUE_SOURCE})"
