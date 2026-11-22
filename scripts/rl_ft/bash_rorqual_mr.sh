@@ -208,7 +208,9 @@ export CRITIQUE_SOURCE HYBRID_ORACLE_FRAC ORACLE_FAIL_THRESHOLD BREAK_WEIGHT DRA
 export STOP_PENALTY STOP_THRESHOLD MIN_REFINES REFINE_RESAMPLE_TRIES REFLECT_TOKENS REFLECT_TEMPERATURE
 # Extra train_grpo.py flags appended at the end of the torchrun call.
 EXTRA_ARGS=${EXTRA_ARGS:-}
-export ANSWER_SUFFIX MAX_STEPS EVAL_STEPS SAVE_STEPS EVAL_MAX_PROMPTS WARMUP_RATIO LOG_IMAGES SEED DATASET_SEED EXTRA_ARGS
+# VAL_DUMP=0 drops --val_dump_dir (for checkouts whose train_grpo.py lacks it, e.g. jeet's 1105427 tree via REPO=).
+VAL_DUMP=${VAL_DUMP:-1}
+export VAL_DUMP ANSWER_SUFFIX MAX_STEPS EVAL_STEPS SAVE_STEPS EVAL_MAX_PROMPTS WARMUP_RATIO LOG_IMAGES SEED DATASET_SEED EXTRA_ARGS
 unset SLURM_MEM_PER_NODE SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU
 
 # One task per node: each copies the tokenizer locally, starts its own judge on GPU 3
@@ -333,7 +335,7 @@ ${TRAIN_PY} -m torch.distributed.run --nproc_per_node=${N_TRAIN_GPUS} --nnodes=$
     --learning_rate ${LR} --warmup_ratio ${WARMUP_RATIO} --lr_scheduler_type constant \
     --max_grad_norm 1.0 --max_steps ${MAX_STEPS} \
     --output_dir ${LOCAL_DIR} --eval_steps ${EVAL_STEPS} ${EVAL_ARGS} \
-    --val_dump_dir ${LOCAL_DIR}/val_dump \
+    $([ "${VAL_DUMP:-1}" = 1 ] && echo "--val_dump_dir ${LOCAL_DIR}/val_dump") \
     --save_steps ${SAVE_STEPS} --save_total_limit 5 --logging_steps 1 \
     --report_to wandb --run_name ${RUN_NAME} \
     --seed ${SEED} --dataset_seed ${DATASET_SEED} \
