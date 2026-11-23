@@ -11,7 +11,7 @@
 # readable from our account) and our 3 val sets with depth-4 own + oracle chains every 100 steps; 300 steps.
 #   smoke: SMOKE=1 VARIANT=jeet bash scripts/rl_ft/submit_orc_s8.sh      (1 node, 2 steps, 24 eval prompts)
 #   run:   VARIANT=jeet bash scripts/rl_ft/submit_orc_s8.sh              (AFTER=<smoke id> to start only if it passed)
-# Overridable: RUN_NAME, JOB_NAME, MAX_STEPS, PROMPTS_PER_GPU, TIME, N_JOBS, SAVE_STEPS, ACCOUNT, AFTER.
+# Overridable: LR, RUN_NAME, JOB_NAME, MAX_STEPS, PROMPTS_PER_GPU, TIME, N_JOBS, SAVE_STEPS, ACCOUNT, AFTER.
 set -eu
 export PATH=$PATH:/opt/software/slurm/bin
 OURS=$(cd "$(dirname "$0")/../.." && pwd); cd $OURS
@@ -25,11 +25,11 @@ else
 fi
 BASE=$S/models/tar/sft/darshan_pm1_E_merged450
 case ${VARIANT:?VARIANT=jeet or r1} in
-  jeet) export REPO=$S/git/tar_reason_jeet RUN_NAME=${RUN_NAME:-darshan_sstg2_s8} BRANCH=1,1,1 LR=1e-4 \
+  jeet) export REPO=$S/git/tar_reason_jeet RUN_NAME=${RUN_NAME:-darshan_sstg2_s8} BRANCH=1,1,1 LR=${LR:-1e-4} \
                CRITIQUE_SOURCE=hybrid HYBRID_ORACLE_FRAC=0.5 VAL_DUMP=0 PPG=24
         grep -q -- '--chain_round_weights' $REPO/llava/train/rl/train_grpo.py || { echo "$REPO is not jeet's 1105427 tree" >&2; exit 1; }
         export EXTRA_ARGS="--adv_rounds 1,2 --frozen_kl_coef 0.2 --chain_round_weights 1,4 --kl_ratio_max 20 --anchor_critiques --critique_anchor_weight 1.0 --save_keep_every 100" ;;
-  r1)   export REPO=$OURS RUN_NAME=${RUN_NAME:-darshan_orc_r1s8} BRANCH=2,1 LR=5e-5 CRITIQUE_SOURCE=oracle VAL_DUMP=1 PPG=14
+  r1)   export REPO=$OURS RUN_NAME=${RUN_NAME:-darshan_orc_r1s8} BRANCH=2,1 LR=${LR:-5e-5} CRITIQUE_SOURCE=oracle VAL_DUMP=1 PPG=14
         export EXTRA_ARGS="--save_total_limit 100" ;;
   *) echo "VARIANT must be jeet or r1" >&2; exit 1 ;;
 esac
